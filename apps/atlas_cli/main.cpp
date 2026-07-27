@@ -4,5 +4,5 @@
 
 int main()
 {
-    std::cout << "Atlas " << Atlas::version() << std::endl;
+    std::cout << "Atlas " << Atlas::version() << '\n';
 }

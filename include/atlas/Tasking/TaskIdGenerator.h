@@ -6,22 +6,30 @@
 #include <cstdint>
 #include <optional>
 
+/**
+ * @file TaskIdGenerator.h
+ * @brief Declares the task-handle generator used by a task graph.
+ */
+
 namespace Atlas
 {
     /**
      * @ingroup tasking
      * @brief Allocates unique task handles for a single task graph.
+     *
+     * @par Class diagram
+     * @plantumlfile task_id_generator.puml
      */
     class TaskIdGenerator
     {
       public:
         /**
          * @brief Constructs a task-handle generator for a graph.
-         * @param graphID The graph ID assigned to every generated handle.
-         * @param nextTaskID The first task ID to allocate.
+         * @param graphIdentifier The graph ID assigned to every generated handle.
+         * @param initialTaskID The first task ID to allocate.
          */
-        explicit TaskIdGenerator(std::uint32_t graphID, std::uint32_t nextTaskID = 1U) noexcept
-            : graphID{ graphID }, nextTaskID{ nextTaskID }
+        explicit TaskIdGenerator(std::uint32_t graphIdentifier, std::uint32_t initialTaskID = 1U) noexcept
+            : graphID{ graphIdentifier }, nextTaskID{ initialTaskID }
         {
         }
 

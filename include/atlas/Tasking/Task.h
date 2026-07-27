@@ -14,9 +14,6 @@
 /**
  * @file Task.h
  * @brief Declares the graph-owned representation of a task.
- *
- * @par Class diagram
- * @plantumlfile task.puml
  */
 
 namespace Atlas
@@ -30,6 +27,10 @@ namespace Atlas
     /**
      * @ingroup tasking
      * @brief Stores a task's identity, work, metadata, and graph edges.
+     *
+     * @par
+     * Class diagram
+     * @plantumlfile task.puml
      */
     class Task
     {
@@ -41,7 +42,7 @@ namespace Atlas
          * @param taskOptions The metadata associated with this task.
          */
         explicit Task(TaskHandle taskHandle, TaskFunction taskFunction, TaskOptions taskOptions) noexcept
-            : handle{ std::move(taskHandle) }, function{ std::move(taskFunction) }, options{ std::move(taskOptions) }
+            : handle{ taskHandle }, function{ std::move(taskFunction) }, options{ std::move(taskOptions) }
         {
         }
 

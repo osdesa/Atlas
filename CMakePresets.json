@@ -34,6 +34,9 @@
       "description": "Debug build using the locally available Visual Studio generator",
       "inherits": "base",
       "architecture": "x64",
+      "cacheVariables": {
+        "ATLAS_ENABLE_SANITIZERS": "OFF"
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -91,7 +94,8 @@
       "binaryDir": "${sourceDir}/build/ci-windows",
       "architecture": "x64",
       "cacheVariables": {
-        "ATLAS_WARNINGS_AS_ERRORS": "ON"
+        "ATLAS_WARNINGS_AS_ERRORS": "ON",
+        "ATLAS_ENABLE_SANITIZERS": "OFF"
       },
       "condition": {
         "type": "equals",

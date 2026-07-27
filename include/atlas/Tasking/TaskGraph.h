@@ -13,9 +13,6 @@
 /**
  * @file TaskGraph.h
  * @brief Declares the task graph API.
- *
- * @par Class diagram
- * @plantumlfile task_graph.puml
  */
 /**
  * @defgroup tasking Tasking
@@ -33,15 +30,21 @@ namespace Atlas
      *
      * A task graph owns a collection of tasks, defines their dependencies, and
      * later provides the scheduler with an execution-ready work description.
+     *
+     * @par Class diagram
+     * @plantumlfile task_graph.puml
      */
     class TaskGraph
     {
       public:
         /**
          * @brief Constructs a new TaskGraph with a unique ID.
-         * @param graphID The unique ID of this graph.
+         * @param graphIdentifier The unique ID of this graph.
          */
-        explicit TaskGraph(std::uint32_t graphID) noexcept : graphID{ graphID }, taskIdGenerator{ graphID } {}
+        explicit TaskGraph(std::uint32_t graphIdentifier) noexcept
+            : graphID{ graphIdentifier }, taskIdGenerator{ graphIdentifier }
+        {
+        }
 
         /**
          * @brief Adds a new task to the graph with the given work and metadata.

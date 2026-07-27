@@ -92,6 +92,7 @@ function(atlas_add_documentation)
         ATLAS_UML_DIAGRAMS
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_handle.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/task_id_generator.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_options.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_graph.puml"
     )

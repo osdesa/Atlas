@@ -45,6 +45,26 @@ diagrams:
         - '  FontColor #0F172A'
         - '}'
 
+  task_id_generator:
+    type: class
+    glob:
+      - src/Tasking/*.cpp
+    include:
+      context:
+        - Atlas::TaskIdGenerator
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
   task_options:
     type: class
     glob:

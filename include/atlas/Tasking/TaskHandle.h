@@ -6,9 +6,6 @@
 /**
  * @file TaskHandle.h
  * @brief Declares the value type that identifies a task within a graph.
- *
- * @par Class diagram
- * @plantumlfile task_handle.puml
  */
 
 namespace Atlas
@@ -22,6 +19,10 @@ namespace Atlas
     /**
      * @ingroup tasking
      * @brief Identifies a task within a specific task graph.
+     *
+     * @par Class diagram
+
+     * * @plantumlfile task_handle.puml
      */
     class TaskHandle
     {
@@ -29,9 +30,13 @@ namespace Atlas
         /**
          * @brief Constructs a TaskHandle with the given task ID
          * @param id The unique ID of the task
-         * @param graphID The unique ID of the graph this task belongs to
+
+         * * @param graphIdentifier The unique ID of the graph this task belongs to
          */
-        explicit TaskHandle(std::uint32_t id, std::uint32_t graphID) noexcept : taskID{ id }, graphID{ graphID } {}
+        explicit TaskHandle(std::uint32_t id, std::uint32_t graphIdentifier) noexcept
+            : taskID{ id }, graphID{ graphIdentifier }
+        {
+        }
 
         /**
          * @brief Validates if the current TaskHandle is valid

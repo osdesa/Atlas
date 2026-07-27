@@ -6,9 +6,6 @@
 /**
  * @file TaskOptions.h
  * @brief Declares configuration metadata for a task.
- *
- * @par Class diagram
- * @plantumlfile task_options.puml
  */
 
 namespace Atlas
@@ -16,6 +13,9 @@ namespace Atlas
     /**
      * @ingroup tasking
      * @brief Contains configuration metadata for a task.
+     *
+     * @par Class diagram
+     * @plantumlfile task_options.puml
      */
     struct TaskOptions
     {

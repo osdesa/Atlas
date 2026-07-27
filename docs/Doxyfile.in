@@ -36,7 +36,7 @@ DOT_NODE_ATTR          = "shape=record, style=\"rounded,filled\", fillcolor=\"#e
 DOT_EDGE_ATTR          = "color=\"#64748b\", penwidth=1.5, arrowsize=0.8, fontname=\"Segoe UI\", fontsize=10, fontcolor=\"#cbd5e1\""
 UML_LOOK               = YES
 DOT_UML_DETAILS        = YES
-COLLABORATION_GRAPH    = YES
+COLLABORATION_GRAPH    = NO
 DIRECTORY_GRAPH        = NO
 INCLUDE_GRAPH          = NO
 INCLUDED_BY_GRAPH      = NO

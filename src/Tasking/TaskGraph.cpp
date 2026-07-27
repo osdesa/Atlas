@@ -130,27 +130,11 @@ namespace Atlas
 
     bool TaskGraph::validTaskLink(TaskHandle dependent, TaskHandle dependency) const noexcept
     {
-        bool validLink{ true };
+        const bool validHandles{ dependent.isValid() && dependency.isValid() };
+        const bool sameGraph{ dependent.getGraphID() == graphID && dependency.getGraphID() == graphID };
+        const bool differentTasks{ dependent != dependency };
 
-        // if either task is not valid
-        if (!dependent.isValid() || !dependency.isValid())
-        {
-            validLink = false;
-        }
-
-        // if either task does not belong to this graph
-        if (dependent.getGraphID() != graphID || dependency.getGraphID() != graphID)
-        {
-            validLink = false;
-        }
-
-        // if the dependent and dependency are the same task
-        else if (dependent == dependency)
-        {
-            validLink = false;
-        }
-
-        return validLink;
+        return validHandles && sameGraph && differentTasks;
     }
 
     std::optional<std::shared_ptr<Task>> TaskGraph::findTask(TaskHandle taskHandle) const noexcept
