@@ -1,69 +1,84 @@
-# Prerequisites
-*.d
+# CMake and CTest
+/build/
+/Build/
+/out/
+/build-*/
+/cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+cmake_install.cmake
+compile_commands.json
+install_manifest.txt
+Makefile
 
-# Compiled Object files
-*.slo
+# CMake user-local configuration
+CMakeUserPresets.json
+
+# Ninja
+.ninja_deps
+.ninja_log
+build.ninja
+rules.ninja
+
+# Visual Studio
+/.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.user
+
+# Compiler and linker outputs
+*.d
+*.a
+*.app
+*.dll
+*.dylib
+*.dwo
+*.exe
+*.gch
+*.ilk
+*.la
+*.lai
+*.lib
 *.lo
+*.mod
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
+*.out
 *.pdb
-
-# Compiled Dynamic libraries
+*.pch
+*.slo
 *.so
-*.dylib
-*.dll
 *.so.*
-
-
-# Fortran module files
-*.mod
 *.smod
 
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
+# IDE metadata
+/.idea/
+/.vscode/
+*.code-workspace
 
-# Executables
-*.exe
-*.out
-*.app
+# Local package-manager output
+/vcpkg_installed/
 
-# Build directories
-build/
-Build/
-build-*/
-
-# CMake generated files
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
-install_manifest.txt
-compile_commands.json
+# Analysis and coverage output
+/.cache/
+/coverage/
+*.gcda
+*.gcno
+*.profdata
+*.profraw
 
 # Temporary files
-*.tmp
-*.log
 *.bak
+*.log
 *.swp
+*.tmp
 
-# vcpkg
-vcpkg_installed/
-
-# debug information files
-*.dwo
-
-# test output & cache
-Testing/
-.cache/
+# Operating-system metadata
+.DS_Store
+Thumbs.db

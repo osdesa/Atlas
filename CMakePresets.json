@@ -1,0 +1,176 @@
+{
+  "version": 5,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "ATLAS_BUILD_TESTS": "ON",
+        "ATLAS_WARNINGS_AS_ERRORS": "OFF",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Development (Ninja)",
+      "description": "Cross-platform debug build using Ninja",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "dev-windows",
+      "displayName": "Windows development (Visual Studio)",
+      "description": "Debug build using the locally available Visual Studio generator",
+      "inherits": "base",
+      "architecture": "x64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "dev-linux",
+      "displayName": "Linux development (Ninja)",
+      "description": "Debug build using Ninja and the default Linux compiler",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "ci-windows",
+      "displayName": "Windows CI (MSVC)",
+      "description": "Release build with Atlas warnings promoted to errors",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/ci-windows",
+      "architecture": "x64",
+      "cacheVariables": {
+        "ATLAS_WARNINGS_AS_ERRORS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "ci-linux",
+      "displayName": "Linux CI (GCC)",
+      "description": "Release build with Atlas warnings promoted to errors",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/ci-linux",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "ATLAS_WARNINGS_AS_ERRORS": "ON",
+        "CMAKE_BUILD_TYPE": "Release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "configuration": "Debug"
+    },
+    {
+      "name": "dev-windows",
+      "configurePreset": "dev-windows",
+      "configuration": "Debug"
+    },
+    {
+      "name": "dev-linux",
+      "configurePreset": "dev-linux",
+      "configuration": "Debug"
+    },
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows",
+      "configuration": "Release"
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "dev-windows",
+      "configurePreset": "dev-windows",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "dev-linux",
+      "configurePreset": "dev-linux",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "ci-windows",
+      "configurePreset": "ci-windows",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "ci-linux",
+      "configurePreset": "ci-linux",
+      "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    }
+  ]
+}

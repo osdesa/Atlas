@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if command -v clang-format >/dev/null 2>&1; then
+    clang_format="$(command -v clang-format)"
+else
+    vswhere="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+    if [[ -x "$vswhere" ]]; then
+        clang_format="$("$vswhere" -latest -products '*' -find 'VC\\Tools\\Llvm\\x64\\bin\\clang-format.exe' | tr -d '\r')"
+    fi
+fi
+
+if [[ -z "${clang_format:-}" || ! -x "$clang_format" ]]; then
+    echo "pre-commit: clang-format was not found. Set CLANG_FORMAT to its executable path." >&2
+    exit 1
+fi
+
+while IFS= read -r -d '' file; do
+    if ! git diff --quiet -- "$file"; then
+        echo "pre-commit: $file has unstaged changes; format and stage it before committing." >&2
+        exit 1
+    fi
+
+    "$clang_format" -i "$file"
+    git add -- "$file"
+done < <(
+    git diff --cached --name-only -z --diff-filter=ACMR -- \
+        '*.c' '*.cc' '*.cpp' '*.cxx' '*.h' '*.hh' '*.hpp' '*.hxx'
+)
