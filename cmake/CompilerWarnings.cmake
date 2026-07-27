@@ -10,6 +10,10 @@ function(atlas_set_project_warnings target)
                 /wd4514
                 # Natural class alignment can introduce tail padding without indicating a defect.
                 /wd4820
+                # Release-mode optimizer remarks report inlining decisions rather than actionable
+                # source issues, and vary between MSVC toolset versions.
+                /wd4710
+                /wd4711
                 # MSVC reports its own incomplete braced-initializer evaluation-order support,
                 # including through Catch2 macro expansions.
                 /wd4868
