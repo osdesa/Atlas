@@ -4,7 +4,7 @@
 
 TEST_CASE("Atlas reports its version", "[smoke]")
 {
-    const bool version_matches = atlas::version() == std::string_view{"0.1.0"};
+    const bool version_matches{atlas::version() == std::string_view{"0.1.0"}};
 
     REQUIRE(version_matches);
 }

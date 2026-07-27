@@ -98,9 +98,3 @@ third-party dependencies do not inherit those settings.
 GitHub Actions configures, builds, and runs CTest on Ubuntu with GCC and Windows
 with MSVC. CI enables warnings as errors and installs only the Vulkan development
 environment needed to compile and link; it does not require a physical GPU.
-
-## Next stage
-
-The next development stage can introduce the first concrete Atlas module and its
-focused tests. Its design and directories are intentionally deferred until that
-work begins.
