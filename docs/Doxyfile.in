@@ -1,0 +1,47 @@
+PROJECT_NAME           = "@ATLAS_DOXYGEN_PROJECT_NAME@"
+PROJECT_NUMBER         = "@ATLAS_DOXYGEN_PROJECT_VERSION@"
+OUTPUT_DIRECTORY       = "@ATLAS_DOXYGEN_OUTPUT_DIRECTORY@"
+CREATE_SUBDIRS         = NO
+
+INPUT                  = "@ATLAS_DOXYGEN_INCLUDE_DIRECTORY@" "@ATLAS_DOXYGEN_SOURCE_DIRECTORY@" "@ATLAS_DOXYGEN_INDEX_PAGE@"
+FILE_PATTERNS          = *.h *.hpp *.cpp *.md
+RECURSIVE              = YES
+FULL_PATH_NAMES        = NO
+SHOW_INCLUDE_FILES     = NO
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+WARN_IF_UNDOCUMENTED   = YES
+WARN_AS_ERROR          = NO
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+HTML_EXTRA_STYLESHEET  = "@ATLAS_DOXYGEN_AWESOME_DIRECTORY@/doxygen-awesome.css" \
+                         "@ATLAS_DOXYGEN_AWESOME_DIRECTORY@/doxygen-awesome-sidebar-only.css" \
+                         "@ATLAS_DOXYGEN_AWESOME_DIRECTORY@/doxygen-awesome-sidebar-only-darkmode-toggle.css"
+HTML_EXTRA_FILES       = "@ATLAS_DOXYGEN_AWESOME_DIRECTORY@/doxygen-awesome-fragment-copy-button.js" \
+                         "@ATLAS_DOXYGEN_AWESOME_DIRECTORY@/doxygen-awesome-paragraph-link.js" \
+                         "@ATLAS_DOXYGEN_AWESOME_DIRECTORY@/doxygen-awesome-interactive-toc.js"
+PLANTUML_JAR_PATH      = "@ATLAS_PLANTUML_JAR@"
+PLANTUMLFILE_DIRS      = "@ATLAS_DOXYGEN_PLANTUML_DIRECTORY@"
+PLANTUML_INCLUDE_PATH  = "@ATLAS_DOXYGEN_PLANTUML_DIRECTORY@"
+
+HAVE_DOT               = @ATLAS_DOXYGEN_HAVE_DOT@
+DOT_PATH               = "@ATLAS_DOXYGEN_DOT_DIRECTORY@"
+DOT_IMAGE_FORMAT       = svg
+DOT_COMMON_ATTR        = "fontname=\"Segoe UI\", fontsize=11, bgcolor=\"transparent\", pad=\"0.25\", nodesep=\"0.60\", ranksep=\"0.75\""
+DOT_NODE_ATTR          = "shape=record, style=\"rounded,filled\", fillcolor=\"#e0f2fe\", color=\"#0284c7\", penwidth=1.6, fontcolor=\"#0f172a\", fontname=\"Segoe UI\", fontsize=11, margin=\"0.15,0.10\""
+DOT_EDGE_ATTR          = "color=\"#64748b\", penwidth=1.5, arrowsize=0.8, fontname=\"Segoe UI\", fontsize=10, fontcolor=\"#cbd5e1\""
+UML_LOOK               = YES
+DOT_UML_DETAILS        = YES
+COLLABORATION_GRAPH    = NO
+DIRECTORY_GRAPH        = NO
+INCLUDE_GRAPH          = NO
+INCLUDED_BY_GRAPH      = NO
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+INTERACTIVE_SVG        = NO
+
+QUIET                  = YES

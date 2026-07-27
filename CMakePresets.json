@@ -12,9 +12,9 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "ATLAS_BUILD_TESTS": "ON",
-        "ATLAS_WARNINGS_AS_ERRORS": "OFF",
-        "ATLAS_ENABLE_SANITIZERS": "OFF",
-        "ATLAS_ENABLE_CLANG_TIDY": "OFF",
+        "ATLAS_WARNINGS_AS_ERRORS": "ON",
+        "ATLAS_ENABLE_SANITIZERS": "ON",
+        "ATLAS_ENABLE_CLANG_TIDY": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
@@ -34,6 +34,9 @@
       "description": "Debug build using the locally available Visual Studio generator",
       "inherits": "base",
       "architecture": "x64",
+      "cacheVariables": {
+        "ATLAS_ENABLE_SANITIZERS": "OFF"
+      },
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -56,6 +59,34 @@
       }
     },
     {
+      "name": "docs-windows",
+      "displayName": "Windows documentation",
+      "description": "Generate Atlas API documentation and UML diagrams on Windows",
+      "inherits": "dev-windows",
+      "cacheVariables": {
+        "ATLAS_BUILD_DOCUMENTATION": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "docs-linux",
+      "displayName": "Linux documentation",
+      "description": "Generate Atlas API documentation and UML diagrams on Linux",
+      "inherits": "dev-linux",
+      "cacheVariables": {
+        "ATLAS_BUILD_DOCUMENTATION": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
       "name": "ci-windows",
       "displayName": "Windows CI (MSVC)",
       "description": "Release build with Atlas warnings promoted to errors",
@@ -63,7 +94,8 @@
       "binaryDir": "${sourceDir}/build/ci-windows",
       "architecture": "x64",
       "cacheVariables": {
-        "ATLAS_WARNINGS_AS_ERRORS": "ON"
+        "ATLAS_WARNINGS_AS_ERRORS": "ON",
+        "ATLAS_ENABLE_SANITIZERS": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -104,6 +136,22 @@
       "name": "dev-linux",
       "configurePreset": "dev-linux",
       "configuration": "Debug"
+    },
+    {
+      "name": "docs-windows",
+      "configurePreset": "docs-windows",
+      "configuration": "Debug",
+      "targets": [
+        "docs"
+      ]
+    },
+    {
+      "name": "docs-linux",
+      "configurePreset": "docs-linux",
+      "configuration": "Debug",
+      "targets": [
+        "docs"
+      ]
     },
     {
       "name": "ci-windows",

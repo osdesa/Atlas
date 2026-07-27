@@ -8,6 +8,7 @@ project(
 )
 
 option(ATLAS_BUILD_TESTS "Build Atlas tests" ON)
+option(ATLAS_BUILD_DOCUMENTATION "Build Atlas API documentation with Doxygen" OFF)
 option(ATLAS_WARNINGS_AS_ERRORS "Treat compiler warnings in Atlas targets as errors" OFF)
 option(ATLAS_ENABLE_SANITIZERS "Enable supported sanitizers for Atlas targets" OFF)
 option(ATLAS_ENABLE_CLANG_TIDY "Enable Clang-Tidy for Atlas targets when available" OFF)
@@ -15,10 +16,27 @@ option(ATLAS_ENABLE_CLANG_TIDY "Enable Clang-Tidy for Atlas targets when availab
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(CompilerWarnings)
+include(Documentation)
 include(Sanitizers)
 include(StaticAnalysis)
 
 find_package(Vulkan REQUIRED)
+
+file(
+    GLOB_RECURSE ATLAS_SOURCES
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
+
+file(
+    GLOB_RECURSE ATLAS_PUBLIC_HEADERS
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/atlas/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/atlas/*.hpp"
+)
+
+list(SORT ATLAS_SOURCES)
+list(SORT ATLAS_PUBLIC_HEADERS)
 
 add_library(atlas STATIC)
 add_library(Atlas::Atlas ALIAS atlas)
@@ -26,12 +44,12 @@ add_library(Atlas::Atlas ALIAS atlas)
 target_sources(
     atlas
     PRIVATE
-        src/atlas.cpp
+        ${ATLAS_SOURCES}
     PUBLIC
         FILE_SET public_headers
         TYPE HEADERS
-        BASE_DIRS include
-        FILES include/atlas/atlas.hpp
+        BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        FILES ${ATLAS_PUBLIC_HEADERS}
 )
 
 target_include_directories(
@@ -54,6 +72,8 @@ target_link_libraries(atlas PRIVATE Vulkan::Vulkan)
 atlas_set_project_warnings(atlas)
 atlas_enable_sanitizers(atlas)
 atlas_enable_clang_tidy(atlas)
+
+atlas_add_documentation()
 
 add_subdirectory(apps/atlas_cli)
 
