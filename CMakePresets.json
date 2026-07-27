@@ -12,9 +12,9 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "ATLAS_BUILD_TESTS": "ON",
-        "ATLAS_WARNINGS_AS_ERRORS": "OFF",
-        "ATLAS_ENABLE_SANITIZERS": "OFF",
-        "ATLAS_ENABLE_CLANG_TIDY": "OFF",
+        "ATLAS_WARNINGS_AS_ERRORS": "ON",
+        "ATLAS_ENABLE_SANITIZERS": "ON",
+        "ATLAS_ENABLE_CLANG_TIDY": "ON",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
@@ -48,6 +48,34 @@
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "docs-windows",
+      "displayName": "Windows documentation",
+      "description": "Generate Atlas API documentation and UML diagrams on Windows",
+      "inherits": "dev-windows",
+      "cacheVariables": {
+        "ATLAS_BUILD_DOCUMENTATION": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "docs-linux",
+      "displayName": "Linux documentation",
+      "description": "Generate Atlas API documentation and UML diagrams on Linux",
+      "inherits": "dev-linux",
+      "cacheVariables": {
+        "ATLAS_BUILD_DOCUMENTATION": "ON"
       },
       "condition": {
         "type": "equals",
@@ -104,6 +132,22 @@
       "name": "dev-linux",
       "configurePreset": "dev-linux",
       "configuration": "Debug"
+    },
+    {
+      "name": "docs-windows",
+      "configurePreset": "docs-windows",
+      "configuration": "Debug",
+      "targets": [
+        "docs"
+      ]
+    },
+    {
+      "name": "docs-linux",
+      "configurePreset": "docs-linux",
+      "configuration": "Debug",
+      "targets": [
+        "docs"
+      ]
     },
     {
       "name": "ci-windows",

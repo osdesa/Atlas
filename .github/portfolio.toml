@@ -7,8 +7,9 @@ status = "Active"
 technologies = [
   "C++",
   "Vulkan",
-  "Catc2",
-  "CMake"
+  "Catch2",
+  "CMake",
+  "Doxygen",
 ]
 
 highlights = [

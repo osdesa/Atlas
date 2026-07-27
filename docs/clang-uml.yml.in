@@ -1,0 +1,86 @@
+compilation_database_dir: "@ATLAS_UML_ANALYSIS_BUILD_DIRECTORY@"
+output_directory: "@ATLAS_UML_OUTPUT_DIRECTORY@"
+
+generate_method_arguments: full
+using_namespace: Atlas
+
+diagrams:
+  task:
+    type: class
+    glob:
+      - src/Tasking/*.cpp
+    include:
+      context:
+        - Atlas::Task
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  task_handle:
+    type: class
+    glob:
+      - src/Tasking/*.cpp
+    include:
+      context:
+        - Atlas::TaskHandle
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  task_options:
+    type: class
+    glob:
+      - src/Tasking/*.cpp
+    include:
+      context:
+        - Atlas::TaskOptions
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  task_graph:
+    type: class
+    glob:
+      - src/Tasking/*.cpp
+    include:
+      context:
+        - Atlas::TaskGraph
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'

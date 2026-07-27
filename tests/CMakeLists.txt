@@ -1,22 +1,33 @@
-add_executable(atlas_tests)
+function(atlas_add_test_suite target_name suite_label)
+    cmake_parse_arguments(PARSE_ARGV 2 suite "" "" "SOURCES")
 
-target_sources(atlas_tests PRIVATE smoke_tests.cpp)
-target_compile_features(atlas_tests PRIVATE cxx_std_20)
-set_target_properties(
-    atlas_tests
-    PROPERTIES
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CXX_EXTENSIONS OFF
-)
+    if(NOT suite_SOURCES)
+        return()
+    endif()
 
-target_link_libraries(atlas_tests PRIVATE Atlas::Atlas Catch2::Catch2WithMain)
-target_include_directories(atlas_tests SYSTEM PRIVATE "${catch2_SOURCE_DIR}/src")
-target_compile_definitions(atlas_tests PRIVATE CATCH_CONFIG_NO_COUNTER)
+    add_executable(${target_name})
+    target_sources(${target_name} PRIVATE ${suite_SOURCES})
+    target_compile_features(${target_name} PRIVATE cxx_std_20)
+    set_target_properties(
+        ${target_name}
+        PROPERTIES
+            CXX_STANDARD 20
+            CXX_STANDARD_REQUIRED ON
+            CXX_EXTENSIONS OFF
+    )
 
-atlas_set_project_warnings(atlas_tests)
-atlas_enable_sanitizers(atlas_tests)
-atlas_enable_clang_tidy(atlas_tests)
+    target_link_libraries(${target_name} PRIVATE Atlas::Atlas Catch2::Catch2WithMain)
+    target_include_directories(${target_name} SYSTEM PRIVATE "${catch2_SOURCE_DIR}/src")
+    target_compile_definitions(${target_name} PRIVATE CATCH_CONFIG_NO_COUNTER)
+
+    atlas_set_project_warnings(${target_name})
+    atlas_enable_sanitizers(${target_name})
+    atlas_enable_clang_tidy(${target_name})
+
+    catch_discover_tests(${target_name} PROPERTIES LABELS "${suite_label}")
+endfunction()
 
 include(Catch)
-catch_discover_tests(atlas_tests)
+
+add_subdirectory(unit)
+add_subdirectory(feature)
