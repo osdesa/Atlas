@@ -1,0 +1,20 @@
+title = "Atlas"
+
+summary = "Atlas is a modern C++ user-space scheduler for heterogeneous CPU/GPU work using Vulkan."
+
+status = "Active"
+
+technologies = [
+  "C++",
+  "Vulkan",
+  "Catc2",
+  "CMake"
+]
+
+highlights = [
+  "Cross platform build support allowing testing on Windows and Unix.",
+]
+
+show_repository = true
+include_archived = false
+include_fork = false
