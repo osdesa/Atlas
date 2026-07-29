@@ -36,12 +36,12 @@ TEST_CASE("TaskGraph exposes read-only task queries", "[UNIT]")
 
     REQUIRE(graph.getTaskCount() == 0U);
     REQUIRE(graph.getTaskHandles().empty());
-    REQUIRE_FALSE(graph.getTask(missing).has_value());
+    REQUIRE_FALSE(graph.findTask(missing).has_value());
 
     const Atlas::TaskHandle first{ addTask(graph, "First") };
     const Atlas::TaskHandle second{ addTask(graph, "Second") };
     const std::vector<Atlas::TaskHandle> taskHandles{ graph.getTaskHandles() };
-    const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.getTask(first) };
+    const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.findTask(first) };
 
     REQUIRE(graph.getTaskCount() == 2U);
     REQUIRE(graph.getGraphID() == 7U);

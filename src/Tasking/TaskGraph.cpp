@@ -32,17 +32,6 @@ namespace Atlas
         return taskHandles;
     }
 
-    std::optional<std::shared_ptr<const Task>> TaskGraph::getTask(TaskHandle taskHandle) const noexcept
-    {
-        const std::optional<std::shared_ptr<Task>> task{ findTask(taskHandle) };
-        if (!task.has_value())
-        {
-            return std::nullopt;
-        }
-
-        return task.value();
-    }
-
     bool TaskGraph::addDependency(TaskHandle dependent, TaskHandle dependency)
     {
         if (!validTaskLink(dependent, dependency))

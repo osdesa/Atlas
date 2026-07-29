@@ -62,12 +62,12 @@ namespace Atlas
         std::vector<TaskHandle> getTaskHandles() const;
 
         /**
-         * @brief Retrieves a task owned by this graph.
-         * @param taskHandle The identity of the task to retrieve.
-         * @return A read-only shared pointer to the task, or an empty optional when it is not in
+         * @brief Finds a task owned by this graph.
+         * @param taskHandle The identity of the task to find.
+         * @return A shared pointer to the matching task, or an empty optional when it is not in
          * this graph.
          */
-        std::optional<std::shared_ptr<const Task>> getTask(TaskHandle taskHandle) const noexcept;
+        std::optional<std::shared_ptr<Task>> findTask(TaskHandle taskHandle) const noexcept;
 
         /**
          * @brief Adds a dependency between two tasks in the graph.
@@ -146,14 +146,6 @@ namespace Atlas
          * @return True when a cycle would be created; false otherwise.
          */
         bool checkForCycles(TaskHandle dependent, TaskHandle dependency) const;
-
-        /**
-         * @brief Finds a task owned by this graph.
-         * @param taskHandle The identity of the task to find.
-         * @return A shared pointer to the matching task, or an empty optional when it is not in
-         * this graph.
-         */
-        std::optional<std::shared_ptr<Task>> findTask(TaskHandle taskHandle) const noexcept;
 
         /// @brief The collection of tasks owned by this graph
         std::vector<std::shared_ptr<Task>> tasks;
