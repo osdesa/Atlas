@@ -19,7 +19,9 @@ namespace Atlas
 
     SchedulerResult BaseScheduler::executeFunction(const Atlas::TaskFunction& taskFunction)
     {
-        SchedulerResult result{ .status = SchedulerStatus::Success };
+        SchedulerResult result{
+            .status = SchedulerStatus::Success, .executedTaskCount = 0, .exception = nullptr, .executionTime = {}
+        };
         try
         {
             if (taskFunction)
