@@ -13,7 +13,8 @@ technologies = [
 ]
 
 highlights = [
-  "Cross platform build support allowing testing on Windows and Unix.",
+  "Fully check task graph allowing custom tasks and dependencies to be created.",
+  "Kahn schedular to provide simple baseline results",
 ]
 
 show_repository = true

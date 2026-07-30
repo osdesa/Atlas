@@ -42,7 +42,7 @@ namespace Atlas
          * @param graphIdentifier The unique ID of this graph.
          */
         explicit TaskGraph(std::uint32_t graphIdentifier) noexcept
-            : graphID{ graphIdentifier }, taskIdGenerator{ graphIdentifier }
+            : graphID{ graphIdentifier }, taskIdGenerator{ graphIdentifier }, isFinalised{ false }
         {
         }
 
@@ -62,12 +62,11 @@ namespace Atlas
         std::vector<TaskHandle> getTaskHandles() const;
 
         /**
-         * @brief Retrieves a task owned by this graph.
-         * @param taskHandle The identity of the task to retrieve.
-         * @return A read-only shared pointer to the task, or an empty optional when it is not in
-         * this graph.
+         * @brief Finds a task owned by this graph.
+         * @param taskHandle The identity of the task to find.
+         * @return The matching read-only task, or an empty optional when it is not in this graph.
          */
-        std::optional<std::shared_ptr<const Task>> getTask(TaskHandle taskHandle) const noexcept;
+        std::optional<std::shared_ptr<const Task>> findTask(TaskHandle taskHandle) const noexcept;
 
         /**
          * @brief Adds a dependency between two tasks in the graph.
@@ -78,6 +77,24 @@ namespace Atlas
          * self, missing, duplicate, or cyclic dependencies.
          */
         bool addDependency(TaskHandle dependent, TaskHandle dependency);
+
+        /**
+         * @brief Finalises a graph that contains no cycles and has at least one root task.
+         * @return True when
+         * the graph is finalised, including when it was already finalised;
+         * false when its current structure cannot be
+         * finalised.
+         */
+        bool finishTaskGraph();
+
+        /**
+         * @brief Returns the isFinalised state of the graph.
+         * @return True when the graph is finalised; false otherwise.
+         */
+        bool isFinalisedGraph() const noexcept
+        {
+            return isFinalised;
+        }
 
         /**
          * @brief Retrieves the number of tasks in the graph.
@@ -114,8 +131,16 @@ namespace Atlas
 
       private:
         /**
-         * @brief Validates if the dependent and dependency tasks are valid and belong to this
-         * graph.
+         * @brief Finds a mutable task owned by this graph for internal graph construction.
+         *
+         * @param taskHandle The identity of the task to find.
+         * @return The matching mutable task, or an empty
+         * optional when it is not in this graph.
+         */
+        std::optional<std::shared_ptr<Task>> findMutableTask(TaskHandle taskHandle) noexcept;
+
+        /**
+         * @brief Validates if the dependent and dependency tasks are valid and belong to this graph.
          * @param dependent The task that depends on the other task.
          * @param dependency The task that must be completed before the dependent task can execute.
          * @return True when both handles are valid, belong to this graph, and identify different
@@ -136,8 +161,8 @@ namespace Atlas
          * @return True when both tasks record the new edge; false when either record already
          * exists.
          */
-        bool addTaskLink(const std::shared_ptr<Task>& dependentTask, TaskHandle dependent,
-                         const std::shared_ptr<Task>& dependencyTask, TaskHandle dependency);
+        bool addTaskLink(const std::shared_ptr<Task>& dependentTask, TaskHandle dependent, const std::shared_ptr<Task>& dependencyTask,
+                         TaskHandle dependency);
 
         /**
          * @brief Checks if adding a dependency edge would create a cycle in the graph.
@@ -147,22 +172,17 @@ namespace Atlas
          */
         bool checkForCycles(TaskHandle dependent, TaskHandle dependency) const;
 
-        /**
-         * @brief Finds a task owned by this graph.
-         * @param taskHandle The identity of the task to find.
-         * @return A shared pointer to the matching task, or an empty optional when it is not in
-         * this graph.
-         */
-        std::optional<std::shared_ptr<Task>> findTask(TaskHandle taskHandle) const noexcept;
-
-        /// @brief The collection of tasks owned by this graph
+        /// @brief The collection of tasks owned by this graph.
         std::vector<std::shared_ptr<Task>> tasks;
 
-        /// @brief The unique ID of this graph
+        /// @brief The unique ID of this graph.
         std::uint32_t graphID;
 
         /// @brief Allocates task handles for this graph.
         TaskIdGenerator taskIdGenerator;
+
+        /// @brief Indicates the graph has been finalised and no more tasks can be added.
+        bool isFinalised;
     };
 } // namespace Atlas
 

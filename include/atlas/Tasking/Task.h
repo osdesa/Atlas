@@ -28,8 +28,7 @@ namespace Atlas
      * @ingroup tasking
      * @brief Stores a task's identity, work, metadata, and graph edges.
      *
-     * @par
-     * Class diagram
+     * @par Class diagram
      * @plantumlfile task.puml
      */
     class Task
@@ -47,8 +46,9 @@ namespace Atlas
         }
 
         /**
-         * @brief Validates if the current Task is valid
-         * @return True if the Task is non 0, false otherwise
+         * @brief Reports whether this task has a valid handle.
+         * @return True when the task handle is valid;
+         * false otherwise.
          */
         bool isValid() const noexcept
         {
@@ -56,8 +56,8 @@ namespace Atlas
         }
 
         /**
-         * @brief Retrieves the unique handle of each task
-         * @return The unique handle of the task
+         * @brief Retrieves the unique handle of this task.
+         * @return The task handle.
          */
         TaskHandle getHandle() const noexcept
         {
@@ -66,17 +66,17 @@ namespace Atlas
 
         /**
          * @brief Retrieves the callable work associated with this task.
-         * @return The task's
-         * callable work.
-         */
+         * @return The task's callable work.
+ */
         const TaskFunction& getFunction() const noexcept
         {
             return function;
         }
 
         /**
-         * @brief Retrieves the dependencies of the task
-         * @return A span of the task's dependencies
+         * @brief Retrieves the dependencies of the task.
+         * @return A read-only view of the task's dependencies.
+
          */
         std::span<const TaskHandle> getDependencies() const noexcept
         {
@@ -85,7 +85,7 @@ namespace Atlas
 
         /**
          * @brief Retrieves the tasks that depend on this task.
-         * @return A span of dependent task
+         * @return A read-only view of dependent task
          * handles.
          */
         std::span<const TaskHandle> getDependents() const noexcept
@@ -111,16 +111,15 @@ namespace Atlas
 
         /**
          * @brief Removes an existing dependency from this task.
-         * @param dependency The dependency
-         * to remove.
-         */
+         * @param dependency The dependency to remove.
+ */
         void removeDependency(TaskHandle dependency) noexcept;
 
         /**
-         * @brief Compares two Tasks for equality based on their handles
-         * @param other The other Task to compare with
-         * @return True if both Tasks have the
-         * same handle, false otherwise
+         * @brief Compares two tasks for equality based on their handles.
+         * @param other The other task to compare
+         * with.
+         * @return True when both tasks have the same handle; false otherwise.
          */
         bool operator==(const Task& other) const noexcept
         {
@@ -128,19 +127,19 @@ namespace Atlas
         }
 
       private:
-        /// @brief The identity information of the task
+        /// @brief The identity information of the task.
         TaskHandle handle;
 
-        /// @brief The function to be executed by the task
+        /// @brief The function to be executed by the task.
         TaskFunction function;
 
-        /// @brief The options for the task
+        /// @brief The options for the task.
         TaskOptions options;
 
-        /// @brief The tasks which need to be done before this task can be executed
+        /// @brief The tasks which need to be done before this task can be executed.
         std::vector<TaskHandle> dependencies;
 
-        /// @brief The tasks which depend on this task to be executed
+        /// @brief The tasks which depend on this task to be executed.
         std::vector<TaskHandle> dependents;
     };
 } // namespace Atlas

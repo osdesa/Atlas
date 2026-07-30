@@ -1,7 +1,9 @@
 #ifndef ATLAS_TASK_HANDLE
 #define ATLAS_TASK_HANDLE
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 
 /**
  * @file TaskHandle.h
@@ -21,22 +23,19 @@ namespace Atlas
      * @brief Identifies a task within a specific task graph.
      *
      * @par Class diagram
+     * @plantumlfile task_handle.puml
 
-     * * @plantumlfile task_handle.puml
      */
     class TaskHandle
     {
       public:
         /**
-         * @brief Constructs a TaskHandle with the given task ID
-         * @param id The unique ID of the task
-
-         * * @param graphIdentifier The unique ID of the graph this task belongs to
+         * @brief Constructs a task handle from its task and graph identifiers.
+         * @param id The unique ID of the
+         * task.
+         * @param graphIdentifier The unique ID of the graph this task belongs to.
          */
-        explicit TaskHandle(std::uint32_t id, std::uint32_t graphIdentifier) noexcept
-            : taskID{ id }, graphID{ graphIdentifier }
-        {
-        }
+        explicit TaskHandle(std::uint32_t id, std::uint32_t graphIdentifier) noexcept : taskID{ id }, graphID{ graphIdentifier } {}
 
         /**
          * @brief Validates if the current TaskHandle is valid
@@ -73,12 +72,29 @@ namespace Atlas
          */
         bool operator==(const TaskHandle& other) const noexcept = default;
 
+        /// @brief Hashes task handles for use in unordered associative containers.
+        struct Hash
+        {
+            /**
+             * @brief Produces a hash value from both components of a task handle.
+             * @param handle The
+             * task handle to hash.
+             * @return A hash value incorporating the graph and task identifiers.
+             */
+            std::size_t operator()(const TaskHandle& handle) const noexcept
+            {
+                const std::uint64_t key{ (static_cast<std::uint64_t>(handle.getGraphID()) << 32U) |
+                                         static_cast<std::uint64_t>(handle.getTaskID()) };
+
+                return std::hash<std::uint64_t>{}(key);
+            }
+        };
+
       private:
-        /// @brief The ID of the task
+        /// @brief The ID of the task.
         std::uint32_t taskID{ 0U };
 
-        /// @brief The ID graph this task belongs to. This is used to ensure that a TaskHandle from
-        /// one graph is not used in another graph.
+        /// @brief The ID of the graph this task belongs to.
         std::uint32_t graphID{ 0U };
     };
 } // namespace Atlas

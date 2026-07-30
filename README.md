@@ -73,13 +73,14 @@ also suitable on Linux.
 
 - `atlas` / `Atlas::Atlas`: compiled Atlas library and namespaced alias
 - `atlas_cli`: minimal executable linked to `Atlas::Atlas`
-- `atlas_tests`: Catch2 smoke-test executable discovered by CTest
+- `atlas_unit_tests`: Catch2 unit-test executable discovered by CTest
+- `atlas_feature_tests`: Catch2 feature-test executable discovered by CTest
 
 ## CMake options
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `ATLAS_BUILD_TESTS` | `ON` | Build and register the smoke tests |
+| `ATLAS_BUILD_TESTS` | `ON` | Build and register the unit and feature tests |
 | `ATLAS_WARNINGS_AS_ERRORS` | `OFF` | Promote warnings on Atlas-owned targets to errors |
 | `ATLAS_ENABLE_SANITIZERS` | `OFF` | Enable AddressSanitizer and UndefinedBehaviorSanitizer on compatible non-Windows GCC/Clang builds |
 | `ATLAS_ENABLE_CLANG_TIDY` | `OFF` | Run Clang-Tidy when it is available |
