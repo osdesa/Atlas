@@ -1,5 +1,10 @@
 #include "atlas/Tasking/Task.h"
 
+/**
+ * @file Task.cpp
+ * @brief Defines task dependency and dependent-edge mutation.
+ */
+
 namespace Atlas
 {
     bool Task::addDependent(TaskHandle dependent)

@@ -5,6 +5,11 @@
 #include <optional>
 #include <utility>
 
+/**
+ * @file TaskGraph.cpp
+ * @brief Defines task graph construction, validation, and lookup.
+ */
+
 namespace Atlas
 {
     std::optional<TaskHandle> TaskGraph::addTask(TaskFunction taskFunction, TaskOptions taskOptions)
@@ -49,8 +54,8 @@ namespace Atlas
             return false;
         }
 
-        const std::optional<std::shared_ptr<Task>> dependentTask{ findTask(dependent) };
-        const std::optional<std::shared_ptr<Task>> dependencyTask{ findTask(dependency) };
+        const std::optional<std::shared_ptr<Task>> dependentTask{ findMutableTask(dependent) };
+        const std::optional<std::shared_ptr<Task>> dependencyTask{ findMutableTask(dependency) };
 
         if (!dependentTask.has_value() || !dependencyTask.has_value())
         {
@@ -92,6 +97,11 @@ namespace Atlas
 
     bool TaskGraph::finishTaskGraph()
     {
+        if (isFinalised)
+        {
+            return true;
+        }
+
         // Ensure the graph has no cycles
         bool hasCycles{ false };
         for (const std::shared_ptr<Task>& task : tasks)
@@ -143,7 +153,7 @@ namespace Atlas
 
             visited.emplace_back(current);
 
-            const std::optional<std::shared_ptr<Task>> task{ findTask(current) };
+            const std::optional<std::shared_ptr<const Task>> task{ findTask(current) };
             if (!task.has_value())
             {
                 continue;
@@ -167,10 +177,10 @@ namespace Atlas
         return validHandles && sameGraph && differentTasks;
     }
 
-    std::optional<std::shared_ptr<Task>> TaskGraph::findTask(TaskHandle taskHandle) const noexcept
+    std::optional<std::shared_ptr<Task>> TaskGraph::findMutableTask(TaskHandle taskHandle) noexcept
     {
-        const auto taskIt{ std::find_if(tasks.begin(), tasks.end(), [taskHandle](const std::shared_ptr<Task>& task)
-                                        { return task->getHandle() == taskHandle; }) };
+        const auto taskIt{ std::find_if(tasks.begin(), tasks.end(),
+                                        [taskHandle](const std::shared_ptr<Task>& task) { return task->getHandle() == taskHandle; }) };
 
         if (taskIt == tasks.end())
         {
@@ -178,6 +188,19 @@ namespace Atlas
         }
 
         return *taskIt;
+    }
+
+    std::optional<std::shared_ptr<const Task>> TaskGraph::findTask(TaskHandle taskHandle) const noexcept
+    {
+        const auto taskIt{ std::find_if(tasks.begin(), tasks.end(),
+                                        [taskHandle](const std::shared_ptr<Task>& task) { return task->getHandle() == taskHandle; }) };
+
+        if (taskIt == tasks.end())
+        {
+            return std::nullopt;
+        }
+
+        return std::shared_ptr<const Task>{ *taskIt };
     }
 
 } // namespace Atlas

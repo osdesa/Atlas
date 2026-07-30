@@ -7,7 +7,7 @@ The repository is deliberately small during scaffolding:
 - `include/atlas/`: public Atlas headers
 - `src/`: compiled library implementation
 - `apps/atlas_cli/`: minimal link-validation executable
-- `tests/`: Catch2/CTest smoke test
+- `tests/`: Catch2/CTest unit and feature tests
 - `cmake/`: target-scoped warnings, sanitizers, and static-analysis helpers
 - `.github/workflows/`: Windows and Linux continuous integration
 
@@ -17,9 +17,9 @@ implementations begin.
 ## Targets
 
 - `atlas` is a compiled static library. `Atlas::Atlas` is its namespaced alias.
-- `atlas_cli` links to `Atlas::Atlas` and prints the scaffolding version.
-- `atlas_tests` links to `Atlas::Atlas` and Catch2. `catch_discover_tests`
-  registers its test cases with CTest.
+- `atlas_cli` links to `Atlas::Atlas` and executes an example frame task graph.
+- `atlas_unit_tests` and `atlas_feature_tests` link to `Atlas::Atlas` and Catch2.
+  `catch_discover_tests` registers their test cases with CTest.
 
 The Vulkan SDK is discovered at configure time with `find_package(Vulkan
 REQUIRED)`. `atlas` links to `Vulkan::Vulkan`, but no Vulkan API is called at
@@ -99,8 +99,8 @@ Keep build configuration target-based:
    relevant `target_*` command and the narrowest appropriate visibility.
 4. Apply `atlas_set_project_warnings`, `atlas_enable_sanitizers`, and
    `atlas_enable_clang_tidy` only to new Atlas-owned targets.
-5. Add focused tests to `atlas_tests`, or create a new test target only when its
-   separate lifecycle justifies it.
+5. Add focused tests to the appropriate unit or feature suite, or create a new
+   test target only when its separate lifecycle justifies it.
 
 Do not add global include directories or compiler flags. External dependencies
 must remain isolated from Atlas warning and analysis settings.

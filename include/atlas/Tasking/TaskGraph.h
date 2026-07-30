@@ -64,10 +64,9 @@ namespace Atlas
         /**
          * @brief Finds a task owned by this graph.
          * @param taskHandle The identity of the task to find.
-         * @return A shared pointer to the matching task, or an empty optional when it is not in
-         * this graph.
+         * @return The matching read-only task, or an empty optional when it is not in this graph.
          */
-        std::optional<std::shared_ptr<Task>> findTask(TaskHandle taskHandle) const noexcept;
+        std::optional<std::shared_ptr<const Task>> findTask(TaskHandle taskHandle) const noexcept;
 
         /**
          * @brief Adds a dependency between two tasks in the graph.
@@ -80,8 +79,11 @@ namespace Atlas
         bool addDependency(TaskHandle dependent, TaskHandle dependency);
 
         /**
-         * @brief Ensures a graph contains no cycles and a valid root task before it can be executed.
-         * @return True when the graph was finalised; false when it was already finalised.
+         * @brief Finalises a graph that contains no cycles and has at least one root task.
+         * @return True when
+         * the graph is finalised, including when it was already finalised;
+         * false when its current structure cannot be
+         * finalised.
          */
         bool finishTaskGraph();
 
@@ -129,8 +131,16 @@ namespace Atlas
 
       private:
         /**
-         * @brief Validates if the dependent and dependency tasks are valid and belong to this
-         * graph.
+         * @brief Finds a mutable task owned by this graph for internal graph construction.
+         *
+         * @param taskHandle The identity of the task to find.
+         * @return The matching mutable task, or an empty
+         * optional when it is not in this graph.
+         */
+        std::optional<std::shared_ptr<Task>> findMutableTask(TaskHandle taskHandle) noexcept;
+
+        /**
+         * @brief Validates if the dependent and dependency tasks are valid and belong to this graph.
          * @param dependent The task that depends on the other task.
          * @param dependency The task that must be completed before the dependent task can execute.
          * @return True when both handles are valid, belong to this graph, and identify different
@@ -151,8 +161,8 @@ namespace Atlas
          * @return True when both tasks record the new edge; false when either record already
          * exists.
          */
-        bool addTaskLink(const std::shared_ptr<Task>& dependentTask, TaskHandle dependent,
-                         const std::shared_ptr<Task>& dependencyTask, TaskHandle dependency);
+        bool addTaskLink(const std::shared_ptr<Task>& dependentTask, TaskHandle dependent, const std::shared_ptr<Task>& dependencyTask,
+                         TaskHandle dependency);
 
         /**
          * @brief Checks if adding a dependency edge would create a cycle in the graph.
@@ -162,16 +172,16 @@ namespace Atlas
          */
         bool checkForCycles(TaskHandle dependent, TaskHandle dependency) const;
 
-        /// @brief The collection of tasks owned by this graph
+        /// @brief The collection of tasks owned by this graph.
         std::vector<std::shared_ptr<Task>> tasks;
 
-        /// @brief The unique ID of this graph
+        /// @brief The unique ID of this graph.
         std::uint32_t graphID;
 
         /// @brief Allocates task handles for this graph.
         TaskIdGenerator taskIdGenerator;
 
-        /// @brief indicates the graph has been finalised and no more tasks can be added
+        /// @brief Indicates the graph has been finalised and no more tasks can be added.
         bool isFinalised;
     };
 } // namespace Atlas

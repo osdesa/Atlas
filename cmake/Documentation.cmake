@@ -95,6 +95,8 @@ function(atlas_add_documentation)
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_id_generator.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_options.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_graph.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/base_scheduler.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/kahn_scheduler.puml"
     )
 
     add_custom_command(

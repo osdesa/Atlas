@@ -1,7 +1,7 @@
 BasedOnStyle: LLVM
 IndentWidth: 4
 ContinuationIndentWidth: 4
-ColumnLimit: 120
+ColumnLimit: 135
 UseTab: Never
 BreakBeforeBraces: Allman
 AllowShortFunctionsOnASingleLine: Empty

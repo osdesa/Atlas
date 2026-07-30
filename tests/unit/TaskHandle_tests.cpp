@@ -1,7 +1,8 @@
 #include "atlas/Tasking/TaskHandle.h"
 
 #include <catch2/catch_test_macros.hpp>
-#include <string_view>
+#include <type_traits>
+#include <unordered_map>
 
 TEST_CASE("Default Construction is not allowed", "[UNIT]")
 {
@@ -22,4 +23,27 @@ TEST_CASE("TaskHandle is valid when constructed with a non-zero TaskID", "[UNIT]
 
     REQUIRE(taskHandle.isValid());
     REQUIRE(taskHandle.getTaskID() == 1U);
+}
+
+TEST_CASE("TaskHandle identity includes both task and graph IDs", "[UNIT]")
+{
+    const Atlas::TaskHandle handle{ 1U, 7U };
+
+    REQUIRE(handle == Atlas::TaskHandle{ 1U, 7U });
+    REQUIRE_FALSE(handle == Atlas::TaskHandle{ 2U, 7U });
+    REQUIRE_FALSE(handle == Atlas::TaskHandle{ 1U, 8U });
+}
+
+TEST_CASE("TaskHandle hash supports unordered associative containers", "[UNIT]")
+{
+    const Atlas::TaskHandle first{ 1U, 7U };
+    const Atlas::TaskHandle sameTaskInAnotherGraph{ 1U, 8U };
+    std::unordered_map<Atlas::TaskHandle, int, Atlas::TaskHandle::Hash> values;
+
+    values.emplace(first, 10);
+    values.emplace(sameTaskInAnotherGraph, 20);
+
+    STATIC_REQUIRE(noexcept(Atlas::TaskHandle::Hash{}(first)));
+    REQUIRE(values.at(first) == 10);
+    REQUIRE(values.at(sameTaskInAnotherGraph) == 20);
 }

@@ -19,7 +19,7 @@ namespace Atlas
      */
     struct TaskOptions
     {
-        /// @brief Name of the task
+        /// @brief Human-readable name of the task.
         std::string name;
     };
 } // namespace Atlas

@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     Atlas
-    VERSION 0.1.0
-    DESCRIPTION "Scaffolding for a heterogeneous CPU/GPU task scheduler"
+    VERSION 0.2.0
+    DESCRIPTION "A heterogeneous CPU/GPU task scheduler"
     LANGUAGES CXX
 )
 
