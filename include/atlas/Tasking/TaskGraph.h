@@ -42,7 +42,7 @@ namespace Atlas
          * @param graphIdentifier The unique ID of this graph.
          */
         explicit TaskGraph(std::uint32_t graphIdentifier) noexcept
-            : graphID{ graphIdentifier }, taskIdGenerator{ graphIdentifier }
+            : graphID{ graphIdentifier }, taskIdGenerator{ graphIdentifier }, isFinalised{ false }
         {
         }
 
@@ -78,6 +78,21 @@ namespace Atlas
          * self, missing, duplicate, or cyclic dependencies.
          */
         bool addDependency(TaskHandle dependent, TaskHandle dependency);
+
+        /**
+         * @brief Ensures a graph contains no cycles and a valid root task before it can be executed.
+         * @return True when the graph was finalised; false when it was already finalised.
+         */
+        bool finishTaskGraph();
+
+        /**
+         * @brief Returns the isFinalised state of the graph.
+         * @return True when the graph is finalised; false otherwise.
+         */
+        bool isFinalisedGraph() const noexcept
+        {
+            return isFinalised;
+        }
 
         /**
          * @brief Retrieves the number of tasks in the graph.
@@ -155,6 +170,9 @@ namespace Atlas
 
         /// @brief Allocates task handles for this graph.
         TaskIdGenerator taskIdGenerator;
+
+        /// @brief indicates the graph has been finalised and no more tasks can be added
+        bool isFinalised;
     };
 } // namespace Atlas
 

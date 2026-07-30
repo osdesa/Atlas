@@ -113,3 +113,77 @@ TEST_CASE("TaskGraph rejects invalid dependency edges", "[UNIT]")
     REQUIRE(graph.addDependency(second, first));
     REQUIRE_FALSE(graph.addDependency(second, first));
 }
+
+TEST_CASE("TaskGraph does not finish when it is empty", "[UNIT]")
+{
+    Atlas::TaskGraph graph{ 1U };
+
+    REQUIRE_FALSE(graph.isFinalisedGraph());
+    REQUIRE_FALSE(graph.finishTaskGraph());
+    REQUIRE_FALSE(graph.isFinalisedGraph());
+}
+
+TEST_CASE("TaskGraph finishes a valid directed acyclic graph", "[UNIT]")
+{
+    Atlas::TaskGraph graph{ 1U };
+
+    const Atlas::TaskHandle root{ addTask(graph, "Root") };
+    const Atlas::TaskHandle middle{ addTask(graph, "Middle") };
+    const Atlas::TaskHandle leaf{ addTask(graph, "Leaf") };
+
+    REQUIRE(graph.addDependency(middle, root));
+    REQUIRE(graph.addDependency(leaf, middle));
+    REQUIRE(graph.finishTaskGraph());
+    REQUIRE(graph.isFinalisedGraph());
+}
+
+TEST_CASE("TaskGraph does not finish when any component contains a cycle", "[UNIT]")
+{
+    Atlas::TaskGraph graph{ 1U };
+
+    addTask(graph, "Root");
+    const Atlas::TaskHandle first{ addTask(graph, "First") };
+    const Atlas::TaskHandle second{ addTask(graph, "Second") };
+    const std::optional<std::shared_ptr<Atlas::Task>> firstTask{ graph.findTask(first) };
+    const std::optional<std::shared_ptr<Atlas::Task>> secondTask{ graph.findTask(second) };
+
+    REQUIRE(firstTask.has_value());
+    REQUIRE(secondTask.has_value());
+    REQUIRE(firstTask.value()->addDependency(second));
+    REQUIRE(secondTask.value()->addDependency(first));
+    REQUIRE_FALSE(graph.finishTaskGraph());
+    REQUIRE_FALSE(graph.isFinalisedGraph());
+}
+
+TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")
+{
+    Atlas::TaskGraph graph{ 1U };
+
+    const Atlas::TaskHandle root{ addTask(graph, "Root") };
+    const Atlas::TaskHandle firstDependent{ addTask(graph, "First dependent") };
+    const Atlas::TaskHandle secondDependent{ addTask(graph, "Second dependent") };
+
+    REQUIRE(graph.addDependency(firstDependent, root));
+    REQUIRE(graph.finishTaskGraph());
+
+    REQUIRE_FALSE(graph.addTask(doNothing, { .name = "Late task" }).has_value());
+    REQUIRE_FALSE(graph.addDependency(secondDependent, root));
+    REQUIRE(graph.getTaskCount() == 3U);
+
+    const std::optional<std::shared_ptr<Atlas::Task>> secondTask{ graph.findTask(secondDependent) };
+    REQUIRE(secondTask.has_value());
+    REQUIRE(secondTask.value()->getDependencies().empty());
+    REQUIRE(graph.isFinalisedGraph());
+}
+
+TEST_CASE("TaskGraph remains editable after unsuccessful finalisation", "[UNIT]")
+{
+    Atlas::TaskGraph graph{ 1U };
+
+    REQUIRE_FALSE(graph.finishTaskGraph());
+
+    addTask(graph, "Root");
+
+    REQUIRE(graph.finishTaskGraph());
+    REQUIRE(graph.isFinalisedGraph());
+}

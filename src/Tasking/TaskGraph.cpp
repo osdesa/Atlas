@@ -9,6 +9,11 @@ namespace Atlas
 {
     std::optional<TaskHandle> TaskGraph::addTask(TaskFunction taskFunction, TaskOptions taskOptions)
     {
+        if (isFinalised)
+        {
+            return std::nullopt;
+        }
+
         const std::optional<TaskHandle> taskHandle{ taskIdGenerator.next() };
         if (!taskHandle.has_value())
         {
@@ -34,6 +39,11 @@ namespace Atlas
 
     bool TaskGraph::addDependency(TaskHandle dependent, TaskHandle dependency)
     {
+        if (isFinalised)
+        {
+            return false;
+        }
+
         if (!validTaskLink(dependent, dependency))
         {
             return false;
@@ -78,6 +88,37 @@ namespace Atlas
         }
 
         return true;
+    }
+
+    bool TaskGraph::finishTaskGraph()
+    {
+        // Ensure the graph has no cycles
+        bool hasCycles{ false };
+        for (const std::shared_ptr<Task>& task : tasks)
+        {
+            for (const TaskHandle dependency : task->getDependencies())
+            {
+                if (checkForCycles(task->getHandle(), dependency))
+                {
+                    hasCycles = true;
+                    break;
+                }
+            }
+        }
+
+        // Ensure at least one task has no dependencies
+        bool hasRootTask{ false };
+        for (const std::shared_ptr<Task>& task : tasks)
+        {
+            if (task->getDependencies().empty())
+            {
+                hasRootTask = true;
+                break;
+            }
+        }
+
+        isFinalised = (!hasCycles && hasRootTask);
+        return isFinalised;
     }
 
     bool TaskGraph::checkForCycles(TaskHandle dependent, TaskHandle dependency) const
