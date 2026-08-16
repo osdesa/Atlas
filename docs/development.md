@@ -2,11 +2,12 @@
 
 ## Repository layout
 
-The repository is deliberately small during scaffolding:
+The repository is deliberately small while the core task model and sequential
+task-graph executor are being developed:
 
 - `include/atlas/`: public Atlas headers
 - `src/`: compiled library implementation
-- `apps/atlas_cli/`: minimal link-validation executable
+- `apps/atlas_cli/`: example sequential task-graph executable
 - `tests/`: Catch2/CTest unit and feature tests
 - `cmake/`: target-scoped warnings, sanitizers, and static-analysis helpers
 - `.github/workflows/`: Windows and Linux continuous integration
@@ -27,7 +28,9 @@ this stage.
 
 ## Presets
 
-All checked-in configurations build below `build/<preset>`:
+All checked-in configurations build below `build/<preset>`. They inherit a
+shared quality configuration that enables warnings as errors, sanitizers, and
+Clang-Tidy; Windows presets disable the unsupported sanitizer configuration.
 
 | Preset | Generator | Configuration | Intended use |
 | --- | --- | --- | --- |
@@ -50,11 +53,12 @@ platform.
 
 ## Sanitizers
 
-AddressSanitizer and UndefinedBehaviorSanitizer are available with compatible
-non-Windows GCC and Clang toolchains:
+AddressSanitizer and UndefinedBehaviorSanitizer are enabled by the checked-in
+Linux presets and are available with compatible non-Windows GCC and Clang
+toolchains:
 
 ```bash
-cmake --preset dev-linux -DATLAS_ENABLE_SANITIZERS=ON
+cmake --preset dev-linux
 cmake --build --preset dev-linux
 ctest --preset dev-linux
 ```
@@ -64,10 +68,11 @@ produce a configure-time warning and otherwise remain buildable.
 
 ## Clang-Tidy
 
-Clang-Tidy is optional and is located only when explicitly enabled:
+Clang-Tidy is requested by the checked-in presets and can also be enabled for a
+custom configuration:
 
 ```bash
-cmake --preset dev -DATLAS_ENABLE_CLANG_TIDY=ON
+cmake --preset dev
 cmake --build --preset dev
 ```
 
@@ -88,13 +93,18 @@ The hook formats and re-stages files that have no unstaged edits. It stops when
 a staged file also has unstaged changes, preventing it from staging unrelated
 work.
 
-## Adding a future module
+## Adding sources and future modules
 
 Keep build configuration target-based:
 
 1. Add implementation and public headers only for the concrete module being
    developed.
-2. Add files with `target_sources`; do not introduce global source lists.
+2. Existing Atlas library and test targets discover files recursively with
+   `file(GLOB_RECURSE ... CONFIGURE_DEPENDS)`, sort the resulting directory-local
+   list, and attach it with `target_sources`. Place a new file under the matching
+   `src`, `include/atlas`, `tests/unit`, or `tests/feature` tree; do not also list
+   it manually. A genuinely new target should own its source discovery in its
+   nearest `CMakeLists.txt` rather than sharing a repository-wide aggregate list.
 3. Express includes, compile features, definitions, and dependencies with the
    relevant `target_*` command and the narrowest appropriate visibility.
 4. Apply `atlas_set_project_warnings`, `atlas_enable_sanitizers`, and

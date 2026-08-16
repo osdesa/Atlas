@@ -1,6 +1,23 @@
 # Atlas
 
-Atlas is a C++20 scheduler for modelling and executing dependent CPU and GPU work.
+Atlas is an early C++20 task-graph prototype and the foundation for a future
+user-space heterogeneous CPU/Vulkan GPU scheduler.
+
+The current API builds directed acyclic graphs of graph-scoped task handles,
+validates dependencies, and executes finalised graphs sequentially with Kahn's
+topological algorithm. Task exceptions, completed-task count, and total elapsed
+time are reported.
+
+Atlas does not yet contain a CPU worker backend, Vulkan initialisation or compute
+execution, GPU task slices, mixed CPU/GPU scheduling, or multiple scheduling
+policies. Vulkan support is currently limited to SDK discovery and link
+validation.
+
+Future GPU scheduling will be cooperative. A logical GPU task will consist of
+independently submitted slices, allowing Atlas to reconsider scheduling between
+slices without claiming to interrupt a Vulkan dispatch already in flight. The
+intended description is **preemptive-style GPU scheduling through cooperative
+execution slices**.
 
 ## API documentation
 
@@ -11,10 +28,18 @@ cmake --preset docs-windows
 cmake --build --preset docs-windows
 ```
 
+On Linux, use the equivalent presets:
+
+```bash
+cmake --preset docs-linux
+cmake --build --preset docs-linux
+```
+
 Select the **Windows documentation** configure preset in VS Code's CMake Tools
 panel. The **docs** target then appears under the **Documentation** folder.
 
-The generated entry point is `build/docs-windows/docs/html/index.html`.
+The generated entry point is
+`build/<docs-preset>/docs/html/index.html`.
 
 The site uses the [Doxygen Awesome](https://github.com/jothepro/doxygen-awesome-css)
 theme, pinned to version 2.4.2.
