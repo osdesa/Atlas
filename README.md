@@ -1,12 +1,30 @@
 # Atlas
 
-Atlas is intended to become a modern C++ user-space scheduler for heterogeneous
-CPU/GPU work using Vulkan. The repository is currently at the scaffolding stage:
-it contains only enough code to validate compilation, linking, Vulkan SDK
-discovery, and the test infrastructure.
+Atlas is an early C++20 task-graph prototype and the foundation for a future
+user-space heterogeneous CPU/Vulkan GPU scheduler.
 
-No scheduling logic, task model, Vulkan initialisation, command-line interface,
-or GPU execution is implemented yet.
+The current implementation can:
+
+- create tasks identified by graph-scoped handles;
+- build and finalise directed acyclic task graphs;
+- reject missing, duplicate, self, differently identified graph, and cyclic
+  dependencies;
+- execute a finalised graph sequentially with Kahn's topological algorithm; and
+- report completion count, elapsed time, and exceptions thrown by task callables.
+
+The example CLI exercises that path with a six-task graph. Unit and feature
+tests cover the current graph and sequential-execution behaviour.
+
+Atlas does **not** yet provide a CPU worker backend, runtime task submission,
+interchangeable scheduling policies, Vulkan initialisation or compute execution,
+GPU task slicing, mixed CPU/GPU scheduling, or a benchmarking framework. Vulkan
+is currently limited to SDK discovery and link validation.
+
+The intended GPU design is cooperative: a logical GPU task will be divided into
+independently submitted execution slices, and scheduling control will return to
+Atlas between slices. Atlas will not claim to interrupt a Vulkan dispatch that
+is already executing. The accurate future description is **preemptive-style GPU
+scheduling through cooperative execution slices**.
 
 ## Prerequisites
 
@@ -72,24 +90,31 @@ also suitable on Linux.
 ## CMake targets
 
 - `atlas` / `Atlas::Atlas`: compiled Atlas library and namespaced alias
-- `atlas_cli`: minimal executable linked to `Atlas::Atlas`
+- `atlas_cli`: example sequential task-graph executable linked to `Atlas::Atlas`
 - `atlas_unit_tests`: Catch2 unit-test executable discovered by CTest
 - `atlas_feature_tests`: Catch2 feature-test executable discovered by CTest
 
 ## CMake options
 
-| Option | Default | Purpose |
+| Option | Raw CMake default | Purpose |
 | --- | --- | --- |
 | `ATLAS_BUILD_TESTS` | `ON` | Build and register the unit and feature tests |
 | `ATLAS_WARNINGS_AS_ERRORS` | `OFF` | Promote warnings on Atlas-owned targets to errors |
 | `ATLAS_ENABLE_SANITIZERS` | `OFF` | Enable AddressSanitizer and UndefinedBehaviorSanitizer on compatible non-Windows GCC/Clang builds |
 | `ATLAS_ENABLE_CLANG_TIDY` | `OFF` | Run Clang-Tidy when it is available |
 
-Options can be added to a preset invocation, for example:
+Options can be overridden on a preset invocation. For example, disable
+sanitizers when the local execution environment cannot run them:
 
 ```bash
-cmake --preset dev-linux -DATLAS_ENABLE_SANITIZERS=ON
+cmake --preset dev-linux -DATLAS_ENABLE_SANITIZERS=OFF
 ```
+
+The checked-in presets inherit a shared quality configuration that enables
+warnings as errors, sanitizers, and Clang-Tidy. Windows presets disable the
+sanitizer option because the current sanitizer helper supports non-Windows GCC
+and Clang only. Override a cache option explicitly when a local environment
+requires a different configuration.
 
 Warnings, sanitizers, and static analysis are applied only to Atlas targets;
 third-party dependencies do not inherit those settings.
@@ -97,5 +122,7 @@ third-party dependencies do not inherit those settings.
 ## Continuous integration
 
 GitHub Actions configures, builds, and runs CTest on Ubuntu with GCC and Windows
-with MSVC. CI enables warnings as errors and installs only the Vulkan development
-environment needed to compile and link; it does not require a physical GPU.
+with MSVC. Both jobs enable warnings as errors and request Clang-Tidy; Linux also
+enables AddressSanitizer and UndefinedBehaviorSanitizer. CI installs the Vulkan
+development environment needed for discovery and linking, but it does not run
+Vulkan code or require a physical GPU.

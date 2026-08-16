@@ -1,20 +1,21 @@
 title = "Atlas"
 
-summary = "Atlas is a modern C++ user-space scheduler for heterogeneous CPU/GPU work using Vulkan."
+summary = "Atlas is a tested C++20 task-graph prototype with sequential dependency-ordered execution."
 
 status = "Active"
 
 technologies = [
   "C++",
-  "Vulkan",
+  "Vulkan SDK",
   "Catch2",
   "CMake",
   "Doxygen",
 ]
 
 highlights = [
-  "Fully check task graph allowing custom tasks and dependencies to be created.",
-  "Kahn schedular to provide simple baseline results",
+  "Built directed acyclic task graphs with dependency validation and cycle rejection.",
+  "Implemented deterministic sequential execution using Kahn's algorithm with exception and timing results.",
+  "Configured Vulkan SDK discovery as groundwork for a future compute backend; no Vulkan workloads execute yet.",
 ]
 
 show_repository = true

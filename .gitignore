@@ -68,6 +68,7 @@ rules.ninja
 # Analysis and coverage output
 /.cache/
 /coverage/
+/docs/repository-review.md
 *.gcda
 *.gcno
 *.profdata
