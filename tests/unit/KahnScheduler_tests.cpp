@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -95,6 +96,24 @@ TEST_CASE("KahnScheduler executes every independent root task", "[UNIT]")
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 2U);
     REQUIRE(executionCount == 2U);
+}
+
+TEST_CASE("KahnScheduler selects independent ready tasks in FIFO order", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    std::vector<int> executionOrder;
+
+    addTask(graph, [&executionOrder] { executionOrder.emplace_back(1); }, "First");
+    addTask(graph, [&executionOrder] { executionOrder.emplace_back(2); }, "Second");
+    addTask(graph, [&executionOrder] { executionOrder.emplace_back(3); }, "Third");
+    REQUIRE(graph.finishTaskGraph());
+
+    Atlas::KahnScheduler scheduler{ graph };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(result.executedTaskCount == 3U);
+    REQUIRE(executionOrder == std::vector<int>{ 1, 2, 3 });
 }
 
 TEST_CASE("KahnScheduler captures task exceptions", "[UNIT]")

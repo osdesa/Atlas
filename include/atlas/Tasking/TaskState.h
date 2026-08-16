@@ -13,9 +13,6 @@ namespace Atlas
     /**
      * @ingroup tasking
      * @brief valid states of a task
-     *
-     * @par Class diagram
-     * @plantumlfile task_state.puml
      */
     enum class TaskState : std::uint8_t
     {

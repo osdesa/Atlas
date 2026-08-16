@@ -26,6 +26,45 @@ The Vulkan SDK is discovered at configure time with `find_package(Vulkan
 REQUIRED)`. `atlas` links to `Vulkan::Vulkan`, but no Vulkan API is called at
 this stage.
 
+## Current task and execution model
+
+`TaskGraph` owns task definitions and exposes `shared_ptr<const Task>` views.
+Identity, callable work, and options are immutable. The task's lifecycle state
+and optional result are logically mutable so the sequential scheduler can update
+them through that otherwise read-only view. Retaining a returned `shared_ptr`
+extends the task object's lifetime beyond the graph, so callers must not infer a
+strict non-owning lifetime from the graph-owned description.
+
+Task options currently contain an optional name, a static `uint32_t` priority,
+and CPU/GPU execution-resource intent. Lower numeric priorities represent higher
+priority, but the FIFO Kahn scheduler does not yet use priority or resource intent
+when selecting or dispatching work. Both CPU- and GPU-designated tasks currently
+execute their host callable synchronously on the calling thread.
+
+Tasks are `Unknown` during graph construction. Successful finalisation assigns
+`Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns
+subsequent state changes and does not call a shared transition validator:
+
+```text
+Unknown --successful graph finalisation--> Ready or Blocked
+Blocked --final dependency succeeds------> Ready
+Ready   --selected by scheduler-----------> Running
+Running --callable returns----------------> Success
+Running --callable throws-----------------> Failure
+```
+
+`Success`, `Failure`, and `Cancelled` are terminal for the current scheduler.
+Terminal success and failure produce a `TaskResult` containing the affected
+handle and captured exception when applicable. A queued task not marked `Ready`
+is skipped. There is not yet a cancellation API, cancellation result propagation,
+graph-level cancellation status, or dependent cancellation policy; a skipped
+task currently leaves graph execution reported as `InvalidGraph`.
+
+The current model is intentionally single-threaded and intended for one execution
+of a graph. State and result fields are not atomic, concurrent mutation is not
+supported, and a completed task is not executed again. These restrictions must
+be revisited when a worker executor and scheduler service are introduced.
+
 ## Presets
 
 All checked-in configurations build below `build/<preset>`. They inherit a

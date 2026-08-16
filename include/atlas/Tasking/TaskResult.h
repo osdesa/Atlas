@@ -16,9 +16,6 @@ namespace Atlas
     /**
      * @ingroup tasking
      * @brief Represents the result of a task execution.
-     *
-     * @par Class diagram
-     * @plantumlfile task_result.puml
      */
     struct TaskResult
     {

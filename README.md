@@ -6,10 +6,13 @@ user-space heterogeneous CPU/Vulkan GPU scheduler.
 The current implementation can:
 
 - create tasks identified by graph-scoped handles;
+- attach an optional name, static priority, and CPU/GPU execution-resource intent
+  to each task;
 - build and finalise directed acyclic task graphs;
 - reject missing, duplicate, self, cross-graph, and cyclic dependencies;
 - execute a finalised graph sequentially with Kahn's topological algorithm; and
-- report completion count, elapsed time, and exceptions thrown by task callables.
+- record per-task lifecycle state and terminal results alongside graph-level
+  completion count, elapsed time, and exceptions.
 
 The example CLI exercises that path with a six-task graph. Unit and feature
 tests cover the current graph and sequential-execution behaviour.
@@ -18,6 +21,28 @@ Atlas does **not** yet provide a CPU worker backend, runtime task submission,
 interchangeable scheduling policies, Vulkan initialisation or compute execution,
 GPU task slicing, mixed CPU/GPU scheduling, or a benchmarking framework. Vulkan
 is currently limited to SDK discovery and link validation.
+
+## Task model and lifecycle
+
+`TaskOptions` describes immutable-on-submission intent. An empty name is valid,
+priority is an unsigned 32-bit value where a lower value means higher priority,
+and `ExecutionResource` classifies work as CPU or GPU. The current executor is
+FIFO and runs every task function synchronously on the calling thread: it does
+not yet use priority for ordering or resource intent for backend dispatch.
+
+Tasks begin `Unknown` while their graph is being constructed. Successful graph
+finalisation makes tasks without dependencies `Ready` and tasks waiting on
+dependencies `Blocked`. `KahnScheduler` changes a selected task to `Running`,
+then records `Success` or `Failure` and a task-attributed result. Successful
+completion makes newly unblocked dependants `Ready`.
+
+Schedulers own state changes; `Task` does not validate a universal transition
+matrix. The current graph and scheduler path is single-threaded and intended for
+one execution of a graph. A task no longer marked `Ready`, including a cancelled
+or previously completed task, is not executed. Cancellation does not yet have a
+submission API, graph-level status, result propagation, or dependent-task policy.
+See [Task lifecycle](docs/task-lifecycle.md) for the exact current contract and
+limitations.
 
 The intended GPU design is cooperative: a logical GPU task will be divided into
 independently submitted execution slices, and scheduling control will return to

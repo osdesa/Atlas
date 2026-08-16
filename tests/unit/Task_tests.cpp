@@ -32,6 +32,14 @@ TEST_CASE("Task preserves a valid handle's task ID", "[UNIT]")
     REQUIRE(task.handle.getTaskID() == Atlas::TaskId{ 1U });
 }
 
+TEST_CASE("Task starts without an assigned execution state or result", "[UNIT]")
+{
+    const Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ TASK_NAME } };
+
+    REQUIRE(task.state == Atlas::TaskState::Unknown);
+    REQUIRE_FALSE(task.result.has_value());
+}
+
 TEST_CASE("Task exposes its callable work", "[UNIT]")
 {
     bool executed{ false };
