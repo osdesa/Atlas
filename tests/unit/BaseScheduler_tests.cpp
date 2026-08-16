@@ -44,7 +44,7 @@ TEST_CASE("BaseScheduler rejects a task graph that is not finalised", "[UNIT]")
 TEST_CASE("BaseScheduler accepts and retains a finalised task graph", "[UNIT]")
 {
     Atlas::TaskGraph graph;
-    const std::optional<Atlas::TaskHandle> task{ graph.addTask([] {}, { .name = "Root" }) };
+    const std::optional<Atlas::TaskHandle> task{ graph.addTask([] {}, Atlas::TaskOptions{ "Root" }) };
 
     REQUIRE(task.has_value());
     REQUIRE(graph.finishTaskGraph());
@@ -60,7 +60,7 @@ TEST_CASE("BaseScheduler accepts and retains a finalised task graph", "[UNIT]")
 TEST_CASE("BaseScheduler executes one task function successfully", "[UNIT]")
 {
     Atlas::TaskGraph graph;
-    REQUIRE(graph.addTask([] {}, { .name = "Root" }).has_value());
+    REQUIRE(graph.addTask([] {}, Atlas::TaskOptions{ "Root" }).has_value());
     REQUIRE(graph.finishTaskGraph());
 
     TestScheduler scheduler{ graph };
@@ -76,7 +76,7 @@ TEST_CASE("BaseScheduler executes one task function successfully", "[UNIT]")
 TEST_CASE("BaseScheduler captures exceptions from one task function", "[UNIT]")
 {
     Atlas::TaskGraph graph;
-    REQUIRE(graph.addTask([] {}, { .name = "Root" }).has_value());
+    REQUIRE(graph.addTask([] {}, Atlas::TaskOptions{ "Root" }).has_value());
     REQUIRE(graph.finishTaskGraph());
 
     TestScheduler scheduler{ graph };
@@ -101,7 +101,7 @@ TEST_CASE("BaseScheduler captures exceptions from one task function", "[UNIT]")
 TEST_CASE("BaseScheduler treats an empty task function as successful", "[UNIT]")
 {
     Atlas::TaskGraph graph;
-    REQUIRE(graph.addTask([] {}, { .name = "Root" }).has_value());
+    REQUIRE(graph.addTask([] {}, Atlas::TaskOptions{ "Root" }).has_value());
     REQUIRE(graph.finishTaskGraph());
 
     TestScheduler scheduler{ graph };

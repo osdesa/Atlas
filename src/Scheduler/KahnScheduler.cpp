@@ -38,7 +38,7 @@ namespace Atlas
                 const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(taskHandle) };
 
                 // Execute the task
-                const SchedulerResult executeStatus{ executeFunction(task.value()->getFunction()) };
+                const SchedulerResult executeStatus{ executeFunction(task.value()->function) };
 
                 if (executeStatus.status != SchedulerStatus::Success)
                 {

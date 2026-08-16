@@ -14,7 +14,7 @@ namespace Atlas
 {
     std::optional<TaskHandle> TaskGraph::addTask(TaskFunction taskFunction, TaskOptions taskOptions)
     {
-        if (isFinalised)
+        if (isFinalised || !taskOptions.isValid())
         {
             return std::nullopt;
         }
@@ -36,7 +36,7 @@ namespace Atlas
 
         for (const std::shared_ptr<Task>& task : tasks)
         {
-            taskHandles.emplace_back(task->getHandle());
+            taskHandles.emplace_back(task->handle);
         }
 
         return taskHandles;
@@ -108,7 +108,7 @@ namespace Atlas
         {
             for (const TaskHandle dependency : task->getDependencies())
             {
-                if (checkForCycles(task->getHandle(), dependency))
+                if (checkForCycles(task->handle, dependency))
                 {
                     hasCycles = true;
                     break;
@@ -180,7 +180,7 @@ namespace Atlas
     std::optional<std::shared_ptr<Task>> TaskGraph::findMutableTask(TaskHandle taskHandle) noexcept
     {
         const auto taskIt{ std::find_if(tasks.begin(), tasks.end(),
-                                        [taskHandle](const std::shared_ptr<Task>& task) { return task->getHandle() == taskHandle; }) };
+                                        [taskHandle](const std::shared_ptr<Task>& task) { return task->handle == taskHandle; }) };
 
         if (taskIt == tasks.end())
         {
@@ -193,7 +193,7 @@ namespace Atlas
     std::optional<std::shared_ptr<const Task>> TaskGraph::findTask(TaskHandle taskHandle) const noexcept
     {
         const auto taskIt{ std::find_if(tasks.begin(), tasks.end(),
-                                        [taskHandle](const std::shared_ptr<Task>& task) { return task->getHandle() == taskHandle; }) };
+                                        [taskHandle](const std::shared_ptr<Task>& task) { return task->handle == taskHandle; }) };
 
         if (taskIt == tasks.end())
         {

@@ -10,7 +10,7 @@ namespace
 
     Atlas::TaskHandle addTask(Atlas::TaskGraph& graph, const char* name)
     {
-        const std::optional<Atlas::TaskHandle> taskHandle{ graph.addTask(doNothing, { .name = name }) };
+        const std::optional<Atlas::TaskHandle> taskHandle{ graph.addTask(doNothing, Atlas::TaskOptions{ name }) };
         REQUIRE(taskHandle.has_value());
         return taskHandle.value();
     }
@@ -49,9 +49,64 @@ TEST_CASE("TaskGraph exposes read-only task queries", "[UNIT]")
     REQUIRE(graph.getGraphID().isValid());
     REQUIRE(taskHandles == std::vector<Atlas::TaskHandle>{ first, second });
     REQUIRE(task.has_value());
-    REQUIRE(task.value()->getHandle() == first);
+    REQUIRE(task.value()->handle == first);
     REQUIRE(task.value()->getDependencies().empty());
     REQUIRE(task.value()->getDependents().empty());
+}
+
+TEST_CASE("TaskGraph preserves CPU and GPU task metadata", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::TaskOptions cpuOptions{ "CPU task", Atlas::ExecutionResource::CPU, 2U };
+    const Atlas::TaskOptions gpuOptions{ "GPU task", Atlas::ExecutionResource::GPU, 5U };
+
+    const std::optional<Atlas::TaskHandle> cpuHandle{ graph.addTask(doNothing, cpuOptions) };
+    const std::optional<Atlas::TaskHandle> gpuHandle{ graph.addTask(doNothing, gpuOptions) };
+
+    REQUIRE(cpuHandle.has_value());
+    REQUIRE(gpuHandle.has_value());
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> cpuTask{ graph.findTask(cpuHandle.value()) };
+    const std::optional<std::shared_ptr<const Atlas::Task>> gpuTask{ graph.findTask(gpuHandle.value()) };
+
+    REQUIRE(cpuTask.has_value());
+    REQUIRE(gpuTask.has_value());
+    REQUIRE(cpuTask.value()->options.executionResource == Atlas::ExecutionResource::CPU);
+    REQUIRE(cpuTask.value()->options.priority == 2U);
+    REQUIRE(gpuTask.value()->options.executionResource == Atlas::ExecutionResource::GPU);
+    REQUIRE(gpuTask.value()->options.priority == 5U);
+}
+
+TEST_CASE("TaskGraph accepts anonymous task metadata", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+
+    const std::optional<Atlas::TaskHandle> anonymousHandle{ graph.addTask(doNothing, Atlas::TaskOptions{}) };
+
+    REQUIRE(anonymousHandle.has_value());
+    REQUIRE(anonymousHandle.value().getTaskID() == Atlas::TaskId{ 1U });
+    REQUIRE(graph.getTaskCount() == 1U);
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> anonymousTask{ graph.findTask(anonymousHandle.value()) };
+    REQUIRE(anonymousTask.has_value());
+    REQUIRE(anonymousTask.value()->isValid());
+    REQUIRE(anonymousTask.value()->options.name.empty());
+}
+
+TEST_CASE("TaskGraph rejects an out-of-range execution resource without consuming a task ID", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    // Deliberately constructs malformed public input to exercise submission validation.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    constexpr auto invalidResource{ static_cast<Atlas::ExecutionResource>(255U) };
+    const Atlas::TaskOptions invalidOptions{ "Invalid resource", invalidResource };
+
+    REQUIRE_FALSE(graph.addTask(doNothing, invalidOptions).has_value());
+    REQUIRE(graph.getTaskCount() == 0U);
+
+    const Atlas::TaskHandle firstValidTask{ addTask(graph, "Valid task") };
+
+    REQUIRE(firstValidTask.getTaskID() == Atlas::TaskId{ 1U });
 }
 
 TEST_CASE("TaskGraph cannot be copied or moved", "[UNIT]")
@@ -165,7 +220,7 @@ TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")
     REQUIRE(graph.addDependency(firstDependent, root));
     REQUIRE(graph.finishTaskGraph());
 
-    REQUIRE_FALSE(graph.addTask(doNothing, { .name = "Late task" }).has_value());
+    REQUIRE_FALSE(graph.addTask(doNothing, Atlas::TaskOptions{ "Late task" }).has_value());
     REQUIRE_FALSE(graph.addDependency(secondDependent, root));
     REQUIRE(graph.getTaskCount() == 3U);
 

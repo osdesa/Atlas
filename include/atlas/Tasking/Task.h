@@ -45,38 +45,39 @@ namespace Atlas
         {
         }
 
+        /// @brief Prevents copying a graph-owned task.
+        Task(const Task&) = delete;
+
+        /// @brief Prevents copy-assigning a graph-owned task.
+        Task& operator=(const Task&) = delete;
+
+        /// @brief Prevents moving a graph-owned task.
+        Task(Task&&) = delete;
+
+        /// @brief Prevents move-assigning a graph-owned task.
+        Task& operator=(Task&&) = delete;
+
+        /// @brief The immutable identity information of the task.
+        const TaskHandle handle;
+
+        /// @brief The immutable function to be executed by the task.
+        const TaskFunction function;
+
+        /// @brief The immutable options for the task.
+        const TaskOptions options;
+
         /**
-         * @brief Reports whether this task has a valid handle.
-         * @return True when the task handle is valid;
-         * false otherwise.
+         * @brief Reports whether this task has a valid handle and execution resource.
+         * @return True when the handle and task options are valid; false otherwise.
          */
         bool isValid() const noexcept
         {
-            return handle.isValid();
-        }
-
-        /**
-         * @brief Retrieves the unique handle of this task.
-         * @return The task handle.
-         */
-        TaskHandle getHandle() const noexcept
-        {
-            return handle;
-        }
-
-        /**
-         * @brief Retrieves the callable work associated with this task.
-         * @return The task's callable work.
- */
-        const TaskFunction& getFunction() const noexcept
-        {
-            return function;
+            return handle.isValid() && options.isValid();
         }
 
         /**
          * @brief Retrieves the dependencies of the task.
          * @return A read-only view of the task's dependencies.
-
          */
         std::span<const TaskHandle> getDependencies() const noexcept
         {
@@ -112,7 +113,7 @@ namespace Atlas
         /**
          * @brief Removes an existing dependency from this task.
          * @param dependency The dependency to remove.
- */
+         */
         void removeDependency(TaskHandle dependency) noexcept;
 
         /**
@@ -127,15 +128,6 @@ namespace Atlas
         }
 
       private:
-        /// @brief The identity information of the task.
-        TaskHandle handle;
-
-        /// @brief The function to be executed by the task.
-        TaskFunction function;
-
-        /// @brief The options for the task.
-        TaskOptions options;
-
         /// @brief The tasks which need to be done before this task can be executed.
         std::vector<TaskHandle> dependencies;
 
