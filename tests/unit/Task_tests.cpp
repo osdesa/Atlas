@@ -15,9 +15,13 @@ namespace
     const std::string TASK_NAME{ "TEST_TASK" };
 } // namespace
 
-TEST_CASE("Task cannot be default constructed", "[UNIT]")
+TEST_CASE("Task cannot be default constructed, copied, or moved", "[UNIT]")
 {
     STATIC_REQUIRE_FALSE(std::is_default_constructible_v<Atlas::Task>);
+    STATIC_REQUIRE_FALSE(std::is_copy_constructible_v<Atlas::Task>);
+    STATIC_REQUIRE_FALSE(std::is_copy_assignable_v<Atlas::Task>);
+    STATIC_REQUIRE_FALSE(std::is_move_constructible_v<Atlas::Task>);
+    STATIC_REQUIRE_FALSE(std::is_move_assignable_v<Atlas::Task>);
 }
 
 TEST_CASE("Task preserves a valid handle's task ID", "[UNIT]")

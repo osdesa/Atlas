@@ -45,6 +45,18 @@ namespace Atlas
         {
         }
 
+        /// @brief Prevents copying a graph-owned task.
+        Task(const Task&) = delete;
+
+        /// @brief Prevents copy-assigning a graph-owned task.
+        Task& operator=(const Task&) = delete;
+
+        /// @brief Prevents moving a graph-owned task.
+        Task(Task&&) = delete;
+
+        /// @brief Prevents move-assigning a graph-owned task.
+        Task& operator=(Task&&) = delete;
+
         /// @brief The immutable identity information of the task.
         const TaskHandle handle;
 
