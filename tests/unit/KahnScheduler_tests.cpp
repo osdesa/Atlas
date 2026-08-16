@@ -12,7 +12,7 @@ namespace
 {
     Atlas::TaskHandle addTask(Atlas::TaskGraph& graph, Atlas::TaskFunction function, const char* name)
     {
-        const std::optional<Atlas::TaskHandle> handle{ graph.addTask(std::move(function), { .name = name }) };
+        const std::optional<Atlas::TaskHandle> handle{ graph.addTask(std::move(function), Atlas::TaskOptions{ name }) };
         REQUIRE(handle.has_value());
         return handle.value();
     }

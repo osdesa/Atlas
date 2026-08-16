@@ -22,34 +22,55 @@ TEST_CASE("Task cannot be default constructed", "[UNIT]")
 
 TEST_CASE("Task preserves a valid handle's task ID", "[UNIT]")
 {
-    const Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ .name = TASK_NAME } };
+    const Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ TASK_NAME } };
 
     REQUIRE(task.isValid());
-    REQUIRE(task.getHandle().getTaskID() == Atlas::TaskId{ 1U });
+    REQUIRE(task.handle.getTaskID() == Atlas::TaskId{ 1U });
 }
 
 TEST_CASE("Task exposes its callable work", "[UNIT]")
 {
     bool executed{ false };
     const Atlas::TaskFunction taskFunction{ [&executed] { executed = true; } };
-    const Atlas::Task task{ VALID_TASK_HANDLE, taskFunction, Atlas::TaskOptions{ .name = TASK_NAME } };
+    const Atlas::Task task{ VALID_TASK_HANDLE, taskFunction, Atlas::TaskOptions{ TASK_NAME } };
 
-    task.getFunction()();
+    task.function();
 
     REQUIRE(executed);
 }
 
+TEST_CASE("Task preserves and exposes immutable task metadata", "[UNIT]")
+{
+    const Atlas::TaskOptions options{ TASK_NAME, Atlas::ExecutionResource::GPU, 4U };
+    const Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, options };
+
+    STATIC_REQUIRE(std::is_const_v<decltype(task.handle)>);
+    STATIC_REQUIRE(std::is_const_v<decltype(task.function)>);
+    STATIC_REQUIRE(std::is_const_v<decltype(task.options)>);
+    REQUIRE(task.options.name == TASK_NAME);
+    REQUIRE(task.options.executionResource == Atlas::ExecutionResource::GPU);
+    REQUIRE(task.options.priority == 4U);
+}
+
 TEST_CASE("Task constructed with an invalid handle is invalid", "[UNIT]")
 {
-    const Atlas::Task task{ INVALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ .name = TASK_NAME } };
+    const Atlas::Task task{ INVALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ TASK_NAME } };
 
     REQUIRE_FALSE(task.isValid());
-    REQUIRE(task.getHandle().getTaskID() == Atlas::INVALID_TASK_ID);
+    REQUIRE(task.handle.getTaskID() == Atlas::INVALID_TASK_ID);
+}
+
+TEST_CASE("Task constructed without a name is valid", "[UNIT]")
+{
+    const Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{} };
+
+    REQUIRE(task.isValid());
+    REQUIRE(task.options.name.empty());
 }
 
 TEST_CASE("Task removes dependencies so they can be added again", "[UNIT]")
 {
-    Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ .name = TASK_NAME } };
+    Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ TASK_NAME } };
     const Atlas::TaskHandle dependency{ Atlas::TaskId{ 2U }, TEST_GRAPH_ID };
 
     REQUIRE(task.addDependency(dependency));
@@ -62,7 +83,7 @@ TEST_CASE("Task removes dependencies so they can be added again", "[UNIT]")
 
 TEST_CASE("Task rejects duplicate dependents", "[UNIT]")
 {
-    Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ .name = TASK_NAME } };
+    Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ TASK_NAME } };
     const Atlas::TaskHandle dependent{ Atlas::TaskId{ 2U }, TEST_GRAPH_ID };
 
     REQUIRE(task.addDependent(dependent));

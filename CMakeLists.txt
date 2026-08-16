@@ -7,6 +7,13 @@ project(
     LANGUAGES CXX
 )
 
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "C++ standard used to build Atlas (20 or newer)")
+if(CMAKE_CXX_STANDARD LESS 20)
+    message(FATAL_ERROR "Atlas requires C++20 or newer; std::span is not available before C++20")
+endif()
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 option(ATLAS_BUILD_TESTS "Build Atlas tests" ON)
 option(ATLAS_BUILD_DOCUMENTATION "Build Atlas API documentation with Doxygen" OFF)
 option(ATLAS_WARNINGS_AS_ERRORS "Treat compiler warnings in Atlas targets as errors" OFF)
@@ -59,13 +66,6 @@ target_include_directories(
 )
 
 target_compile_features(atlas PUBLIC cxx_std_20)
-set_target_properties(
-    atlas
-    PROPERTIES
-        CXX_STANDARD 20
-        CXX_STANDARD_REQUIRED ON
-        CXX_EXTENSIONS OFF
-)
 
 target_link_libraries(atlas PRIVATE Vulkan::Vulkan)
 

@@ -12,7 +12,7 @@ namespace
     Atlas::TaskHandle addRecordingTask(Atlas::TaskGraph& graph, std::vector<std::string>& executionOrder, const char* name)
     {
         const std::optional<Atlas::TaskHandle> handle{ graph.addTask([&executionOrder, name] { executionOrder.emplace_back(name); },
-                                                                     { .name = name }) };
+                                                                     Atlas::TaskOptions{ name }) };
         REQUIRE(handle.has_value());
         return handle.value();
     }

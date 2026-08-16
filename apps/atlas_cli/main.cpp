@@ -60,7 +60,7 @@ namespace
                 frameState.framePresented = false;
                 frameState.framePrepared = true;
             },
-            { .name = "Prepare frame" }) };
+            Atlas::TaskOptions{ "Prepare frame" }) };
 
         const auto updateSimulation{ frameGraph.addTask(
             [&frameState]
@@ -79,7 +79,7 @@ namespace
                                });
                 frameState.simulationUpdated = true;
             },
-            { .name = "Update simulation" }) };
+            Atlas::TaskOptions{ "Update simulation" }) };
 
         const auto uploadResources{ frameGraph.addTask(
             [&frameState]
@@ -95,7 +95,7 @@ namespace
                 }
                 frameState.resourcesUploaded = true;
             },
-            { .name = "Upload resources" }) };
+            Atlas::TaskOptions{ "Upload resources" }) };
 
         const auto cullObjects{ frameGraph.addTask(
             [&frameState]
@@ -115,7 +115,7 @@ namespace
                 }
                 frameState.visibilityComputed = true;
             },
-            { .name = "Cull visible objects" }) };
+            Atlas::TaskOptions{ "Cull visible objects" }) };
 
         const auto buildRenderCommands{ frameGraph.addTask(
             [&frameState]
@@ -135,7 +135,7 @@ namespace
                 }
                 frameState.renderCommandsBuilt = true;
             },
-            { .name = "Build render commands" }) };
+            Atlas::TaskOptions{ "Build render commands" }) };
 
         const auto presentFrame{ frameGraph.addTask(
             [&frameState]
@@ -149,7 +149,7 @@ namespace
                     frameState.renderChecksum ^ (static_cast<std::uint64_t>(frameState.visibleObjectPositions.size()) << 32U);
                 frameState.framePresented = true;
             },
-            { .name = "Present frame" }) };
+            Atlas::TaskOptions{ "Present frame" }) };
 
         if (!prepareFrame || !updateSimulation || !uploadResources || !cullObjects || !buildRenderCommands || !presentFrame)
         {
