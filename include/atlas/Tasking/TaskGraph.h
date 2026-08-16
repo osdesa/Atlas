@@ -5,7 +5,6 @@
 #include "TaskIdGenerator.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -38,13 +37,9 @@ namespace Atlas
     {
       public:
         /**
-         * @brief Constructs a new TaskGraph with a unique ID.
-         * @param graphIdentifier The unique ID of this graph.
+         * @brief Constructs a new TaskGraph with a process-unique ID.
          */
-        explicit TaskGraph(std::uint32_t graphIdentifier) noexcept
-            : graphID{ graphIdentifier }, taskIdGenerator{ graphIdentifier }, isFinalised{ false }
-        {
-        }
+        TaskGraph() noexcept : graphID{ GraphId::create() }, taskIdGenerator{ graphID }, isFinalised{ false } {}
 
         /**
          * @brief Adds a new task to the graph with the given work and metadata.
@@ -106,10 +101,10 @@ namespace Atlas
         }
 
         /**
-         * @brief Retrieves the unique ID of this graph.
-         * @return The unique ID of this graph.
+         * @brief Retrieves the process-unique ID of this graph.
+         * @return The process-unique ID of this graph.
          */
-        std::uint32_t getGraphID() const noexcept
+        GraphId getGraphID() const noexcept
         {
             return graphID;
         }
@@ -175,8 +170,8 @@ namespace Atlas
         /// @brief The collection of tasks owned by this graph.
         std::vector<std::shared_ptr<Task>> tasks;
 
-        /// @brief The unique ID of this graph.
-        std::uint32_t graphID;
+        /// @brief The process-unique ID of this graph.
+        GraphId graphID;
 
         /// @brief Allocates task handles for this graph.
         TaskIdGenerator taskIdGenerator;

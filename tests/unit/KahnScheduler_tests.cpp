@@ -29,7 +29,7 @@ TEST_CASE("KahnScheduler requires a task graph and cannot be copied or moved", "
 
 TEST_CASE("KahnScheduler executes a single task successfully", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
     bool executed{ false };
 
     addTask(graph, [&executed] { executed = true; }, "Root");
@@ -47,7 +47,7 @@ TEST_CASE("KahnScheduler executes a single task successfully", "[UNIT]")
 
 TEST_CASE("KahnScheduler treats an empty task function as successful work", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     addTask(graph, Atlas::TaskFunction{}, "Empty");
     REQUIRE(graph.finishTaskGraph());
@@ -62,7 +62,7 @@ TEST_CASE("KahnScheduler treats an empty task function as successful work", "[UN
 
 TEST_CASE("KahnScheduler executes every independent root task", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
     std::size_t executionCount{ 0U };
 
     addTask(graph, [&executionCount] { ++executionCount; }, "First root");
@@ -79,7 +79,7 @@ TEST_CASE("KahnScheduler executes every independent root task", "[UNIT]")
 
 TEST_CASE("KahnScheduler captures task exceptions", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     addTask(graph, [] { throw std::runtime_error{ "task failed" }; }, "Failing");
     REQUIRE(graph.finishTaskGraph());
@@ -106,7 +106,7 @@ TEST_CASE("KahnScheduler captures task exceptions", "[UNIT]")
 
 TEST_CASE("KahnScheduler rebuilds its execution state for every run", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
     std::size_t executionCount{ 0U };
 
     addTask(graph, [&executionCount] { ++executionCount; }, "Repeatable");

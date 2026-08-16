@@ -7,8 +7,7 @@ The current implementation can:
 
 - create tasks identified by graph-scoped handles;
 - build and finalise directed acyclic task graphs;
-- reject missing, duplicate, self, differently identified graph, and cyclic
-  dependencies;
+- reject missing, duplicate, self, cross-graph, and cyclic dependencies;
 - execute a finalised graph sequentially with Kahn's topological algorithm; and
 - report completion count, elapsed time, and exceptions thrown by task callables.
 

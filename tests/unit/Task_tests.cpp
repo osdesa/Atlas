@@ -8,8 +8,9 @@ namespace
 {
     const Atlas::TaskFunction dummyTaskFunction{ []() {} };
 
-    const Atlas::TaskHandle INVALID_TASK_HANDLE{ 0U, 0U };
-    const Atlas::TaskHandle VALID_TASK_HANDLE{ 1U, 0U };
+    const Atlas::GraphId TEST_GRAPH_ID{ Atlas::GraphId::create() };
+    const Atlas::TaskHandle INVALID_TASK_HANDLE{ Atlas::INVALID_TASK_ID, TEST_GRAPH_ID };
+    const Atlas::TaskHandle VALID_TASK_HANDLE{ Atlas::TaskId{ 1U }, TEST_GRAPH_ID };
 
     const std::string TASK_NAME{ "TEST_TASK" };
 } // namespace
@@ -24,7 +25,7 @@ TEST_CASE("Task preserves a valid handle's task ID", "[UNIT]")
     const Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ .name = TASK_NAME } };
 
     REQUIRE(task.isValid());
-    REQUIRE(task.getHandle().getTaskID() == 1U);
+    REQUIRE(task.getHandle().getTaskID() == Atlas::TaskId{ 1U });
 }
 
 TEST_CASE("Task exposes its callable work", "[UNIT]")
@@ -49,7 +50,7 @@ TEST_CASE("Task constructed with an invalid handle is invalid", "[UNIT]")
 TEST_CASE("Task removes dependencies so they can be added again", "[UNIT]")
 {
     Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ .name = TASK_NAME } };
-    const Atlas::TaskHandle dependency{ 2U, 0U };
+    const Atlas::TaskHandle dependency{ Atlas::TaskId{ 2U }, TEST_GRAPH_ID };
 
     REQUIRE(task.addDependency(dependency));
     REQUIRE_FALSE(task.addDependency(dependency));
@@ -62,7 +63,7 @@ TEST_CASE("Task removes dependencies so they can be added again", "[UNIT]")
 TEST_CASE("Task rejects duplicate dependents", "[UNIT]")
 {
     Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ .name = TASK_NAME } };
-    const Atlas::TaskHandle dependent{ 2U, 0U };
+    const Atlas::TaskHandle dependent{ Atlas::TaskId{ 2U }, TEST_GRAPH_ID };
 
     REQUIRE(task.addDependent(dependent));
     REQUIRE_FALSE(task.addDependent(dependent));

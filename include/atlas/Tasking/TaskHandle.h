@@ -1,8 +1,10 @@
 #ifndef ATLAS_TASK_HANDLE
 #define ATLAS_TASK_HANDLE
 
+#include "GraphId.h"
+#include "TaskId.h"
+
 #include <cstddef>
-#include <cstdint>
 #include <functional>
 
 /**
@@ -12,12 +14,6 @@
 
 namespace Atlas
 {
-    /**
-     * @ingroup tasking
-     * @brief Reserved task ID representing an invalid task handle.
-     */
-    inline constexpr std::uint32_t INVALID_TASK_ID{ 0U };
-
     /**
      * @ingroup tasking
      * @brief Identifies a task within a specific task graph.
@@ -31,11 +27,10 @@ namespace Atlas
       public:
         /**
          * @brief Constructs a task handle from its task and graph identifiers.
-         * @param id The unique ID of the
-         * task.
-         * @param graphIdentifier The unique ID of the graph this task belongs to.
+         * @param id The graph-local identity of the task.
+         * @param graphIdentifier The process-unique identity of the graph this task belongs to.
          */
-        explicit TaskHandle(std::uint32_t id, std::uint32_t graphIdentifier) noexcept : taskID{ id }, graphID{ graphIdentifier } {}
+        explicit TaskHandle(TaskId id, GraphId graphIdentifier) noexcept : taskID{ id }, graphID{ graphIdentifier } {}
 
         /**
          * @brief Validates if the current TaskHandle is valid
@@ -43,23 +38,23 @@ namespace Atlas
          */
         bool isValid() const noexcept
         {
-            return taskID != INVALID_TASK_ID;
+            return taskID.isValid() && graphID.isValid();
         }
 
         /**
-         * @brief Retrieves the unique ID of the task
-         * @return The unique ID of the task
+         * @brief Retrieves the graph-local ID of the task.
+         * @return The graph-local ID of the task.
          */
-        std::uint32_t getTaskID() const noexcept
+        TaskId getTaskID() const noexcept
         {
             return taskID;
         }
 
         /**
-         * @brief Retrieves the graph ID of the task
-         * @return The graph ID of the task
+         * @brief Retrieves the process-unique graph ID of the task.
+         * @return The process-unique graph ID of the task.
          */
-        std::uint32_t getGraphID() const noexcept
+        GraphId getGraphID() const noexcept
         {
             return graphID;
         }
@@ -83,19 +78,20 @@ namespace Atlas
              */
             std::size_t operator()(const TaskHandle& handle) const noexcept
             {
-                const std::uint64_t key{ (static_cast<std::uint64_t>(handle.getGraphID()) << 32U) |
-                                         static_cast<std::uint64_t>(handle.getTaskID()) };
+                const std::size_t graphHash{ std::hash<std::uint64_t>{}(handle.getGraphID().getValue()) };
+                const std::size_t taskHash{ std::hash<std::uint32_t>{}(handle.getTaskID().getValue()) };
+                constexpr std::size_t hashConstant{ 0x9e3779b9U };
 
-                return std::hash<std::uint64_t>{}(key);
+                return graphHash ^ (taskHash + hashConstant + (graphHash << 6U) + (graphHash >> 2U));
             }
         };
 
       private:
         /// @brief The ID of the task.
-        std::uint32_t taskID{ 0U };
+        TaskId taskID;
 
         /// @brief The ID of the graph this task belongs to.
-        std::uint32_t graphID{ 0U };
+        GraphId graphID;
     };
 } // namespace Atlas
 #endif // !ATLAS_TASK_HANDLE

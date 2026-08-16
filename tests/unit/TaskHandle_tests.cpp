@@ -11,33 +11,39 @@ TEST_CASE("Default Construction is not allowed", "[UNIT]")
 
 TEST_CASE("0 is an invalid TaskID", "[UNIT]")
 {
-    const Atlas::TaskHandle taskHandle{ Atlas::INVALID_TASK_ID, 0U };
+    const Atlas::GraphId graphId{ Atlas::GraphId::create() };
+    const Atlas::TaskHandle taskHandle{ Atlas::INVALID_TASK_ID, graphId };
 
     REQUIRE(!taskHandle.isValid());
-    REQUIRE(taskHandle.getTaskID() == 0U);
+    REQUIRE(taskHandle.getTaskID() == Atlas::INVALID_TASK_ID);
 }
 
 TEST_CASE("TaskHandle is valid when constructed with a non-zero TaskID", "[UNIT]")
 {
-    const Atlas::TaskHandle taskHandle{ 1U, 0U };
+    const Atlas::GraphId graphId{ Atlas::GraphId::create() };
+    const Atlas::TaskHandle taskHandle{ Atlas::TaskId{ 1U }, graphId };
 
     REQUIRE(taskHandle.isValid());
-    REQUIRE(taskHandle.getTaskID() == 1U);
+    REQUIRE(taskHandle.getTaskID() == Atlas::TaskId{ 1U });
 }
 
 TEST_CASE("TaskHandle identity includes both task and graph IDs", "[UNIT]")
 {
-    const Atlas::TaskHandle handle{ 1U, 7U };
+    const Atlas::GraphId firstGraph{ Atlas::GraphId::create() };
+    const Atlas::GraphId secondGraph{ Atlas::GraphId::create() };
+    const Atlas::TaskHandle handle{ Atlas::TaskId{ 1U }, firstGraph };
 
-    REQUIRE(handle == Atlas::TaskHandle{ 1U, 7U });
-    REQUIRE_FALSE(handle == Atlas::TaskHandle{ 2U, 7U });
-    REQUIRE_FALSE(handle == Atlas::TaskHandle{ 1U, 8U });
+    REQUIRE(handle == Atlas::TaskHandle{ Atlas::TaskId{ 1U }, firstGraph });
+    REQUIRE_FALSE(handle == Atlas::TaskHandle{ Atlas::TaskId{ 2U }, firstGraph });
+    REQUIRE_FALSE(handle == Atlas::TaskHandle{ Atlas::TaskId{ 1U }, secondGraph });
 }
 
 TEST_CASE("TaskHandle hash supports unordered associative containers", "[UNIT]")
 {
-    const Atlas::TaskHandle first{ 1U, 7U };
-    const Atlas::TaskHandle sameTaskInAnotherGraph{ 1U, 8U };
+    const Atlas::GraphId firstGraph{ Atlas::GraphId::create() };
+    const Atlas::GraphId secondGraph{ Atlas::GraphId::create() };
+    const Atlas::TaskHandle first{ Atlas::TaskId{ 1U }, firstGraph };
+    const Atlas::TaskHandle sameTaskInAnotherGraph{ Atlas::TaskId{ 1U }, secondGraph };
     std::unordered_map<Atlas::TaskHandle, int, Atlas::TaskHandle::Hash> values;
 
     values.emplace(first, 10);

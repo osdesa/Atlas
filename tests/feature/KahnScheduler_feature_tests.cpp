@@ -29,7 +29,7 @@ SCENARIO("KahnScheduler executes a dependency chain", "[FEATURE]")
 {
     GIVEN("a finalised graph containing three tasks in a dependency chain")
     {
-        Atlas::TaskGraph graph{ 1U };
+        Atlas::TaskGraph graph;
         std::vector<std::string> executionOrder;
 
         const Atlas::TaskHandle first{ addRecordingTask(graph, executionOrder, "First") };
@@ -59,7 +59,7 @@ SCENARIO("KahnScheduler executes a fan-out and fan-in graph", "[FEATURE]")
 {
     GIVEN("a finalised diamond graph with two parallel branches")
     {
-        Atlas::TaskGraph graph{ 1U };
+        Atlas::TaskGraph graph;
         std::vector<std::string> executionOrder;
 
         const Atlas::TaskHandle root{ addRecordingTask(graph, executionOrder, "Root") };

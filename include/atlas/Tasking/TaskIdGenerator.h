@@ -28,8 +28,8 @@ namespace Atlas
          * @param graphIdentifier The graph ID assigned to every generated handle.
          * @param initialTaskID The first task ID to allocate.
          */
-        explicit TaskIdGenerator(std::uint32_t graphIdentifier, std::uint32_t initialTaskID = 1U) noexcept
-            : graphID{ graphIdentifier }, nextTaskID{ initialTaskID }
+        explicit TaskIdGenerator(GraphId graphIdentifier, TaskId initialTaskID = TaskId{ 1U }) noexcept
+            : graphID{ graphIdentifier }, nextTaskID{ initialTaskID.getValue() }
         {
         }
 
@@ -39,19 +39,19 @@ namespace Atlas
          */
         std::optional<TaskHandle> next() noexcept
         {
-            if (nextTaskID == INVALID_TASK_ID)
+            if (!graphID.isValid() || nextTaskID == INVALID_TASK_ID_VALUE)
             {
                 return std::nullopt;
             }
 
-            const TaskHandle taskHandle{ nextTaskID, graphID };
+            const TaskHandle taskHandle{ TaskId{ nextTaskID }, graphID };
             ++nextTaskID;
             return taskHandle;
         }
 
       private:
         /// @brief The graph ID assigned to generated task handles.
-        std::uint32_t graphID;
+        GraphId graphID;
 
         /// @brief The next task ID to allocate.
         std::uint32_t nextTaskID;
