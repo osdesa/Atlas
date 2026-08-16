@@ -92,7 +92,7 @@ namespace Atlas
     void KahnScheduler::enqueueReadyTask(TaskHandle taskHandle)
     {
         const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(taskHandle) };
-        task.value()->state = TaskState::Ready;
+        task.value()->executionInfo.state = TaskState::Ready;
         readyTasks.emplace(taskHandle);
     }
 
@@ -104,13 +104,14 @@ namespace Atlas
             readyTasks.pop();
 
             const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(taskHandle) };
-            if (!task.has_value() || task.value()->state != TaskState::Ready)
+            if (!task.has_value() || task.value()->executionInfo.state != TaskState::Ready)
             {
                 continue;
             }
 
-            task.value()->state = TaskState::Running;
-            task.value()->result.reset();
+            task.value()->executionInfo.state = TaskState::Running;
+            task.value()->executionInfo.exception = nullptr;
+            task.value()->executionInfo.executionDuration = std::chrono::microseconds{ 0 };
             return task;
         }
 
@@ -121,14 +122,16 @@ namespace Atlas
     {
         if (executionResult.status == SchedulerStatus::Success)
         {
-            task->state = TaskState::Success;
-            task->result = TaskResult{ .handle = task->handle, .state = TaskState::Success, .exception = nullptr };
+            task->executionInfo.state = TaskState::Success;
+            task->executionInfo.exception = nullptr;
         }
         else
         {
-            task->state = TaskState::Failure;
-            task->result = TaskResult{ .handle = task->handle, .state = TaskState::Failure, .exception = executionResult.exception };
+            task->executionInfo.state = TaskState::Failure;
+            task->executionInfo.exception = executionResult.exception;
         }
+
+        task->executionInfo.executionDuration = executionResult.executionTime;
     }
 
     void KahnScheduler::updateDependencies(const std::shared_ptr<const Task>& executedTask)

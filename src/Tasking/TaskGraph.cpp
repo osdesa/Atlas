@@ -180,11 +180,11 @@ namespace Atlas
         {
             if (task->getDependencies().empty())
             {
-                task->state = TaskState::Ready;
+                task->executionInfo.state = TaskState::Ready;
             }
             else
             {
-                task->state = TaskState::Blocked;
+                task->executionInfo.state = TaskState::Blocked;
             }
         }
     }

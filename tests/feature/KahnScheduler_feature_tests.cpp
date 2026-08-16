@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -22,6 +24,16 @@ namespace
         const auto position{ std::find(executionOrder.begin(), executionOrder.end(), taskName) };
         REQUIRE(position != executionOrder.end());
         return static_cast<std::size_t>(std::distance(executionOrder.begin(), position));
+    }
+
+    void requireSuccessfulTask(const Atlas::TaskGraph& graph, Atlas::TaskHandle handle)
+    {
+        const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.findTask(handle) };
+
+        REQUIRE(task.has_value());
+        REQUIRE(task.value()->executionInfo.state == Atlas::TaskState::Success);
+        REQUIRE(task.value()->executionInfo.exception == nullptr);
+        REQUIRE(task.value()->executionInfo.executionDuration >= std::chrono::microseconds{ 0 });
     }
 } // namespace
 
@@ -50,6 +62,9 @@ SCENARIO("KahnScheduler executes a dependency chain", "[FEATURE]")
                 REQUIRE(result.status == Atlas::SchedulerStatus::Success);
                 REQUIRE(result.executedTaskCount == 3U);
                 REQUIRE(executionOrder == std::vector<std::string>{ "First", "Second", "Third" });
+                requireSuccessfulTask(graph, first);
+                requireSuccessfulTask(graph, second);
+                requireSuccessfulTask(graph, third);
             }
         }
     }
@@ -93,6 +108,10 @@ SCENARIO("KahnScheduler executes a fan-out and fan-in graph", "[FEATURE]")
                 REQUIRE(rootPosition < secondBranchPosition);
                 REQUIRE(firstBranchPosition < leafPosition);
                 REQUIRE(secondBranchPosition < leafPosition);
+                requireSuccessfulTask(graph, root);
+                requireSuccessfulTask(graph, firstBranch);
+                requireSuccessfulTask(graph, secondBranch);
+                requireSuccessfulTask(graph, leaf);
             }
         }
     }
