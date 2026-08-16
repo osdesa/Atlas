@@ -28,17 +28,10 @@ namespace Atlas
         }
         else
         {
-            // Go through all tasks that can be executed
-            while (!readyTasks.empty())
+            while (const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask() })
             {
-                TaskHandle taskHandle{ readyTasks.front() };
-                readyTasks.pop();
-
-                // Must exist
-                const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(taskHandle) };
-
-                // Execute the task
                 const SchedulerResult executeStatus{ executeFunction(task.value()->function) };
+                completeTask(task.value(), executeStatus);
 
                 if (executeStatus.status != SchedulerStatus::Success)
                 {
@@ -50,8 +43,6 @@ namespace Atlas
                 }
 
                 result.executedTaskCount++;
-
-                // Update tasks which had a dependency on executed task
                 updateDependencies(task.value());
             }
         }
@@ -98,6 +89,48 @@ namespace Atlas
         return true;
     }
 
+    void KahnScheduler::enqueueReadyTask(TaskHandle taskHandle)
+    {
+        const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(taskHandle) };
+        task.value()->state = TaskState::Ready;
+        readyTasks.emplace(taskHandle);
+    }
+
+    std::optional<std::shared_ptr<const Task>> KahnScheduler::takeNextReadyTask()
+    {
+        while (!readyTasks.empty())
+        {
+            const TaskHandle taskHandle{ readyTasks.front() };
+            readyTasks.pop();
+
+            const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(taskHandle) };
+            if (!task.has_value() || task.value()->state != TaskState::Ready)
+            {
+                continue;
+            }
+
+            task.value()->state = TaskState::Running;
+            task.value()->result.reset();
+            return task;
+        }
+
+        return std::nullopt;
+    }
+
+    void KahnScheduler::completeTask(const std::shared_ptr<const Task>& task, const SchedulerResult& executionResult)
+    {
+        if (executionResult.status == SchedulerStatus::Success)
+        {
+            task->state = TaskState::Success;
+            task->result = TaskResult{ .handle = task->handle, .state = TaskState::Success, .exception = nullptr };
+        }
+        else
+        {
+            task->state = TaskState::Failure;
+            task->result = TaskResult{ .handle = task->handle, .state = TaskState::Failure, .exception = executionResult.exception };
+        }
+    }
+
     void KahnScheduler::updateDependencies(const std::shared_ptr<const Task>& executedTask)
     {
         for (TaskHandle taskHandle : executedTask->getDependents())
@@ -107,7 +140,7 @@ namespace Atlas
 
             if (dependenciesCount == 0)
             {
-                readyTasks.emplace(taskHandle);
+                enqueueReadyTask(taskHandle);
                 remainingDependencies.erase(taskHandle);
             }
             else

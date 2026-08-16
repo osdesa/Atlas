@@ -3,10 +3,13 @@
 
 #include "TaskHandle.h"
 #include "TaskOptions.h"
+#include "TaskResult.h"
+#include "TaskState.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <utility>
 #include <vector>
@@ -45,18 +48,6 @@ namespace Atlas
         {
         }
 
-        /// @brief Prevents copying a graph-owned task.
-        Task(const Task&) = delete;
-
-        /// @brief Prevents copy-assigning a graph-owned task.
-        Task& operator=(const Task&) = delete;
-
-        /// @brief Prevents moving a graph-owned task.
-        Task(Task&&) = delete;
-
-        /// @brief Prevents move-assigning a graph-owned task.
-        Task& operator=(Task&&) = delete;
-
         /// @brief The immutable identity information of the task.
         const TaskHandle handle;
 
@@ -65,6 +56,12 @@ namespace Atlas
 
         /// @brief The immutable options for the task.
         const TaskOptions options;
+
+        /// @brief The current state of this task, which may be updated by the scheduler during execution.
+        mutable TaskState state{ TaskState::Unknown };
+
+        /// @brief The result of the task's execution, which may be updated by the scheduler during execution.
+        mutable std::optional<TaskResult> result{ std::nullopt };
 
         /**
          * @brief Reports whether this task has a valid handle and execution resource.
@@ -126,6 +123,18 @@ namespace Atlas
         {
             return handle == other.handle;
         }
+
+        /// @brief Prevents copying a graph-owned task.
+        Task(const Task&) = delete;
+
+        /// @brief Prevents copy-assigning a graph-owned task.
+        Task& operator=(const Task&) = delete;
+
+        /// @brief Prevents moving a graph-owned task.
+        Task(Task&&) = delete;
+
+        /// @brief Prevents move-assigning a graph-owned task.
+        Task& operator=(Task&&) = delete;
 
       private:
         /// @brief The tasks which need to be done before this task can be executed.
