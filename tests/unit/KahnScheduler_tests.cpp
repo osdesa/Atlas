@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <exception>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <type_traits>
@@ -31,18 +32,37 @@ TEST_CASE("KahnScheduler executes a single task successfully", "[UNIT]")
 {
     Atlas::TaskGraph graph;
     bool executed{ false };
+    Atlas::TaskState observedExecutionState{ Atlas::TaskState::Unknown };
+    std::shared_ptr<const Atlas::Task> runtimeTask;
 
-    addTask(graph, [&executed] { executed = true; }, "Root");
+    const Atlas::TaskHandle handle{ addTask(
+        graph,
+        [&executed, &observedExecutionState, &runtimeTask]
+        {
+            observedExecutionState = runtimeTask->state;
+            executed = true;
+        },
+        "Root") };
     REQUIRE(graph.finishTaskGraph());
+    runtimeTask = graph.findTask(handle).value();
 
     Atlas::KahnScheduler scheduler{ graph };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
     REQUIRE(executed);
+    REQUIRE(observedExecutionState == Atlas::TaskState::Running);
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 1U);
     REQUIRE(result.exception == nullptr);
     REQUIRE(result.executionTime >= std::chrono::milliseconds{ 0 });
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.findTask(handle) };
+    REQUIRE(task.has_value());
+    REQUIRE(task.value()->state == Atlas::TaskState::Success);
+    REQUIRE(task.value()->result.has_value());
+    REQUIRE(task.value()->result->handle == handle);
+    REQUIRE(task.value()->result->state == Atlas::TaskState::Success);
+    REQUIRE(task.value()->result->exception == nullptr);
 }
 
 TEST_CASE("KahnScheduler treats an empty task function as successful work", "[UNIT]")
@@ -80,8 +100,11 @@ TEST_CASE("KahnScheduler executes every independent root task", "[UNIT]")
 TEST_CASE("KahnScheduler captures task exceptions", "[UNIT]")
 {
     Atlas::TaskGraph graph;
+    bool dependentExecuted{ false };
 
-    addTask(graph, [] { throw std::runtime_error{ "task failed" }; }, "Failing");
+    const Atlas::TaskHandle handle{ addTask(graph, [] { throw std::runtime_error{ "task failed" }; }, "Failing") };
+    const Atlas::TaskHandle dependentHandle{ addTask(graph, [&dependentExecuted] { dependentExecuted = true; }, "Dependent") };
+    REQUIRE(graph.addDependency(dependentHandle, handle));
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::KahnScheduler scheduler{ graph };
@@ -90,6 +113,20 @@ TEST_CASE("KahnScheduler captures task exceptions", "[UNIT]")
     CHECK(result.status == Atlas::SchedulerStatus::TaskFailed);
     CHECK(result.executedTaskCount == 0U);
     REQUIRE(result.exception != nullptr);
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.findTask(handle) };
+    REQUIRE(task.has_value());
+    REQUIRE(task.value()->state == Atlas::TaskState::Failure);
+    REQUIRE(task.value()->result.has_value());
+    REQUIRE(task.value()->result->handle == handle);
+    REQUIRE(task.value()->result->state == Atlas::TaskState::Failure);
+    REQUIRE(task.value()->result->exception == result.exception);
+    REQUIRE_FALSE(dependentExecuted);
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> dependentTask{ graph.findTask(dependentHandle) };
+    REQUIRE(dependentTask.has_value());
+    REQUIRE(dependentTask.value()->state == Atlas::TaskState::Blocked);
+    REQUIRE_FALSE(dependentTask.value()->result.has_value());
 
     bool caughtRuntimeError{ false };
     try
@@ -104,7 +141,29 @@ TEST_CASE("KahnScheduler captures task exceptions", "[UNIT]")
     REQUIRE(caughtRuntimeError);
 }
 
-TEST_CASE("KahnScheduler rebuilds its execution state for every run", "[UNIT]")
+TEST_CASE("KahnScheduler skips a queued task that is no longer ready", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    bool executed{ false };
+
+    const Atlas::TaskHandle handle{ addTask(graph, [&executed] { executed = true; }, "Cancelled") };
+    REQUIRE(graph.finishTaskGraph());
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.findTask(handle) };
+    REQUIRE(task.has_value());
+    task.value()->state = Atlas::TaskState::Cancelled;
+
+    Atlas::KahnScheduler scheduler{ graph };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE_FALSE(executed);
+    REQUIRE(result.status == Atlas::SchedulerStatus::InvalidGraph);
+    REQUIRE(result.executedTaskCount == 0U);
+    REQUIRE(task.value()->state == Atlas::TaskState::Cancelled);
+    REQUIRE_FALSE(task.value()->result.has_value());
+}
+
+TEST_CASE("KahnScheduler does not execute a completed task again", "[UNIT]")
 {
     Atlas::TaskGraph graph;
     std::size_t executionCount{ 0U };
@@ -117,8 +176,8 @@ TEST_CASE("KahnScheduler rebuilds its execution state for every run", "[UNIT]")
     const Atlas::SchedulerResult secondResult{ scheduler.execute() };
 
     REQUIRE(firstResult.status == Atlas::SchedulerStatus::Success);
-    REQUIRE(secondResult.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(secondResult.status == Atlas::SchedulerStatus::InvalidGraph);
     REQUIRE(firstResult.executedTaskCount == 1U);
-    REQUIRE(secondResult.executedTaskCount == 1U);
-    REQUIRE(executionCount == 2U);
+    REQUIRE(secondResult.executedTaskCount == 0U);
+    REQUIRE(executionCount == 1U);
 }

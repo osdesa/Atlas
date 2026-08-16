@@ -5,6 +5,8 @@
 #include "atlas/Tasking/TaskHandle.h"
 
 #include <cstddef>
+#include <memory>
+#include <optional>
 #include <queue>
 #include <unordered_map>
 
@@ -58,6 +60,25 @@ namespace Atlas
          * @return True when every graph task was found; false otherwise.
          */
         bool parseDependencies();
+
+        /**
+         * @brief Marks a task ready and adds it to the FIFO ready queue.
+         * @param taskHandle The task that has become ready.
+         */
+        void enqueueReadyTask(TaskHandle taskHandle);
+
+        /**
+         * @brief Removes queued entries until a currently ready task is found.
+         * @return The next ready task, or an empty optional when none remain.
+         */
+        std::optional<std::shared_ptr<const Task>> takeNextReadyTask();
+
+        /**
+         * @brief Records the terminal state and per-task result after execution.
+         * @param task The task that finished executing.
+         * @param executionResult The result produced by executing its function.
+         */
+        void completeTask(const std::shared_ptr<const Task>& task, const SchedulerResult& executionResult);
 
         /**
          * @brief Releases tasks whose final outstanding dependency has completed.

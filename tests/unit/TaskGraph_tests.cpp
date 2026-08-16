@@ -207,6 +207,20 @@ TEST_CASE("TaskGraph finishes a valid directed acyclic graph", "[UNIT]")
     REQUIRE(graph.finishTaskGraph());
     REQUIRE(graph.isFinalisedGraph());
     REQUIRE(graph.finishTaskGraph());
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> rootTask{ graph.findTask(root) };
+    const std::optional<std::shared_ptr<const Atlas::Task>> middleTask{ graph.findTask(middle) };
+    const std::optional<std::shared_ptr<const Atlas::Task>> leafTask{ graph.findTask(leaf) };
+
+    REQUIRE(rootTask.has_value());
+    REQUIRE(middleTask.has_value());
+    REQUIRE(leafTask.has_value());
+    REQUIRE(rootTask.value()->state == Atlas::TaskState::Ready);
+    REQUIRE(middleTask.value()->state == Atlas::TaskState::Blocked);
+    REQUIRE(leafTask.value()->state == Atlas::TaskState::Blocked);
+    REQUIRE_FALSE(rootTask.value()->result.has_value());
+    REQUIRE_FALSE(middleTask.value()->result.has_value());
+    REQUIRE_FALSE(leafTask.value()->result.has_value());
 }
 
 TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")

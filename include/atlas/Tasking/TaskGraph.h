@@ -167,6 +167,11 @@ namespace Atlas
          */
         bool checkForCycles(TaskHandle dependent, TaskHandle dependency) const;
 
+        /**
+         * @brief Sets the initial state of all tasks in the graph to Ready or Blocked based on their dependencies.
+         */
+        void setInitialStateForTasks() noexcept;
+
         /// @brief The collection of tasks owned by this graph.
         std::vector<std::shared_ptr<Task>> tasks;
 

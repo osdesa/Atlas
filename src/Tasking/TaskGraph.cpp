@@ -128,6 +128,12 @@ namespace Atlas
         }
 
         isFinalised = (!hasCycles && hasRootTask);
+
+        if (isFinalised)
+        {
+            setInitialStateForTasks();
+        }
+
         return isFinalised;
     }
 
@@ -166,6 +172,21 @@ namespace Atlas
         }
 
         return false;
+    }
+
+    void TaskGraph::setInitialStateForTasks() noexcept
+    {
+        for (const std::shared_ptr<Task>& task : tasks)
+        {
+            if (task->getDependencies().empty())
+            {
+                task->state = TaskState::Ready;
+            }
+            else
+            {
+                task->state = TaskState::Blocked;
+            }
+        }
     }
 
     bool TaskGraph::validTaskLink(TaskHandle dependent, TaskHandle dependency) const noexcept
