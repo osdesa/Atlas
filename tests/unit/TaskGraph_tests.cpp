@@ -16,23 +16,24 @@ namespace
     }
 } // namespace
 
-TEST_CASE("TaskGraph assigns handles from its own graph", "[UNIT]")
+TEST_CASE("TaskGraph assigns handles from its process-unique graph identity", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 7U };
+    Atlas::TaskGraph graph;
 
     const Atlas::TaskHandle first{ addTask(graph, "First") };
     const Atlas::TaskHandle second{ addTask(graph, "Second") };
 
-    REQUIRE(first.getGraphID() == 7U);
-    REQUIRE(second.getGraphID() == 7U);
-    REQUIRE(first.getTaskID() == 1U);
-    REQUIRE(second.getTaskID() == 2U);
+    REQUIRE(graph.getGraphID().isValid());
+    REQUIRE(first.getGraphID() == graph.getGraphID());
+    REQUIRE(second.getGraphID() == graph.getGraphID());
+    REQUIRE(first.getTaskID() == Atlas::TaskId{ 1U });
+    REQUIRE(second.getTaskID() == Atlas::TaskId{ 2U });
 }
 
 TEST_CASE("TaskGraph exposes read-only task queries", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 7U };
-    const Atlas::TaskHandle missing{ 99U, 7U };
+    Atlas::TaskGraph graph;
+    const Atlas::TaskHandle missing{ Atlas::TaskId{ 99U }, graph.getGraphID() };
 
     REQUIRE(graph.getTaskCount() == 0U);
     REQUIRE(graph.getTaskHandles().empty());
@@ -45,7 +46,7 @@ TEST_CASE("TaskGraph exposes read-only task queries", "[UNIT]")
 
     STATIC_REQUIRE(std::is_same_v<decltype(graph.findTask(first)), std::optional<std::shared_ptr<const Atlas::Task>>>);
     REQUIRE(graph.getTaskCount() == 2U);
-    REQUIRE(graph.getGraphID() == 7U);
+    REQUIRE(graph.getGraphID().isValid());
     REQUIRE(taskHandles == std::vector<Atlas::TaskHandle>{ first, second });
     REQUIRE(task.has_value());
     REQUIRE(task.value()->getHandle() == first);
@@ -63,7 +64,7 @@ TEST_CASE("TaskGraph cannot be copied or moved", "[UNIT]")
 
 TEST_CASE("TaskGraph accepts one valid dependency edge", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     const Atlas::TaskHandle prerequisite{ addTask(graph, "Prerequisite") };
     const Atlas::TaskHandle dependent{ addTask(graph, "Dependent") };
@@ -83,7 +84,7 @@ TEST_CASE("TaskGraph accepts one valid dependency edge", "[UNIT]")
 
 TEST_CASE("TaskGraph rejects a two-task dependency cycle", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     const Atlas::TaskHandle first{ addTask(graph, "First") };
     const Atlas::TaskHandle second{ addTask(graph, "Second") };
@@ -94,7 +95,7 @@ TEST_CASE("TaskGraph rejects a two-task dependency cycle", "[UNIT]")
 
 TEST_CASE("TaskGraph rejects a longer dependency cycle", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     const Atlas::TaskHandle first{ addTask(graph, "First") };
     const Atlas::TaskHandle second{ addTask(graph, "Second") };
@@ -107,14 +108,18 @@ TEST_CASE("TaskGraph rejects a longer dependency cycle", "[UNIT]")
 
 TEST_CASE("TaskGraph rejects invalid dependency edges", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
-    Atlas::TaskGraph otherGraph{ 2U };
+    Atlas::TaskGraph graph;
+    Atlas::TaskGraph otherGraph;
 
     const Atlas::TaskHandle first{ addTask(graph, "First") };
     const Atlas::TaskHandle second{ addTask(graph, "Second") };
     const Atlas::TaskHandle other{ addTask(otherGraph, "Other") };
-    const Atlas::TaskHandle invalid{ Atlas::INVALID_TASK_ID, 1U };
-    const Atlas::TaskHandle missing{ 99U, 1U };
+    const Atlas::TaskHandle invalid{ Atlas::INVALID_TASK_ID, graph.getGraphID() };
+    const Atlas::TaskHandle missing{ Atlas::TaskId{ 99U }, graph.getGraphID() };
+
+    REQUIRE(first.getTaskID() == other.getTaskID());
+    REQUIRE_FALSE(first.getGraphID() == other.getGraphID());
+    REQUIRE_FALSE(graph.findTask(other).has_value());
 
     REQUIRE_FALSE(graph.addDependency(invalid, first));
     REQUIRE_FALSE(graph.addDependency(first, first));
@@ -127,7 +132,7 @@ TEST_CASE("TaskGraph rejects invalid dependency edges", "[UNIT]")
 
 TEST_CASE("TaskGraph does not finish when it is empty", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     REQUIRE_FALSE(graph.isFinalisedGraph());
     REQUIRE_FALSE(graph.finishTaskGraph());
@@ -136,7 +141,7 @@ TEST_CASE("TaskGraph does not finish when it is empty", "[UNIT]")
 
 TEST_CASE("TaskGraph finishes a valid directed acyclic graph", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     const Atlas::TaskHandle root{ addTask(graph, "Root") };
     const Atlas::TaskHandle middle{ addTask(graph, "Middle") };
@@ -151,7 +156,7 @@ TEST_CASE("TaskGraph finishes a valid directed acyclic graph", "[UNIT]")
 
 TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     const Atlas::TaskHandle root{ addTask(graph, "Root") };
     const Atlas::TaskHandle firstDependent{ addTask(graph, "First dependent") };
@@ -172,7 +177,7 @@ TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")
 
 TEST_CASE("TaskGraph remains editable after unsuccessful finalisation", "[UNIT]")
 {
-    Atlas::TaskGraph graph{ 1U };
+    Atlas::TaskGraph graph;
 
     REQUIRE_FALSE(graph.finishTaskGraph());
 

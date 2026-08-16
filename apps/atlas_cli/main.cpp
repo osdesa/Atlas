@@ -169,7 +169,7 @@ namespace
 
 int main()
 {
-    Atlas::TaskGraph frameGraph{ 1U };
+    Atlas::TaskGraph frameGraph;
     FrameState frameState;
     if (!createFrameGraph(frameGraph, frameState))
     {
