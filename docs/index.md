@@ -8,14 +8,14 @@ validates dependencies, and executes finalised graphs sequentially with Kahn's
 topological algorithm. Tasks carry optional names, static priorities, and
 backend-neutral CPU/GPU resource intent. Graph finalisation assigns initial
 `Ready` or `Blocked` states, and execution records `Running`, `Success`, or
-`Failure` plus task-attributed terminal results. Task exceptions,
-completed-task count, and total elapsed time are also reported.
+`Failure` in each task's execution information. Task execution duration,
+exceptions, completed-task count, and total elapsed time are also reported.
 
 The current executor remains FIFO, synchronous, and single-threaded. Priority
 and resource intent do not yet affect selection or dispatch. Schedulers own
-lifecycle changes; cancellation and repeated graph execution are not complete
-runtime features. The detailed current contract is documented in
-`docs/task-lifecycle.md`.
+lifecycle changes, and repeated graph execution is not a supported runtime
+feature. Atlas does not currently expose task cancellation. The detailed current
+contract is documented in `docs/task-lifecycle.md`.
 
 Atlas does not yet contain a CPU worker backend, Vulkan initialisation or compute
 execution, GPU task slices, mixed CPU/GPU scheduling, or multiple scheduling

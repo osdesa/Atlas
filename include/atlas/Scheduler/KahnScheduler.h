@@ -74,7 +74,7 @@ namespace Atlas
         std::optional<std::shared_ptr<const Task>> takeNextReadyTask();
 
         /**
-         * @brief Records the terminal state and per-task result after execution.
+         * @brief Records the terminal state, captured exception, and duration after execution.
          * @param task The task that finished executing.
          * @param executionResult The result produced by executing its function.
          */

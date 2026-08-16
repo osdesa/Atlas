@@ -2,14 +2,12 @@
 #define ATLAS_TASK
 
 #include "TaskHandle.h"
+#include "TaskExecutionInfo.h"
 #include "TaskOptions.h"
-#include "TaskResult.h"
-#include "TaskState.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <span>
 #include <utility>
 #include <vector>
@@ -57,11 +55,8 @@ namespace Atlas
         /// @brief The immutable options for the task.
         const TaskOptions options;
 
-        /// @brief The current state of this task, which may be updated by the scheduler during execution.
-        mutable TaskState state{ TaskState::Unknown };
-
-        /// @brief The result of the task's execution, which may be updated by the scheduler during execution.
-        mutable std::optional<TaskResult> result{ std::nullopt };
+        /// @brief Runtime state, failure, and duration information updated by the scheduler.
+        mutable TaskExecutionInfo executionInfo;
 
         /**
          * @brief Reports whether this task has a valid handle and execution resource.

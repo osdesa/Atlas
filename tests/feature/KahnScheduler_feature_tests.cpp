@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -30,11 +31,9 @@ namespace
         const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.findTask(handle) };
 
         REQUIRE(task.has_value());
-        REQUIRE(task.value()->state == Atlas::TaskState::Success);
-        REQUIRE(task.value()->result.has_value());
-        REQUIRE(task.value()->result->handle == handle);
-        REQUIRE(task.value()->result->state == Atlas::TaskState::Success);
-        REQUIRE(task.value()->result->exception == nullptr);
+        REQUIRE(task.value()->executionInfo.state == Atlas::TaskState::Success);
+        REQUIRE(task.value()->executionInfo.exception == nullptr);
+        REQUIRE(task.value()->executionInfo.executionDuration >= std::chrono::microseconds{ 0 });
     }
 } // namespace
 

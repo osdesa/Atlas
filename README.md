@@ -11,8 +11,8 @@ The current implementation can:
 - build and finalise directed acyclic task graphs;
 - reject missing, duplicate, self, cross-graph, and cyclic dependencies;
 - execute a finalised graph sequentially with Kahn's topological algorithm; and
-- record per-task lifecycle state and terminal results alongside graph-level
-  completion count, elapsed time, and exceptions.
+- record per-task lifecycle state, exceptions, and execution duration alongside
+  graph-level completion count, elapsed time, and exceptions.
 
 The example CLI exercises that path with a six-task graph. Unit and feature
 tests cover the current graph and sequential-execution behaviour.
@@ -33,16 +33,16 @@ not yet use priority for ordering or resource intent for backend dispatch.
 Tasks begin `Unknown` while their graph is being constructed. Successful graph
 finalisation makes tasks without dependencies `Ready` and tasks waiting on
 dependencies `Blocked`. `KahnScheduler` changes a selected task to `Running`,
-then records `Success` or `Failure` and a task-attributed result. Successful
-completion makes newly unblocked dependants `Ready`.
+then records `Success` or `Failure`, a captured exception when applicable, and
+the callable's execution duration. Successful completion makes newly unblocked
+dependants `Ready`.
 
 Schedulers own state changes; `Task` does not validate a universal transition
 matrix. The current graph and scheduler path is single-threaded and intended for
-one execution of a graph. A task no longer marked `Ready`, including a cancelled
-or previously completed task, is not executed. Cancellation does not yet have a
-submission API, graph-level status, result propagation, or dependent-task policy.
-See [Task lifecycle](docs/task-lifecycle.md) for the exact current contract and
-limitations.
+one execution of a graph. A task no longer marked `Ready`, including a previously
+completed task, is not executed. Atlas does not currently expose a cancellation
+state or cancellation API. See [Task lifecycle](docs/task-lifecycle.md) for the
+exact current contract and limitations.
 
 The intended GPU design is cooperative: a logical GPU task will be divided into
 independently submitted execution slices, and scheduling control will return to

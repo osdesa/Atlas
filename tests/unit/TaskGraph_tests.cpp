@@ -215,12 +215,12 @@ TEST_CASE("TaskGraph finishes a valid directed acyclic graph", "[UNIT]")
     REQUIRE(rootTask.has_value());
     REQUIRE(middleTask.has_value());
     REQUIRE(leafTask.has_value());
-    REQUIRE(rootTask.value()->state == Atlas::TaskState::Ready);
-    REQUIRE(middleTask.value()->state == Atlas::TaskState::Blocked);
-    REQUIRE(leafTask.value()->state == Atlas::TaskState::Blocked);
-    REQUIRE_FALSE(rootTask.value()->result.has_value());
-    REQUIRE_FALSE(middleTask.value()->result.has_value());
-    REQUIRE_FALSE(leafTask.value()->result.has_value());
+    REQUIRE(rootTask.value()->executionInfo.state == Atlas::TaskState::Ready);
+    REQUIRE(middleTask.value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(leafTask.value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(rootTask.value()->executionInfo.exception == nullptr);
+    REQUIRE(middleTask.value()->executionInfo.exception == nullptr);
+    REQUIRE(leafTask.value()->executionInfo.exception == nullptr);
 }
 
 TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")

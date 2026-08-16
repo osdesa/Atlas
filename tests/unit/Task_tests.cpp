@@ -1,6 +1,7 @@
 #include "atlas/Tasking/Task.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <cstdint>
 #include <type_traits>
 
@@ -32,12 +33,13 @@ TEST_CASE("Task preserves a valid handle's task ID", "[UNIT]")
     REQUIRE(task.handle.getTaskID() == Atlas::TaskId{ 1U });
 }
 
-TEST_CASE("Task starts without an assigned execution state or result", "[UNIT]")
+TEST_CASE("Task starts with default execution information", "[UNIT]")
 {
     const Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, Atlas::TaskOptions{ TASK_NAME } };
 
-    REQUIRE(task.state == Atlas::TaskState::Unknown);
-    REQUIRE_FALSE(task.result.has_value());
+    REQUIRE(task.executionInfo.state == Atlas::TaskState::Unknown);
+    REQUIRE(task.executionInfo.exception == nullptr);
+    REQUIRE(task.executionInfo.executionDuration == std::chrono::microseconds{ 0 });
 }
 
 TEST_CASE("Task exposes its callable work", "[UNIT]")

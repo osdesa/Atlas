@@ -12,9 +12,8 @@ runtime state machine.
 | `Blocked` | At least one dependency has not completed successfully. |
 | `Ready` | The task is eligible for selection by the current scheduler. |
 | `Running` | The scheduler has selected the task and its callable is executing. |
-| `Success` | The callable returned normally and a successful `TaskResult` exists. |
-| `Failure` | The callable threw and a failed `TaskResult` contains its exception. |
-| `Cancelled` | The task must not be selected for execution. Full cancellation behavior is not implemented. |
+| `Success` | The callable returned normally with no captured exception. |
+| `Failure` | The callable threw and its exception was captured. |
 
 ## Current scheduler behavior
 
@@ -37,28 +36,28 @@ lifecycle behavior.
 
 The ready queue stores task handles in FIFO order. Queue membership alone is not
 enough to execute a task: selection rechecks that its current state is `Ready`.
-This allows stale, cancelled, or already completed entries to be skipped without
-changing the queue container.
+This allows stale or already completed entries to be skipped without changing
+the queue container.
 
-## Results and failure
+## Execution information and failure
 
-`Task::result` is empty until the scheduler records a terminal outcome. Success
-and failure results contain the affected `TaskHandle`; failure also retains the
-exception thrown by the task callable. The graph-level `SchedulerResult` still
-reports total successful completions, elapsed time, and the first captured task
-exception.
+`TaskExecutionInfo` is the single source of runtime state for a task. It also
+stores the exception thrown by the callable, when applicable, and the duration
+spent executing the callable. Static submission metadata remains separate in
+`TaskOptions`. The graph-level `SchedulerResult` reports total successful
+completions, graph elapsed time, and the first captured task exception.
 
 Execution stops at the first failure. Tasks that still depend on the failed task
-remain `Blocked` and have no task result.
+remain `Blocked`, retain an empty exception pointer, and are not executed.
 
 ## Current limitations
 
-- Scheduling is synchronous and single-threaded; state and result are not atomic.
+- Scheduling is synchronous and single-threaded; execution information is not atomic.
 - A graph is intended for one execution and completed tasks are not run again.
 - Priority and execution-resource intent do not affect FIFO selection or dispatch.
 - Both CPU- and GPU-designated tasks currently run host callables.
-- Cancellation has no submission API, terminal result creation, graph-level
-  status, or dependent-task propagation policy.
-- Mutating lifecycle state through a retained task view is possible; callers and
-  scheduler implementations are responsible for maintaining coherent state and
-  result values.
+- Atlas does not currently define task cancellation; it will be introduced only
+  alongside a concrete cancellation API and execution policy.
+- Mutating execution information through a retained task view is possible;
+  callers and scheduler implementations are responsible for maintaining
+  coherent values.

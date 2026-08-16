@@ -29,11 +29,12 @@ this stage.
 ## Current task and execution model
 
 `TaskGraph` owns task definitions and exposes `shared_ptr<const Task>` views.
-Identity, callable work, and options are immutable. The task's lifecycle state
-and optional result are logically mutable so the sequential scheduler can update
-them through that otherwise read-only view. Retaining a returned `shared_ptr`
-extends the task object's lifetime beyond the graph, so callers must not infer a
-strict non-owning lifetime from the graph-owned description.
+Identity, callable work, and options are immutable. `TaskExecutionInfo` groups
+the logically mutable lifecycle state, captured exception, and callable duration
+so the sequential scheduler can update them through that otherwise read-only
+view. Retaining a returned `shared_ptr` extends the task object's lifetime beyond
+the graph, so callers must not infer a strict non-owning lifetime from the
+graph-owned description.
 
 Task options currently contain an optional name, a static `uint32_t` priority,
 and CPU/GPU execution-resource intent. Lower numeric priorities represent higher
@@ -53,17 +54,17 @@ Running --callable returns----------------> Success
 Running --callable throws-----------------> Failure
 ```
 
-`Success`, `Failure`, and `Cancelled` are terminal for the current scheduler.
-Terminal success and failure produce a `TaskResult` containing the affected
-handle and captured exception when applicable. A queued task not marked `Ready`
-is skipped. There is not yet a cancellation API, cancellation result propagation,
-graph-level cancellation status, or dependent cancellation policy; a skipped
-task currently leaves graph execution reported as `InvalidGraph`.
+`Success` and `Failure` are terminal for the current scheduler. The task's
+execution information retains the captured exception when applicable and the
+time spent executing its callable. A queued task not marked `Ready` is skipped;
+if this prevents every graph task from completing, execution is reported as
+`InvalidGraph`. Atlas does not currently define a cancellation state or
+cancellation API.
 
 The current model is intentionally single-threaded and intended for one execution
-of a graph. State and result fields are not atomic, concurrent mutation is not
-supported, and a completed task is not executed again. These restrictions must
-be revisited when a worker executor and scheduler service are introduced.
+of a graph. Execution-information fields are not atomic, concurrent mutation is
+not supported, and a completed task is not executed again. These restrictions
+must be revisited when a worker executor and scheduler service are introduced.
 
 ## Presets
 
