@@ -1,16 +1,13 @@
 #ifndef ATLAS_TASK
 #define ATLAS_TASK
 
-#include "TaskHandle.h"
 #include "TaskExecutionInfo.h"
+#include "TaskFunction.h"
+#include "TaskHandle.h"
 #include "TaskOptions.h"
 
-#include "atlas/Executor/TaskFunction.h"
-
-#include <cstdint>
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <span>
 #include <utility>
 #include <vector>

@@ -8,14 +8,17 @@
 
 /**
  * @file TaskCompletion.h
- * @brief Declares the result produced by a task completion.
+ * @brief Declares the outcome produced by executing one task callable.
  */
 
 namespace Atlas
 {
     /**
      * @ingroup executor
-     * @brief Describes the outcome of executing a task graph.
+     * @brief Transfers one task execution outcome from an executor to a scheduler.
+     *
+     * This transient value does not contain task lifecycle state. The scheduler
+     * remains responsible for applying the completion to TaskExecutionInfo.
      */
     struct TaskCompletion
     {
@@ -25,7 +28,7 @@ namespace Atlas
         /// @brief The exception captured from the callable, or nullptr on success.
         std::exception_ptr exception{ nullptr };
 
-        /// @brief Time spent executing the callable.
+        /// @brief Time spent executing the task callable, excluding queue wait time.
         std::chrono::microseconds executionDuration{ 0 };
 
         /**
@@ -37,7 +40,6 @@ namespace Atlas
             return exception == nullptr;
         }
     };
-
 } // namespace Atlas
 
 #endif // !ATLAS_TASK_COMPLETION
