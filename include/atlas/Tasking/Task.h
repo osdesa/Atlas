@@ -5,6 +5,9 @@
 #include "TaskExecutionInfo.h"
 #include "TaskOptions.h"
 
+#include "atlas/Executor/TaskFunction.h"
+
+#include <cstdint>
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -19,12 +22,6 @@
 
 namespace Atlas
 {
-    /**
-     * @ingroup tasking
-     * @brief Callable work executed when its task becomes ready.
-     */
-    using TaskFunction = std::function<void()>;
-
     /**
      * @ingroup tasking
      * @brief Stores a task's identity, work, metadata, and graph edges.
