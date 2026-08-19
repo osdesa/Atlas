@@ -13,7 +13,7 @@ runtime state machine.
 | `Ready` | The task is eligible for selection by the current scheduler. |
 | `Running` | The scheduler has selected the task and its callable is executing. |
 | `Success` | The callable returned normally with no captured exception. |
-| `Failure` | The callable threw and its exception was captured. |
+| `Failure` | Execution failed, or the executor accepted the task but did not return its matching completion. A callable exception is retained when one exists. |
 
 ## Current scheduler behavior
 
@@ -39,6 +39,13 @@ enough to execute a task: selection rechecks that its current state is `Ready`.
 This allows stale or already completed entries to be skipped without changing
 the queue container.
 
+`KahnScheduler` marks a selected task `Running` before submitting it to its
+borrowed CPU executor. A rejected submission restores the task to `Ready`. A
+valid completion changes it to `Success` or `Failure` and supplies its exception
+and callable duration. If accepted work produces no completion for the selected
+handle, the scheduler cannot safely resubmit it; the task becomes `Failure`, the
+graph result is `ExecutorUnavailable`, and its dependants remain `Blocked`.
+
 ## Execution information and failure
 
 `TaskExecutionInfo` is the single source of runtime state for a task. It also
@@ -47,8 +54,13 @@ spent executing the callable. Static submission metadata remains separate in
 `TaskOptions`. The graph-level `SchedulerResult` reports total successful
 completions, graph elapsed time, and the first captured task exception.
 
-Execution stops at the first failure. Tasks that still depend on the failed task
-remain `Blocked`, retain an empty exception pointer, and are not executed.
+Execution stops at the first task or executor failure. Tasks that still depend
+on the affected task remain `Blocked`, retain an empty exception pointer, and
+are not executed.
+
+Callable failure is reported as `TaskFailed`. Submission rejection or a missing
+or mismatched completion is an executor infrastructure failure and is reported
+as `ExecutorUnavailable` instead.
 
 ## Current limitations
 

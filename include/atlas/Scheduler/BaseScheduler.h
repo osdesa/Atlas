@@ -44,15 +44,6 @@ namespace Atlas
          */
         virtual SchedulerResult execute() = 0;
 
-        /**
-         * @brief Executes one task function and captures any exception it throws.
-         * @param taskFunction The task function to execute. An empty function is treated as
-         * successful work.
-         * @return A successful result when the function completes, or a task-failed result
-         * containing the captured exception.
-         */
-        SchedulerResult executeFunction(const Atlas::TaskFunction& taskFunction);
-
         /// @brief Destroys the scheduler through its common interface.
         virtual ~BaseScheduler() = default;
 
