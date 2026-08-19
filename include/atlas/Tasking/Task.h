@@ -1,13 +1,13 @@
 #ifndef ATLAS_TASK
 #define ATLAS_TASK
 
-#include "TaskHandle.h"
 #include "TaskExecutionInfo.h"
+#include "TaskFunction.h"
+#include "TaskHandle.h"
 #include "TaskOptions.h"
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <span>
 #include <utility>
 #include <vector>
@@ -19,12 +19,6 @@
 
 namespace Atlas
 {
-    /**
-     * @ingroup tasking
-     * @brief Callable work executed when its task becomes ready.
-     */
-    using TaskFunction = std::function<void()>;
-
     /**
      * @ingroup tasking
      * @brief Stores a task's identity, work, metadata, and graph edges.

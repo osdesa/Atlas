@@ -26,6 +26,13 @@ The Vulkan SDK is discovered at configure time with `find_package(Vulkan
 REQUIRED)`. `atlas` links to `Vulkan::Vulkan`, but no Vulkan API is called at
 this stage.
 
+The executor module defines a backend-neutral CPU submission/completion contract
+and a `SynchronousCpuExecutor`. The synchronous implementation executes on the
+submitting thread, queues one completion before callable execution begins, and
+captures the callable exception and duration. It is deliberately single-threaded
+and non-reentrant. It has focused unit coverage, but `KahnScheduler` does not yet
+consume this contract; scheduler integration is the next CPU-backend step.
+
 ## Current task and execution model
 
 `TaskGraph` owns task definitions and exposes `shared_ptr<const Task>` views.
@@ -39,8 +46,9 @@ graph-owned description.
 Task options currently contain an optional name, a static `uint32_t` priority,
 and CPU/GPU execution-resource intent. Lower numeric priorities represent higher
 priority, but the FIFO Kahn scheduler does not yet use priority or resource intent
-when selecting or dispatching work. Both CPU- and GPU-designated tasks currently
-execute their host callable synchronously on the calling thread.
+when selecting or dispatching work. Both CPU- and GPU-designated tasks in the
+scheduler path currently execute their host callable synchronously on the
+calling thread.
 
 Tasks are `Unknown` during graph construction. Successful finalisation assigns
 `Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns

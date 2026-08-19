@@ -10,12 +10,16 @@ The current implementation can:
   to each task;
 - build and finalise directed acyclic task graphs;
 - reject missing, duplicate, self, cross-graph, and cyclic dependencies;
+- execute individual CPU callables through a standalone synchronous executor
+  that reports task-attributed completion, exceptions, and duration;
 - execute a finalised graph sequentially with Kahn's topological algorithm; and
 - record per-task lifecycle state, exceptions, and execution duration alongside
   graph-level completion count, elapsed time, and exceptions.
 
-The example CLI exercises that path with a six-task graph. Unit and feature
-tests cover the current graph and sequential-execution behaviour.
+The example CLI exercises that path with a six-task graph. The standalone CPU
+executor is not yet connected to `KahnScheduler`; the scheduler still invokes
+task functions directly. Unit and feature tests cover the current graph,
+sequential scheduler, and synchronous executor behaviour.
 
 Atlas does **not** yet provide a CPU worker backend, runtime task submission,
 interchangeable scheduling policies, Vulkan initialisation or compute execution,
@@ -26,9 +30,11 @@ is currently limited to SDK discovery and link validation.
 
 `TaskOptions` describes immutable-on-submission intent. An empty name is valid,
 priority is an unsigned 32-bit value where a lower value means higher priority,
-and `ExecutionResource` classifies work as CPU or GPU. The current executor is
-FIFO and runs every task function synchronously on the calling thread: it does
-not yet use priority for ordering or resource intent for backend dispatch.
+and `ExecutionResource` classifies work as CPU or GPU. The current Kahn scheduler
+is FIFO and runs every task function synchronously on the calling thread: it
+does not yet use priority for ordering or resource intent for backend dispatch.
+The separate `SynchronousCpuExecutor` also executes on its submitting thread,
+but is not yet used by this graph-execution path.
 
 Tasks begin `Unknown` while their graph is being constructed. Successful graph
 finalisation makes tasks without dependencies `Ready` and tasks waiting on
