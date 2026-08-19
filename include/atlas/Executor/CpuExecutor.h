@@ -44,6 +44,7 @@ namespace Atlas
          * @param taskHandle The identity to attach to the resulting completion.
          * @param taskFunction Callable work transferred into the executor.
          * @return True when the work was accepted; false after shutdown begins.
+         * @throws std::invalid_argument If @p taskHandle is invalid.
          *
          * A rejected submission does not produce a completion. Exceptions raised
          * while copying, moving, or storing the callable are not task failures and
@@ -83,6 +84,10 @@ namespace Atlas
 
         /// @brief Prevents move-assigning executor state.
         CpuExecutor& operator=(CpuExecutor&&) = delete;
+
+      protected:
+        /// @brief Constructs a CPU executor through its common interface.
+        CpuExecutor() = default;
     };
 } // namespace Atlas
 

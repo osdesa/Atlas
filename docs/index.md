@@ -11,11 +11,14 @@ backend-neutral CPU/GPU resource intent. Graph finalisation assigns initial
 `Failure` in each task's execution information. Task execution duration,
 exceptions, completed-task count, and total elapsed time are also reported.
 
-The current executor remains FIFO, synchronous, and single-threaded. Priority
-and resource intent do not yet affect selection or dispatch. Schedulers own
-lifecycle changes, and repeated graph execution is not a supported runtime
-feature. Atlas does not currently expose task cancellation. The detailed current
-contract is documented in `docs/task-lifecycle.md`.
+The current Kahn scheduler remains FIFO, synchronous, and single-threaded.
+Priority and resource intent do not yet affect selection or dispatch. A
+standalone synchronous CPU executor now provides task-attributed completion,
+exception capture, duration measurement, and shutdown rejection, but it is not
+yet connected to the scheduler. Schedulers own lifecycle changes, and repeated
+graph execution is not a supported runtime feature. Atlas does not currently
+expose task cancellation. The detailed current contract is documented in
+`docs/task-lifecycle.md`.
 
 Atlas does not yet contain a CPU worker backend, Vulkan initialisation or compute
 execution, GPU task slices, mixed CPU/GPU scheduling, or multiple scheduling
