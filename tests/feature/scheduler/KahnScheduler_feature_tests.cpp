@@ -6,6 +6,7 @@
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <cstdint>
 #include <future>
 #include <iterator>
 #include <latch>
@@ -168,7 +169,7 @@ SCENARIO("KahnScheduler executes a fan-out and fan-in graph", "[FEATURE]")
     }
 }
 
-TEST_CASE("KahnScheduler keeps independent worker-pool tasks in flight", "[FEATURE]")
+TEST_CASE("KahnScheduler keeps independent worker-pool tasks in flight", "[FEATURE][CONCURRENCY]")
 {
     Atlas::TaskGraph graph;
     std::latch bothStarted{ 2 };
@@ -209,7 +210,7 @@ TEST_CASE("KahnScheduler keeps independent worker-pool tasks in flight", "[FEATU
     requireSuccessfulTask(graph, secondHandle);
 }
 
-TEST_CASE("KahnScheduler waits for worker-pool prerequisites before submitting dependants", "[FEATURE]")
+TEST_CASE("KahnScheduler waits for worker-pool prerequisites before submitting dependants", "[FEATURE][CONCURRENCY]")
 {
     Atlas::TaskGraph graph;
     std::latch prerequisiteStarted{ 1 };
@@ -244,7 +245,7 @@ TEST_CASE("KahnScheduler waits for worker-pool prerequisites before submitting d
     requireSuccessfulTask(graph, dependentHandle);
 }
 
-TEST_CASE("KahnScheduler overlaps fan-out work and waits at fan-in", "[FEATURE]")
+TEST_CASE("KahnScheduler overlaps fan-out work and waits at fan-in", "[FEATURE][CONCURRENCY]")
 {
     Atlas::TaskGraph graph;
     std::latch bothBranchesStarted{ 2 };
@@ -300,7 +301,7 @@ TEST_CASE("KahnScheduler overlaps fan-out work and waits at fan-in", "[FEATURE]"
     requireSuccessfulTask(graph, leafHandle);
 }
 
-TEST_CASE("KahnScheduler drains worker-pool work after the first task failure", "[FEATURE]")
+TEST_CASE("KahnScheduler drains worker-pool work after the first task failure", "[FEATURE][CONCURRENCY]")
 {
     Atlas::TaskGraph graph;
     std::latch drainingTaskStarted{ 1 };
@@ -347,4 +348,32 @@ TEST_CASE("KahnScheduler drains worker-pool work after the first task failure", 
     REQUIRE_FALSE(unsubmittedTaskExecuted.load());
     REQUIRE(graph.findTask(unsubmittedHandle).value()->executionInfo.state == Atlas::TaskState::Ready);
     REQUIRE(graph.findTask(blockedHandle).value()->executionInfo.state == Atlas::TaskState::Blocked);
+}
+
+TEST_CASE("KahnScheduler completes a large independent graph through the worker pool", "[FEATURE][CONCURRENCY]")
+{
+    constexpr std::uint32_t taskCount{ 256U };
+    Atlas::TaskGraph graph;
+    std::atomic_uint32_t callableCount{ 0U };
+    std::vector<Atlas::TaskHandle> handles;
+    handles.reserve(taskCount);
+
+    for (std::uint32_t taskIndex{ 0U }; taskIndex < taskCount; ++taskIndex)
+    {
+        handles.emplace_back(addTask(graph, [&callableCount] { ++callableCount; }, "Stress task"));
+    }
+    REQUIRE(graph.finishTaskGraph());
+
+    Atlas::WorkerpoolExecutor executor{ 4U };
+    Atlas::KahnScheduler scheduler{ graph, executor };
+
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(result.executedTaskCount == taskCount);
+    REQUIRE(callableCount.load() == taskCount);
+    for (const Atlas::TaskHandle handle : handles)
+    {
+        requireSuccessfulTask(graph, handle);
+    }
 }

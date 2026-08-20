@@ -2,12 +2,12 @@
 
 ## Repository layout
 
-The repository is deliberately small while the core task model and sequential
-task-graph executor are being developed:
+The repository is deliberately small while the core task model and concurrent
+CPU task-graph executor are being developed:
 
 - `include/atlas/`: public Atlas headers
 - `src/`: compiled library implementation
-- `apps/atlas_cli/`: example sequential task-graph executable
+- `apps/atlas_cli/`: example task-graph executable using the synchronous backend
 - `tests/`: Catch2/CTest unit and feature tests
 - `cmake/`: target-scoped warnings, sanitizers, and static-analysis helpers
 - `.github/workflows/`: Windows and Linux continuous integration
@@ -32,25 +32,32 @@ implementation executes on the submitting thread. The worker-pool implementation
 owns a FIFO work queue, runs independent callables concurrently, captures every
 callable exception, and drains accepted work before joining during shutdown.
 Both implementations return task-attributed completions containing callable
-duration and any captured exception. The CLI and current Kahn scheduler tests
-continue to use the synchronous implementation until concurrent graph dispatch
-is introduced.
+duration and any captured exception. `KahnScheduler` remains backend-neutral:
+capacity one preserves synchronous FIFO behavior, while a worker pool keeps
+independent ready tasks in flight up to its worker count.
 
-`KahnScheduler` borrows a `CpuExecutor`; the caller owns that executor and must
-keep it alive for the scheduler's lifetime. The scheduler marks selected work
-`Running`, submits it, and applies the attributed completion to
-`TaskExecutionInfo`. A rejected submission restores the task to `Ready` and
-returns `ExecutorUnavailable`. An accepted submission that produces no matching
-completion also returns `ExecutorUnavailable`, marks the selected task `Failure`,
-and does not release its dependants. The caller remains responsible for executor
-shutdown.
+`KahnScheduler` borrows a `CpuExecutor`; the caller owns that executor, keeps it
+alive, and remains responsible for shutdown. The executor must be initially
+drained and exclusively available to the scheduler during `execute()`. The
+scheduler marks selected work `Running`, tracks accepted handles, and applies
+completions to `TaskExecutionInfo` on its control thread. A rejected submission
+restores the task to `Ready`. Missing, unknown, duplicate, or mismatched
+completions report `ExecutorUnavailable` and never release dependants.
+
+`WorkerpoolExecutor` requires a non-zero fixed worker count. Public executor
+calls must be serialized, although accepted callables run concurrently. Its FIFO
+work queue is protected by a mutex and condition variable; a separate protected
+completion queue returns results in completion order. Shutdown rejects new work,
+drains queued and running work, retains produced completions, joins every worker,
+and is idempotent. A callable must not invoke lifecycle operations on its own
+executor.
 
 ## Current task and execution model
 
 `TaskGraph` owns task definitions and exposes `shared_ptr<const Task>` views.
 Identity, callable work, and options are immutable. `TaskExecutionInfo` groups
 the logically mutable lifecycle state, captured exception, and callable duration
-so the sequential scheduler can update them through that otherwise read-only
+so the scheduler control thread can update them through that otherwise read-only
 view. Retaining a returned `shared_ptr` extends the task object's lifetime beyond
 the graph, so callers must not infer a strict non-owning lifetime from the
 graph-owned description.
@@ -82,16 +89,18 @@ if this prevents every graph task from completing, execution is reported as
 `InvalidGraph`. Atlas does not currently define a cancellation state or
 cancellation API.
 
-The current model is intentionally single-threaded and intended for one execution
-of a graph. Execution-information fields are not atomic, concurrent mutation is
-not supported, and a completed task is not executed again. These restrictions
-must be revisited when a worker executor and scheduler service are introduced.
+Scheduler control remains single-threaded and a graph is intended for one
+execution, but worker callables may overlap. Execution-information fields are
+not atomic; callers must not inspect or mutate them while `execute()` is active.
+Captured references and other shared resources used by concurrent callables are
+the application’s synchronization responsibility. Completed tasks are not run
+again.
 
 ## Presets
 
-All checked-in configurations build below `build/<preset>`. They inherit a
-shared quality configuration that enables warnings as errors, sanitizers, and
-Clang-Tidy; Windows presets disable the unsupported sanitizer configuration.
+All checked-in configurations build below `build/<preset>`. Warnings are enabled
+for Atlas targets, while ordinary CI, analysis, ASan/UBSan, and TSan remain
+independent configurations.
 
 | Preset | Generator | Configuration | Intended use |
 | --- | --- | --- | --- |
@@ -100,6 +109,9 @@ Clang-Tidy; Windows presets disable the unsupported sanitizer configuration.
 | `dev-linux` | Ninja | Debug | Linux development |
 | `ci-windows` | Locally available Visual Studio | Release | Windows CI, warnings as errors |
 | `ci-linux` | Ninja | Release | Linux CI, warnings as errors |
+| `analysis-linux` | Ninja/Clang | Debug | Required Clang-Tidy analysis |
+| `asan-ubsan-linux` | Ninja/Clang | Debug | Full ASan/UBSan suite |
+| `tsan-linux` | Ninja/Clang | Debug | Labelled concurrency suite under TSan |
 
 Each configure preset has a build and test preset with the same name:
 
@@ -114,34 +126,46 @@ platform.
 
 ## Sanitizers
 
-AddressSanitizer and UndefinedBehaviorSanitizer are enabled by the checked-in
-Linux presets and are available with compatible non-Windows GCC and Clang
-toolchains:
+AddressSanitizer and UndefinedBehaviorSanitizer use a dedicated Clang preset:
 
 ```bash
-cmake --preset dev-linux
-cmake --build --preset dev-linux
-ctest --preset dev-linux
+cmake --preset asan-ubsan-linux
+cmake --build --preset asan-ubsan-linux
+ctest --preset asan-ubsan-linux
 ```
 
-Sanitizer flags are attached only to Atlas-owned targets. Unsupported toolchains
-produce a configure-time warning and otherwise remain buildable.
+ThreadSanitizer is separate because its runtime cannot be combined with
+ASan/UBSan:
+
+```bash
+cmake --preset tsan-linux
+cmake --build --preset tsan-linux
+ctest --preset tsan-linux --repeat until-fail:5
+```
+
+Sanitizer flags are attached only to Atlas-owned targets. Requesting an
+unsupported sanitizer configuration is an error. LeakSanitizer cannot operate
+under `ptrace`; use `LSAN_OPTIONS=detect_leaks=0` only for that local environment.
 
 ## Clang-Tidy
 
-Clang-Tidy is requested by the checked-in presets and can also be enabled for a
-custom configuration:
+The analysis preset requires Clang-Tidy and fails rather than silently skipping
+analysis:
 
 ```bash
-cmake --preset dev
-cmake --build --preset dev
+cmake --preset analysis-linux
+cmake --build --preset analysis-linux
 ```
 
-If `clang-tidy` is unavailable, configuration reports a warning and continues
-without analysis. The checked-in `.clang-tidy` file selects focused correctness,
-modernisation, performance, and readability checks.
+Developer presets may still request optional analysis. The checked-in
+`.clang-tidy` file selects focused correctness, modernisation, performance, and
+readability checks.
 
 ## Pre-commit formatting
+
+The checked-in VS Code workspace settings use the recommended clangd extension
+to run ClangFormat whenever a C or C++ file is saved. Formatting follows the
+repository's `.clang-format` configuration.
 
 The versioned `.githooks/pre-commit` hook formats staged C and C++ files with
 the repository's `.clang-format` configuration. Enable it after cloning with:

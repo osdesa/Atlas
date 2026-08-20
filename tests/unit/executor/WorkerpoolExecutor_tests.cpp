@@ -21,7 +21,7 @@ namespace
     const Atlas::TaskHandle THIRD_TASK_HANDLE{ Atlas::TaskId{ 3U }, TEST_GRAPH_ID };
 } // namespace
 
-TEST_CASE("WorkerpoolExecutor validates and reports its fixed worker count", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor validates and reports its fixed worker count", "[UNIT][CONCURRENCY]")
 {
     STATIC_REQUIRE_FALSE(std::is_default_constructible_v<Atlas::WorkerpoolExecutor>);
     STATIC_REQUIRE_FALSE(std::is_copy_constructible_v<Atlas::WorkerpoolExecutor>);
@@ -33,7 +33,7 @@ TEST_CASE("WorkerpoolExecutor validates and reports its fixed worker count", "[U
     REQUIRE(executor.maxConcurrency() == 3U);
 }
 
-TEST_CASE("WorkerpoolExecutor rejects invalid task handles", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor rejects invalid task handles", "[UNIT][CONCURRENCY]")
 {
     Atlas::WorkerpoolExecutor executor{ 1U };
     bool executed{ false };
@@ -43,7 +43,7 @@ TEST_CASE("WorkerpoolExecutor rejects invalid task handles", "[UNIT]")
     REQUIRE_FALSE(executor.waitForCompletion().has_value());
 }
 
-TEST_CASE("WorkerpoolExecutor executes accepted and empty callables", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor executes accepted and empty callables", "[UNIT][CONCURRENCY]")
 {
     Atlas::WorkerpoolExecutor executor{ 1U };
     bool executed{ false };
@@ -65,7 +65,7 @@ TEST_CASE("WorkerpoolExecutor executes accepted and empty callables", "[UNIT]")
     REQUIRE_FALSE(executor.waitForCompletion().has_value());
 }
 
-TEST_CASE("WorkerpoolExecutor isolates callable failures and continues working", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor isolates callable failures and continues working", "[UNIT][CONCURRENCY]")
 {
     Atlas::WorkerpoolExecutor executor{ 1U };
 
@@ -100,7 +100,7 @@ TEST_CASE("WorkerpoolExecutor isolates callable failures and continues working",
     REQUIRE(laterSuccess->succeeded());
 }
 
-TEST_CASE("WorkerpoolExecutor produces exactly one attributed completion per accepted item", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor produces exactly one attributed completion per accepted item", "[UNIT][CONCURRENCY]")
 {
     constexpr std::uint32_t taskCount{ 64U };
     Atlas::WorkerpoolExecutor executor{ 4U };
@@ -132,7 +132,39 @@ TEST_CASE("WorkerpoolExecutor produces exactly one attributed completion per acc
     REQUIRE_FALSE(executor.waitForCompletion().has_value());
 }
 
-TEST_CASE("WorkerpoolExecutor runs at least two tasks concurrently", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor survives repeated high-volume lifecycle rounds", "[UNIT][CONCURRENCY]")
+{
+    constexpr std::uint32_t roundCount{ 4U };
+    constexpr std::uint32_t taskCount{ 512U };
+
+    for (std::uint32_t roundIndex{ 0U }; roundIndex < roundCount; ++roundIndex)
+    {
+        const Atlas::GraphId graphId{ Atlas::GraphId::create() };
+        std::atomic_uint32_t executedTaskCount{ 0U };
+        Atlas::WorkerpoolExecutor executor{ 4U };
+
+        for (std::uint32_t taskIndex{ 1U }; taskIndex <= taskCount; ++taskIndex)
+        {
+            const Atlas::TaskHandle handle{ Atlas::TaskId{ taskIndex }, graphId };
+            REQUIRE(executor.submit(handle, [&executedTaskCount] { ++executedTaskCount; }));
+        }
+
+        std::unordered_set<Atlas::TaskHandle, Atlas::TaskHandle::Hash> completedHandles;
+        for (std::uint32_t completionIndex{ 0U }; completionIndex < taskCount; ++completionIndex)
+        {
+            const std::optional<Atlas::TaskCompletion> completion{ executor.waitForCompletion() };
+            REQUIRE(completion.has_value());
+            REQUIRE(completion->succeeded());
+            REQUIRE(completedHandles.emplace(completion->handle).second);
+        }
+
+        REQUIRE(executedTaskCount.load() == taskCount);
+        REQUIRE(completedHandles.size() == taskCount);
+        REQUIRE_FALSE(executor.waitForCompletion().has_value());
+    }
+}
+
+TEST_CASE("WorkerpoolExecutor runs at least two tasks concurrently", "[UNIT][CONCURRENCY]")
 {
     Atlas::WorkerpoolExecutor executor{ 2U };
     std::latch bothStarted{ 2 };
@@ -154,7 +186,7 @@ TEST_CASE("WorkerpoolExecutor runs at least two tasks concurrently", "[UNIT]")
     REQUIRE(executor.waitForCompletion().has_value());
 }
 
-TEST_CASE("WorkerpoolExecutor returns completions in completion rather than submission order", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor returns completions in completion rather than submission order", "[UNIT][CONCURRENCY]")
 {
     Atlas::WorkerpoolExecutor executor{ 2U };
     std::latch firstTaskStarted{ 1 };
@@ -179,7 +211,7 @@ TEST_CASE("WorkerpoolExecutor returns completions in completion rather than subm
     REQUIRE(firstCompletion->handle == FIRST_TASK_HANDLE);
 }
 
-TEST_CASE("WorkerpoolExecutor completion retrieval waits for accepted work", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor completion retrieval waits for accepted work", "[UNIT][CONCURRENCY]")
 {
     Atlas::WorkerpoolExecutor executor{ 1U };
     std::latch taskStarted{ 1 };
@@ -203,7 +235,7 @@ TEST_CASE("WorkerpoolExecutor completion retrieval waits for accepted work", "[U
     REQUIRE(completion->handle == FIRST_TASK_HANDLE);
 }
 
-TEST_CASE("WorkerpoolExecutor shutdown drains work and rejects later submissions", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor shutdown drains work and rejects later submissions", "[UNIT][CONCURRENCY]")
 {
     Atlas::WorkerpoolExecutor executor{ 1U };
     std::latch firstTaskStarted{ 1 };
@@ -231,7 +263,7 @@ TEST_CASE("WorkerpoolExecutor shutdown drains work and rejects later submissions
     REQUIRE_FALSE(executor.waitForCompletion().has_value());
 }
 
-TEST_CASE("WorkerpoolExecutor destruction waits for accepted work", "[UNIT]")
+TEST_CASE("WorkerpoolExecutor destruction waits for accepted work", "[UNIT][CONCURRENCY]")
 {
     std::atomic_bool executed{ false };
     {

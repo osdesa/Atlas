@@ -26,7 +26,10 @@ namespace Atlas
      * @brief Dispatches task graphs through a borrowed CPU executor in dependency order.
      *
      * The scheduler owns dependency and task-state changes. The executor owns
-     * callable execution and returns task-attributed completion records.
+     * callable execution and returns task-attributed completion records. Ready
+     * work is kept in flight up to the executor's reported concurrency capacity.
+     * The borrowed executor must be initially drained and exclusively available
+     * to this scheduler for the duration of execute().
      * @hideinheritancegraph
      * @plantumlfile kahn_scheduler.puml
      */
@@ -40,6 +43,7 @@ namespace Atlas
          * @throws std::invalid_argument When the task graph is not finalised.
          *
          * The scheduler borrows both arguments. They must outlive the scheduler.
+         * It never shuts down the executor.
          */
         explicit KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor);
 

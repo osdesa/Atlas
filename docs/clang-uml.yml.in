@@ -115,6 +115,94 @@ diagrams:
         - '  FontColor #0F172A'
         - '}'
 
+  cpu_executor:
+    type: class
+    glob:
+      - src/Executor/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::CpuExecutor
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  task_completion:
+    type: class
+    glob:
+      - src/Executor/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::TaskCompletion
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  synchronous_cpu_executor:
+    type: class
+    glob:
+      - src/Executor/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::SynchronousCpuExecutor
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  workerpool_executor:
+    type: class
+    glob:
+      - src/Executor/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::WorkerpoolExecutor
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
   base_scheduler:
     type: class
     glob:

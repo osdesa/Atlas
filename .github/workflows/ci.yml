@@ -11,9 +11,25 @@ permissions:
   contents: read
 
 jobs:
+  format:
+    name: ClangFormat
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install ClangFormat
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-format
+
+      - name: Check formatting
+        run: git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format --dry-run --Werror
+
   linux:
     name: Ubuntu / GCC
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
@@ -32,6 +48,9 @@ jobs:
 
       - name: Test
         run: ctest --preset ci-linux
+
+      - name: Run CLI smoke test
+        run: ./build/ci-linux/apps/atlas_cli/atlas_cli
 
   windows:
     name: Windows / MSVC
@@ -55,3 +74,93 @@ jobs:
 
       - name: Test
         run: ctest --preset ci-windows
+
+      - name: Run CLI smoke test
+        run: .\build\ci-windows\apps\atlas_cli\Release\atlas_cli.exe
+
+  clang-tidy:
+    name: Ubuntu / ClangTidy
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install analysis dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang clang-tidy ninja-build libvulkan-dev
+
+      - name: Configure
+        run: cmake --preset analysis-linux
+
+      - name: Build and analyze
+        run: cmake --build --preset analysis-linux --parallel
+
+  asan-ubsan:
+    name: Ubuntu / ASan + UBSan
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install sanitizer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang ninja-build libvulkan-dev
+
+      - name: Configure
+        run: cmake --preset asan-ubsan-linux
+
+      - name: Build
+        run: cmake --build --preset asan-ubsan-linux --parallel
+
+      - name: Test
+        run: ctest --preset asan-ubsan-linux
+
+  tsan:
+    name: Ubuntu / TSan
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install ThreadSanitizer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang ninja-build libvulkan-dev
+
+      - name: Configure
+        run: cmake --preset tsan-linux
+
+      - name: Build
+        run: cmake --build --preset tsan-linux --parallel
+
+      - name: Repeat concurrency tests
+        run: ctest --preset tsan-linux --repeat until-fail:5
+
+  documentation:
+    name: Ubuntu / Documentation
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install documentation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes software-properties-common
+          sudo add-apt-repository --yes ppa:bkryza/clang-uml
+          sudo apt-get install --yes default-jre doxygen graphviz clang-uml ninja-build libvulkan-dev
+
+      - name: Report clang-uml version
+        run: clang-uml --version
+
+      - name: Configure
+        run: cmake --preset docs-linux
+
+      - name: Build documentation
+        run: cmake --build --preset docs-linux --parallel

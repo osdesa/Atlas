@@ -19,6 +19,9 @@ namespace Atlas
      *
      * This transient value does not contain task lifecycle state. The scheduler
      * remains responsible for applying the completion to TaskExecutionInfo.
+     *
+     * @par Class diagram
+     * @plantumlfile task_completion.puml
      */
     struct TaskCompletion
     {

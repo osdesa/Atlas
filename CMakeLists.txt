@@ -17,8 +17,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(ATLAS_BUILD_TESTS "Build Atlas tests" ON)
 option(ATLAS_BUILD_DOCUMENTATION "Build Atlas API documentation with Doxygen" OFF)
 option(ATLAS_WARNINGS_AS_ERRORS "Treat compiler warnings in Atlas targets as errors" OFF)
-option(ATLAS_ENABLE_SANITIZERS "Enable supported sanitizers for Atlas targets" OFF)
+option(ATLAS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer for Atlas targets" OFF)
+option(ATLAS_ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer for Atlas targets" OFF)
 option(ATLAS_ENABLE_CLANG_TIDY "Enable Clang-Tidy for Atlas targets when available" OFF)
+option(ATLAS_REQUIRE_CLANG_TIDY "Fail configuration when Clang-Tidy is enabled but unavailable" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
