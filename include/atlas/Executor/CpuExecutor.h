@@ -34,6 +34,11 @@ namespace Atlas
      * Calling shutdown prevents later submissions. Implementations retain
      * completions produced for work accepted before shutdown, and repeated calls
      * to shutdown are valid.
+     *
+     * Callers must serialize calls to the public interface unless a concrete
+     * implementation explicitly documents stronger guarantees. A future worker
+     * executor may run accepted callables concurrently while keeping control of
+     * task state in the scheduler thread.
      * @hideinheritancegraph
      */
     class CpuExecutor

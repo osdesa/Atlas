@@ -2,6 +2,9 @@
 #define ATLAS_KAHN_SCHEDULER
 
 #include "BaseScheduler.h"
+#include "atlas/Executor/CpuExecutor.h"
+#include "atlas/Executor/TaskCompletion.h"
+#include "atlas/Tasking/TaskGraph.h"
 #include "atlas/Tasking/TaskHandle.h"
 
 #include <cstddef>
@@ -19,7 +22,10 @@ namespace Atlas
 {
     /**
      * @ingroup scheduling
-     * @brief Executes task graphs in dependency order using Kahn's algorithm.
+     * @brief Dispatches task graphs through a borrowed CPU executor in dependency order.
+     *
+     * The scheduler owns dependency and task-state changes. The executor owns
+     * callable execution and returns task-attributed completion records.
      * @hideinheritancegraph
      * @plantumlfile kahn_scheduler.puml
      */
@@ -29,13 +35,18 @@ namespace Atlas
         /**
          * @brief Constructs a sequential Kahn scheduler for a finalised task graph.
          * @param taskGraph The finalised task graph to execute.
+         * @param executor The CPU executor used to run selected task callables.
          * @throws std::invalid_argument When the task graph is not finalised.
+         *
+         * The scheduler borrows both arguments. They must outlive the scheduler.
          */
-        explicit KahnScheduler(const TaskGraph& taskGraph);
+        explicit KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor);
 
         /**
          * @brief Executes every task in dependency order.
-         * @return The execution status, completed-task count, captured exception, and elapsed time.
+         * @return The execution status, successful-completion count, captured task
+         * exception, and elapsed time. Executor rejection or an invalid completion
+         * is reported as SchedulerStatus::ExecutorUnavailable.
          */
         SchedulerResult execute() override;
 
@@ -75,10 +86,9 @@ namespace Atlas
 
         /**
          * @brief Records the terminal state, captured exception, and duration after execution.
-         * @param task The task that finished executing.
-         * @param executionResult The result produced by executing its function.
+         * @param completion The task-attributed result produced by the CPU executor.
          */
-        void completeTask(const std::shared_ptr<const Task>& task, const SchedulerResult& executionResult);
+        void completeTask(const TaskCompletion& completion);
 
         /**
          * @brief Releases tasks whose final outstanding dependency has completed.
@@ -91,6 +101,9 @@ namespace Atlas
 
         /// @brief Remaining dependency counts for tasks that are not yet ready.
         std::unordered_map<TaskHandle, std::size_t, TaskHandle::Hash> remainingDependencies;
+
+        /// @brief Borrowed CPU executor that must outlive this scheduler.
+        CpuExecutor& cpuExecutor;
     };
 } // namespace Atlas
 

@@ -1,3 +1,4 @@
+#include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Scheduler/KahnScheduler.h"
 
 #include <algorithm>
@@ -54,7 +55,8 @@ SCENARIO("KahnScheduler executes a dependency chain", "[FEATURE]")
 
         WHEN("the graph is executed by the Kahn scheduler")
         {
-            Atlas::KahnScheduler scheduler{ graph };
+            Atlas::SynchronousCpuExecutor executor;
+            Atlas::KahnScheduler scheduler{ graph, executor };
             const Atlas::SchedulerResult result{ scheduler.execute() };
 
             THEN("all tasks complete in dependency order")
@@ -90,7 +92,8 @@ SCENARIO("KahnScheduler executes a fan-out and fan-in graph", "[FEATURE]")
 
         WHEN("the graph is executed by the Kahn scheduler")
         {
-            Atlas::KahnScheduler scheduler{ graph };
+            Atlas::SynchronousCpuExecutor executor;
+            Atlas::KahnScheduler scheduler{ graph, executor };
             const Atlas::SchedulerResult result{ scheduler.execute() };
 
             THEN("the root precedes both branches and both branches precede the leaf")

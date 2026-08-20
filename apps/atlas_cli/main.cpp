@@ -1,3 +1,4 @@
+#include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Scheduler/KahnScheduler.h"
 #include "atlas/Tasking/TaskGraph.h"
 
@@ -177,7 +178,8 @@ int main()
         return EXIT_FAILURE;
     }
 
-    Atlas::KahnScheduler scheduler{ frameGraph };
+    Atlas::SynchronousCpuExecutor executor;
+    Atlas::KahnScheduler scheduler{ frameGraph, executor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
     std::cout << result << '\n';

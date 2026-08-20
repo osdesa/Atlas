@@ -11,7 +11,10 @@
 
 namespace Atlas
 {
-    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph) : BaseScheduler{ taskGraph } {}
+    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor)
+        : BaseScheduler{ taskGraph }, cpuExecutor{ executor }
+    {
+    }
 
     SchedulerResult KahnScheduler::execute()
     {
@@ -30,13 +33,34 @@ namespace Atlas
         {
             while (const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask() })
             {
-                const SchedulerResult executeStatus{ executeFunction(task.value()->function) };
-                completeTask(task.value(), executeStatus);
+                const bool submissionSuccess{ cpuExecutor.submit(task.value()->handle, task.value()->function) };
 
-                if (executeStatus.status != SchedulerStatus::Success)
+                if (!submissionSuccess)
                 {
-                    result.status = executeStatus.status;
-                    result.exception = executeStatus.exception;
+                    task.value()->executionInfo.state = TaskState::Ready;
+                    result.status = SchedulerStatus::ExecutorUnavailable;
+                    result.executionTime =
+                        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
+                    return result;
+                }
+
+                const std::optional<TaskCompletion> completion{ cpuExecutor.waitForCompletion() };
+
+                if (!completion.has_value() || completion.value().handle != task.value()->handle)
+                {
+                    task.value()->executionInfo.state = TaskState::Failure;
+                    result.status = SchedulerStatus::ExecutorUnavailable;
+                    result.executionTime =
+                        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
+                    return result;
+                }
+
+                completeTask(completion.value());
+
+                if (!completion.value().succeeded())
+                {
+                    result.status = SchedulerStatus::TaskFailed;
+                    result.exception = completion.value().exception;
                     result.executionTime =
                         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
                     return result;
@@ -118,9 +142,11 @@ namespace Atlas
         return std::nullopt;
     }
 
-    void KahnScheduler::completeTask(const std::shared_ptr<const Task>& task, const SchedulerResult& executionResult)
+    void KahnScheduler::completeTask(const TaskCompletion& completion)
     {
-        if (executionResult.status == SchedulerStatus::Success)
+        const std::shared_ptr<const Task> task{ startingGraph.findTask(completion.handle).value() };
+
+        if (completion.succeeded())
         {
             task->executionInfo.state = TaskState::Success;
             task->executionInfo.exception = nullptr;
@@ -128,10 +154,10 @@ namespace Atlas
         else
         {
             task->executionInfo.state = TaskState::Failure;
-            task->executionInfo.exception = executionResult.exception;
+            task->executionInfo.exception = completion.exception;
         }
 
-        task->executionInfo.executionDuration = executionResult.executionTime;
+        task->executionInfo.executionDuration = completion.executionDuration;
     }
 
     void KahnScheduler::updateDependencies(const std::shared_ptr<const Task>& executedTask)

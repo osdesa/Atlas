@@ -30,8 +30,16 @@ The executor module defines a backend-neutral CPU submission/completion contract
 and a `SynchronousCpuExecutor`. The synchronous implementation executes on the
 submitting thread, queues one completion before callable execution begins, and
 captures the callable exception and duration. It is deliberately single-threaded
-and non-reentrant. It has focused unit coverage, but `KahnScheduler` does not yet
-consume this contract; scheduler integration is the next CPU-backend step.
+and non-reentrant.
+
+`KahnScheduler` borrows a `CpuExecutor`; the caller owns that executor and must
+keep it alive for the scheduler's lifetime. The scheduler marks selected work
+`Running`, submits it, and applies the attributed completion to
+`TaskExecutionInfo`. A rejected submission restores the task to `Ready` and
+returns `ExecutorUnavailable`. An accepted submission that produces no matching
+completion also returns `ExecutorUnavailable`, marks the selected task `Failure`,
+and does not release its dependants. The caller remains responsible for executor
+shutdown.
 
 ## Current task and execution model
 
@@ -46,9 +54,9 @@ graph-owned description.
 Task options currently contain an optional name, a static `uint32_t` priority,
 and CPU/GPU execution-resource intent. Lower numeric priorities represent higher
 priority, but the FIFO Kahn scheduler does not yet use priority or resource intent
-when selecting or dispatching work. Both CPU- and GPU-designated tasks in the
-scheduler path currently execute their host callable synchronously on the
-calling thread.
+when selecting or dispatching work. Both CPU- and GPU-designated tasks are sent
+to the supplied CPU executor; the CLI's synchronous executor runs their host
+callables on the calling thread.
 
 Tasks are `Unknown` during graph construction. Successful finalisation assigns
 `Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns
@@ -60,6 +68,7 @@ Blocked --final dependency succeeds------> Ready
 Ready   --selected by scheduler-----------> Running
 Running --callable returns----------------> Success
 Running --callable throws-----------------> Failure
+Running --missing/mismatched completion---> Failure (ExecutorUnavailable)
 ```
 
 `Success` and `Failure` are terminal for the current scheduler. The task's

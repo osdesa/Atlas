@@ -19,6 +19,8 @@ namespace Atlas
             return "GraphNotFinalised";
         case SchedulerStatus::TaskFailed:
             return "TaskFailed";
+        case SchedulerStatus::ExecutorUnavailable:
+            return "ExecutorUnavailable";
         case SchedulerStatus::Unknown:
             return "Unknown";
         }
