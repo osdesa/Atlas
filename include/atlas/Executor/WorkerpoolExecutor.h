@@ -1,0 +1,120 @@
+#ifndef ATLAS_WORKERPOOL_CPU_EXECUTOR
+#define ATLAS_WORKERPOOL_CPU_EXECUTOR
+
+#include "atlas/Executor/CpuExecutor.h"
+#include "atlas/Executor/TaskCompletion.h"
+#include "atlas/Tasking/TaskFunction.h"
+
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <list>
+#include <mutex>
+#include <optional>
+#include <thread>
+#include <vector>
+
+/**
+ * @file WorkerpoolExecutor.h
+ * @brief Declares fixed-size concurrent CPU execution.
+ */
+
+namespace Atlas
+{
+    /**
+     * @ingroup executor
+     * @brief Executes accepted task callables on a fixed-size worker pool.
+     *
+     * Submission transfers callable ownership into a FIFO work queue. Workers
+     * execute callables outside the state mutex and publish task-attributed
+     * completions in completion order. Callable exceptions are captured and do
+     * not escape worker threads.
+     *
+     * Public calls must be serialized by the caller. A submitted callable must
+     * not call lifecycle operations on this executor.
+     */
+    class WorkerpoolExecutor final : public CpuExecutor
+    {
+      public:
+        /**
+         * @brief Constructs a worker-pool executor with a fixed number of threads.
+         * @param maxThreads The maximum number of threads to use in the workpool.
+         * @throws std::invalid_argument When @p maxThreads is zero.
+         */
+        explicit WorkerpoolExecutor(std::uint32_t maxThreads);
+
+        /// @brief Drains accepted work and joins every worker.
+        ~WorkerpoolExecutor() override;
+
+        /**
+         * @brief Executes one accepted callable and queues its completion.
+         * @param taskHandle The identity attached to the completion.
+         * @param taskFunction Callable work transferred into the executor.
+         * @return True when execution was accepted; false after shutdown.
+         * @throws std::invalid_argument If @p taskHandle is invalid.
+         */
+        bool submit(TaskHandle taskHandle, TaskFunction taskFunction) override;
+
+        /**
+         * @brief Waits for and removes the next produced completion.
+         * @return The next completion, or an empty optional when no accepted or
+         * completed work remains.
+         */
+        std::optional<TaskCompletion> waitForCompletion() override;
+
+        /**
+         * @brief Prevents later submissions without discarding queued completions.
+         *
+         * Repeated calls have the same effect as the first call.
+         */
+        void shutdown() noexcept override;
+
+      private:
+        enum class Lifecycle : std::uint8_t
+        {
+            Running,
+            ShuttingDown,
+            Stopped
+        };
+
+        struct WorkItem
+        {
+            TaskFunction function;
+            TaskCompletion completion;
+        };
+
+        /// @brief Waits for and executes queued work until shutdown has drained it.
+        void workerLoop();
+
+        /// @brief Protects queues, unfinished-work accounting, and lifecycle state.
+        std::mutex stateMutex;
+
+        /// @brief Indicates a task is ready to be executed by a worker thread.
+        std::condition_variable workAvailable;
+
+        /// @brief Indicates a task has completed and is ready to be retrieved.
+        std::condition_variable workComplete;
+
+        /// @brief Queue of tasks waiting to be executed by worker threads.
+        std::list<WorkItem> taskQueue;
+
+        /**
+         * @brief Completed work waiting to be retrieved in completion order.
+         *
+         * Nodes are allocated in taskQueue during submission and spliced here
+         * after execution, so publishing a completion does not allocate.
+         */
+        std::list<WorkItem> completions;
+
+        /// @brief Number of tasks that have been submitted but not yet completed.
+        std::size_t unfinishedTasks{ 0 };
+
+        /// @brief Lifecycle state of the executor.
+        Lifecycle lifecycle{ Lifecycle::Running };
+
+        /// @brief Worker threads for executing tasks in the pool.
+        std::vector<std::jthread> workerThreads;
+    };
+} // namespace Atlas
+
+#endif // !ATLAS_WORKERPOOL_CPU_EXECUTOR

@@ -16,14 +16,16 @@ Priority and resource intent do not yet affect selection or dispatch. It borrows
 a CPU executor, submits selected task callables, and applies task-attributed
 completion records. The current CLI supplies a `SynchronousCpuExecutor`, which
 provides exception capture, duration measurement, and shutdown rejection.
+Atlas also provides a standalone fixed-size `WorkerpoolExecutor` with
+concurrent callable execution, failure isolation, and draining shutdown;
+concurrent graph dispatch is deferred to the next integration step.
 Schedulers own lifecycle changes, and repeated graph execution is not a
 supported runtime feature. Atlas does not currently expose task cancellation.
 The detailed current contract is documented in `docs/task-lifecycle.md`.
 
-Atlas does not yet contain a CPU worker backend, Vulkan initialisation or compute
-execution, GPU task slices, mixed CPU/GPU scheduling, or multiple scheduling
-policies. Vulkan support is currently limited to SDK discovery and link
-validation.
+Atlas does not yet contain Vulkan initialisation or compute execution, GPU task
+slices, mixed CPU/GPU scheduling, or multiple scheduling policies. Vulkan
+support is currently limited to SDK discovery and link validation.
 
 Future GPU scheduling will be cooperative. A logical GPU task will consist of
 independently submitted slices, allowing Atlas to reconsider scheduling between

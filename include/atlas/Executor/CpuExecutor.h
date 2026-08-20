@@ -5,6 +5,7 @@
 #include "atlas/Tasking/TaskFunction.h"
 #include "atlas/Tasking/TaskHandle.h"
 
+#include <cstdint>
 #include <optional>
 
 /**
@@ -68,6 +69,15 @@ namespace Atlas
         virtual std::optional<TaskCompletion> waitForCompletion() = 0;
 
         /**
+         * @brief Reports the backend's maximum useful callable concurrency.
+         * @return The number of tasks this executor can run simultaneously.
+         */
+        std::uint32_t maxConcurrency() const noexcept
+        {
+            return maximumConcurrency;
+        }
+
+        /**
          * @brief Stops accepting submissions while preserving accepted work and completions.
          *
          * Implementations must make repeated calls safe. Threaded implementations
@@ -92,7 +102,11 @@ namespace Atlas
 
       protected:
         /// @brief Constructs a CPU executor through its common interface.
-        CpuExecutor() = default;
+        explicit CpuExecutor(std::uint32_t maxJobs) : maximumConcurrency{ maxJobs } {}
+
+      private:
+        /// @brief Maximum number of callables that can execute concurrently.
+        const std::uint32_t maximumConcurrency;
     };
 } // namespace Atlas
 

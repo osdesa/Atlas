@@ -12,6 +12,8 @@ The current implementation can:
 - reject missing, duplicate, self, cross-graph, and cyclic dependencies;
 - execute individual CPU callables through a standalone synchronous executor
   that reports task-attributed completion, exceptions, and duration;
+- execute independent CPU callables concurrently through a fixed-size worker
+  pool with failure isolation and draining shutdown;
 - execute a finalised graph sequentially with Kahn's topological algorithm; and
 - record per-task lifecycle state, exceptions, and execution duration alongside
   graph-level completion count, elapsed time, and exceptions.
@@ -19,13 +21,13 @@ The current implementation can:
 The example CLI exercises that path with a six-task graph. It constructs a
 `SynchronousCpuExecutor` and lends it to `KahnScheduler`, which submits selected
 tasks and applies attributed completions to their execution information. Unit
-and feature tests cover the current graph, scheduler, and synchronous executor
-behaviour.
+and feature tests cover the current graph, scheduler, synchronous executor, and
+worker-pool executor behaviour.
 
-Atlas does **not** yet provide a CPU worker backend, runtime task submission,
-interchangeable scheduling policies, Vulkan initialisation or compute execution,
-GPU task slicing, mixed CPU/GPU scheduling, or a benchmarking framework. Vulkan
-is currently limited to SDK discovery and link validation.
+Atlas does **not** yet provide concurrent graph dispatch, runtime task
+submission, interchangeable scheduling policies, Vulkan initialisation or
+compute execution, GPU task slicing, mixed CPU/GPU scheduling, or a benchmarking
+framework. Vulkan is currently limited to SDK discovery and link validation.
 
 ## Task model and lifecycle
 
@@ -34,8 +36,9 @@ priority is an unsigned 32-bit value where a lower value means higher priority,
 and `ExecutionResource` classifies work as CPU or GPU. The current Kahn scheduler
 is FIFO and dispatches through a borrowed `CpuExecutor`; it does not yet use
 priority for ordering or resource intent for backend dispatch. The CLI supplies
-a `SynchronousCpuExecutor`, so every task function currently runs on the calling
-thread.
+a `SynchronousCpuExecutor`, so graph execution remains on the calling thread;
+the standalone `WorkerpoolExecutor` is not integrated with graph scheduling
+until Milestone 3 PR 4.
 
 Tasks begin `Unknown` while their graph is being constructed. Successful graph
 finalisation makes tasks without dependencies `Ready` and tasks waiting on

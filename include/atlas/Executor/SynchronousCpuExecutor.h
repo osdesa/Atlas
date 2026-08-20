@@ -27,7 +27,10 @@ namespace Atlas
      */
     class SynchronousCpuExecutor final : public CpuExecutor
     {
+
       public:
+        SynchronousCpuExecutor() : CpuExecutor{ 1U } {}
+
         /**
          * @brief Executes one accepted callable and queues its completion.
          * @param taskHandle The identity attached to the completion.

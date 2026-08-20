@@ -16,7 +16,10 @@ namespace
     class ScriptedCpuExecutor final : public Atlas::CpuExecutor
     {
       public:
-        explicit ScriptedCpuExecutor(std::optional<Atlas::TaskCompletion> completion) : nextCompletion{ std::move(completion) } {}
+        explicit ScriptedCpuExecutor(std::optional<Atlas::TaskCompletion> completion)
+            : CpuExecutor{ 1U }, nextCompletion{ std::move(completion) }
+        {
+        }
 
         bool submit(Atlas::TaskHandle, Atlas::TaskFunction) override
         {
