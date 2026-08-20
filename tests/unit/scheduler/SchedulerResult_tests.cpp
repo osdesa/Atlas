@@ -17,7 +17,7 @@ TEST_CASE("SchedulerResult prints successful execution details", "[UNIT]")
 
     output << result;
 
-    REQUIRE(output.str() == "SchedulerResult{status=Success, executedTaskCount=3, executionTime=12000micro(s), exception=none}");
+    REQUIRE(output.str() == "SchedulerResult{status=Success, executedTaskCount=3, executionTime=12ms, exception=none}");
 }
 
 TEST_CASE("SchedulerResult prints captured exception details", "[UNIT]")
@@ -40,8 +40,7 @@ TEST_CASE("SchedulerResult prints captured exception details", "[UNIT]")
 
     output << result;
 
-    REQUIRE(output.str() ==
-            "SchedulerResult{status=TaskFailed, executedTaskCount=1, executionTime=2000micro(s), exception=task failed}");
+    REQUIRE(output.str() == "SchedulerResult{status=TaskFailed, executedTaskCount=1, executionTime=2ms, exception=task failed}");
 }
 
 TEST_CASE("SchedulerResult has safe default values", "[UNIT]")
@@ -64,6 +63,5 @@ TEST_CASE("SchedulerResult prints a non-standard exception safely", "[UNIT]")
 
     output << result;
 
-    REQUIRE(output.str() ==
-            "SchedulerResult{status=TaskFailed, executedTaskCount=0, executionTime=1micro(s), exception=unknown exception}");
+    REQUIRE(output.str() == "SchedulerResult{status=TaskFailed, executedTaskCount=0, executionTime=0ms, exception=unknown exception}");
 }
