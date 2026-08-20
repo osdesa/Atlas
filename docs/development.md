@@ -107,7 +107,7 @@ independent configurations.
 | `dev` | Ninja | Debug | Cross-platform local development |
 | `dev-windows` | Locally available Visual Studio | Debug | Windows/MSVC development |
 | `dev-linux` | Ninja | Debug | Linux development |
-| `ci-windows` | Locally available Visual Studio | Release | Windows CI, warnings as errors |
+| `ci-windows` | Locally available Visual Studio | Release | Windows CI with MSVC level-four warnings |
 | `ci-linux` | Ninja | Release | Linux CI, warnings as errors |
 | `analysis-linux` | Ninja/Clang | Debug | Required Clang-Tidy analysis |
 | `asan-ubsan-linux` | Ninja/Clang | Debug | Full ASan/UBSan suite |
