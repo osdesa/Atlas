@@ -26,11 +26,15 @@ The Vulkan SDK is discovered at configure time with `find_package(Vulkan
 REQUIRED)`. `atlas` links to `Vulkan::Vulkan`, but no Vulkan API is called at
 this stage.
 
-The executor module defines a backend-neutral CPU submission/completion contract
-and a `SynchronousCpuExecutor`. The synchronous implementation executes on the
-submitting thread, queues one completion before callable execution begins, and
-captures the callable exception and duration. It is deliberately single-threaded
-and non-reentrant.
+The executor module defines a backend-neutral CPU submission/completion contract,
+a `SynchronousCpuExecutor`, and a fixed-size `WorkerpoolExecutor`. The synchronous
+implementation executes on the submitting thread. The worker-pool implementation
+owns a FIFO work queue, runs independent callables concurrently, captures every
+callable exception, and drains accepted work before joining during shutdown.
+Both implementations return task-attributed completions containing callable
+duration and any captured exception. The CLI and current Kahn scheduler tests
+continue to use the synchronous implementation until concurrent graph dispatch
+is introduced.
 
 `KahnScheduler` borrows a `CpuExecutor`; the caller owns that executor and must
 keep it alive for the scheduler's lifetime. The scheduler marks selected work

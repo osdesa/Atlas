@@ -28,6 +28,7 @@ include(Sanitizers)
 include(StaticAnalysis)
 
 find_package(Vulkan REQUIRED)
+find_package(Threads REQUIRED)
 
 file(
     GLOB_RECURSE ATLAS_SOURCES
@@ -67,7 +68,7 @@ target_include_directories(
 
 target_compile_features(atlas PUBLIC cxx_std_20)
 
-target_link_libraries(atlas PRIVATE Vulkan::Vulkan)
+target_link_libraries(atlas PRIVATE Vulkan::Vulkan Threads::Threads)
 
 atlas_set_project_warnings(atlas)
 atlas_enable_sanitizers(atlas)

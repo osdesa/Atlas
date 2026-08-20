@@ -25,6 +25,9 @@ TEST_CASE("SynchronousCpuExecutor has exclusive executor state", "[UNIT]")
     STATIC_REQUIRE_FALSE(std::is_move_constructible_v<Atlas::SynchronousCpuExecutor>);
     STATIC_REQUIRE_FALSE(std::is_move_assignable_v<Atlas::SynchronousCpuExecutor>);
     STATIC_REQUIRE(std::has_virtual_destructor_v<Atlas::CpuExecutor>);
+
+    Atlas::SynchronousCpuExecutor executor;
+    REQUIRE(executor.maxConcurrency() == 1U);
 }
 
 TEST_CASE("SynchronousCpuExecutor executes accepted work before submit returns", "[UNIT]")

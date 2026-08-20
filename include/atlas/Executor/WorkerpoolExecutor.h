@@ -5,36 +5,47 @@
 #include "atlas/Executor/TaskCompletion.h"
 #include "atlas/Tasking/TaskFunction.h"
 
-#include <optional>
-#include <queue>
+#include <condition_variable>
+#include <cstddef>
 #include <cstdint>
+#include <list>
+#include <mutex>
+#include <optional>
+#include <thread>
+#include <vector>
 
 /**
  * @file WorkerpoolExecutor.h
- * @brief Declares immediate CPU execution on the submitting thread.
+ * @brief Declares fixed-size concurrent CPU execution.
  */
 
 namespace Atlas
 {
     /**
      * @ingroup executor
-     * @brief Executes accepted task callables immediately on the submitting thread.
+     * @brief Executes accepted task callables on a fixed-size worker pool.
      *
-     * Submission does not return until the callable finishes and its completion
-     * has been queued. Completions are retained in submission order until they
-     * are retrieved. This implementation owns no worker threads and is intended
-     * to be called from one thread at a time. It is neither thread-safe nor
-     * reentrant; a task callable must not call back into the same executor.
+     * Submission transfers callable ownership into a FIFO work queue. Workers
+     * execute callables outside the state mutex and publish task-attributed
+     * completions in completion order. Callable exceptions are captured and do
+     * not escape worker threads.
+     *
+     * Public calls must be serialized by the caller. A submitted callable must
+     * not call lifecycle operations on this executor.
      */
     class WorkerpoolExecutor final : public CpuExecutor
     {
       public:
         /**
-         * @brief Constructs a workpool executor with a specified number of threads.
+         * @brief Constructs a worker-pool executor with a fixed number of threads.
          * @param maxThreads The maximum number of threads to use in the workpool.
+         * @throws std::invalid_argument When @p maxThreads is zero.
          */
-        WorkerpoolExecutor(std::uint32_t maxThreads);
-        
+        explicit WorkerpoolExecutor(std::uint32_t maxThreads);
+
+        /// @brief Drains accepted work and joins every worker.
+        ~WorkerpoolExecutor() override;
+
         /**
          * @brief Executes one accepted callable and queues its completion.
          * @param taskHandle The identity attached to the completion.
@@ -45,8 +56,9 @@ namespace Atlas
         bool submit(TaskHandle taskHandle, TaskFunction taskFunction) override;
 
         /**
-         * @brief Removes and returns the oldest queued completion without blocking.
-         * @return The oldest completion, or an empty optional when the queue is empty.
+         * @brief Waits for and removes the next produced completion.
+         * @return The next completion, or an empty optional when no accepted or
+         * completed work remains.
          */
         std::optional<TaskCompletion> waitForCompletion() override;
 
@@ -58,14 +70,50 @@ namespace Atlas
         void shutdown() noexcept override;
 
       private:
-        /// @brief Completed task outcomes waiting to be retrieved in submission order.
-        std::queue<TaskCompletion> completions;
+        enum class Lifecycle : std::uint8_t
+        {
+            Running,
+            ShuttingDown,
+            Stopped
+        };
 
-        /// @brief Whether the executor will accept another submission.
-        bool acceptingSubmissions{ true };
+        struct WorkItem
+        {
+            TaskFunction function;
+            TaskCompletion completion;
+        };
 
-        /// @brief Number of threads in the workpool.
-        std::uint32_t numThreads;
+        /// @brief Waits for and executes queued work until shutdown has drained it.
+        void workerLoop();
+
+        /// @brief Protects queues, unfinished-work accounting, and lifecycle state.
+        std::mutex stateMutex;
+
+        /// @brief Indicates a task is ready to be executed by a worker thread.
+        std::condition_variable workAvailable;
+
+        /// @brief Indicates a task has completed and is ready to be retrieved.
+        std::condition_variable workComplete;
+
+        /// @brief Queue of tasks waiting to be executed by worker threads.
+        std::list<WorkItem> taskQueue;
+
+        /**
+         * @brief Completed work waiting to be retrieved in completion order.
+         *
+         * Nodes are allocated in taskQueue during submission and spliced here
+         * after execution, so publishing a completion does not allocate.
+         */
+        std::list<WorkItem> completions;
+
+        /// @brief Number of tasks that have been submitted but not yet completed.
+        std::size_t unfinishedTasks{ 0 };
+
+        /// @brief Lifecycle state of the executor.
+        Lifecycle lifecycle{ Lifecycle::Running };
+
+        /// @brief Worker threads for executing tasks in the pool.
+        std::vector<std::jthread> workerThreads;
     };
 } // namespace Atlas
 
