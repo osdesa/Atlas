@@ -59,7 +59,9 @@ rules.ninja
 
 # IDE metadata
 /.idea/
-/.vscode/
+/.vscode/*
+!/.vscode/extensions.json
+!/.vscode/settings.json
 *.code-workspace
 
 # Local package-manager output
@@ -83,3 +85,4 @@ rules.ninja
 # Operating-system metadata
 .DS_Store
 Thumbs.db
+docs/milestone-3-cpu-execution-backend.md

@@ -24,7 +24,13 @@ function(atlas_add_test_suite target_name suite_label)
     atlas_enable_sanitizers(${target_name})
     atlas_enable_clang_tidy(${target_name})
 
-    catch_discover_tests(${target_name} PROPERTIES LABELS "${suite_label}")
+    catch_discover_tests(
+        ${target_name}
+        ADD_TAGS_AS_LABELS
+        PROPERTIES
+            LABELS "${suite_label}"
+            TIMEOUT 60
+    )
 endfunction()
 
 include(Catch)

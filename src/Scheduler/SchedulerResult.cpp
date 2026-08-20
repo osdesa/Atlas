@@ -1,5 +1,6 @@
 #include "atlas/Scheduler/SchedulerResult.h"
 
+#include <chrono>
 #include <exception>
 #include <ostream>
 
@@ -37,8 +38,9 @@ namespace Atlas
 {
     std::ostream& operator<<(std::ostream& stream, const SchedulerResult& result)
     {
+        const auto executionTimeMilliseconds{ std::chrono::duration_cast<std::chrono::milliseconds>(result.executionTime) };
         stream << "SchedulerResult{status=" << toString(result.status) << ", executedTaskCount=" << result.executedTaskCount
-               << ", executionTime=" << result.executionTime.count() << "micro(s), exception=";
+               << ", executionTime=" << executionTimeMilliseconds.count() << "ms, exception=";
         printException(stream, result.exception);
         stream << '}';
         return stream;

@@ -95,6 +95,10 @@ function(atlas_add_documentation)
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_id_generator.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_options.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_graph.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/cpu_executor.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/task_completion.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/synchronous_cpu_executor.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/workerpool_executor.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/base_scheduler.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/kahn_scheduler.puml"
     )

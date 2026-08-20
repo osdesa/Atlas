@@ -13,8 +13,10 @@
       "cacheVariables": {
         "ATLAS_BUILD_TESTS": "ON",
         "ATLAS_WARNINGS_AS_ERRORS": "ON",
-        "ATLAS_ENABLE_SANITIZERS": "ON",
-        "ATLAS_ENABLE_CLANG_TIDY": "ON",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_THREAD_SANITIZER": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF",
+        "ATLAS_REQUIRE_CLANG_TIDY": "OFF",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
@@ -25,7 +27,9 @@
       "inherits": "base",
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ATLAS_ENABLE_SANITIZERS": "ON",
+        "ATLAS_ENABLE_CLANG_TIDY": "ON"
       }
     },
     {
@@ -35,7 +39,8 @@
       "inherits": "base",
       "architecture": "x64",
       "cacheVariables": {
-        "ATLAS_ENABLE_SANITIZERS": "OFF"
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "ON"
       },
       "condition": {
         "type": "equals",
@@ -50,7 +55,9 @@
       "inherits": "base",
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ATLAS_ENABLE_SANITIZERS": "ON",
+        "ATLAS_ENABLE_CLANG_TIDY": "ON"
       },
       "condition": {
         "type": "equals",
@@ -62,9 +69,13 @@
       "name": "docs-windows",
       "displayName": "Windows documentation",
       "description": "Generate Atlas API documentation and UML diagrams on Windows",
-      "inherits": "dev-windows",
+      "inherits": "base",
+      "architecture": "x64",
       "cacheVariables": {
-        "ATLAS_BUILD_DOCUMENTATION": "ON"
+        "ATLAS_BUILD_DOCUMENTATION": "ON",
+        "ATLAS_BUILD_TESTS": "OFF",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -76,9 +87,14 @@
       "name": "docs-linux",
       "displayName": "Linux documentation",
       "description": "Generate Atlas API documentation and UML diagrams on Linux",
-      "inherits": "dev-linux",
+      "inherits": "base",
+      "generator": "Ninja",
       "cacheVariables": {
-        "ATLAS_BUILD_DOCUMENTATION": "ON"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ATLAS_BUILD_DOCUMENTATION": "ON",
+        "ATLAS_BUILD_TESTS": "OFF",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -89,13 +105,14 @@
     {
       "name": "ci-windows",
       "displayName": "Windows CI (MSVC)",
-      "description": "Release build with Atlas warnings promoted to errors",
+      "description": "Release build with MSVC level-four warnings enabled",
       "inherits": "base",
       "binaryDir": "${sourceDir}/build/ci-windows",
       "architecture": "x64",
       "cacheVariables": {
-        "ATLAS_WARNINGS_AS_ERRORS": "ON",
-        "ATLAS_ENABLE_SANITIZERS": "OFF"
+        "ATLAS_WARNINGS_AS_ERRORS": "OFF",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
       },
       "condition": {
         "type": "equals",
@@ -112,7 +129,61 @@
       "generator": "Ninja",
       "cacheVariables": {
         "ATLAS_WARNINGS_AS_ERRORS": "ON",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF",
         "CMAKE_BUILD_TYPE": "Release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "analysis-linux",
+      "displayName": "Linux Clang-Tidy analysis",
+      "description": "Required Clang-Tidy analysis without sanitizer instrumentation",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "ATLAS_ENABLE_CLANG_TIDY": "ON",
+        "ATLAS_REQUIRE_CLANG_TIDY": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "asan-ubsan-linux",
+      "displayName": "Linux ASan and UBSan",
+      "description": "Clang debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "ATLAS_ENABLE_SANITIZERS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "tsan-linux",
+      "displayName": "Linux ThreadSanitizer",
+      "description": "Clang debug build with ThreadSanitizer for concurrency tests",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "ATLAS_ENABLE_THREAD_SANITIZER": "ON"
       },
       "condition": {
         "type": "equals",
@@ -162,6 +233,21 @@
       "name": "ci-linux",
       "configurePreset": "ci-linux",
       "configuration": "Release"
+    },
+    {
+      "name": "analysis-linux",
+      "configurePreset": "analysis-linux",
+      "configuration": "Debug"
+    },
+    {
+      "name": "asan-ubsan-linux",
+      "configurePreset": "asan-ubsan-linux",
+      "configuration": "Debug"
+    },
+    {
+      "name": "tsan-linux",
+      "configurePreset": "tsan-linux",
+      "configuration": "Debug"
     }
   ],
   "testPresets": [
@@ -213,6 +299,40 @@
       "name": "ci-linux",
       "configurePreset": "ci-linux",
       "configuration": "Release",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "asan-ubsan-linux",
+      "configurePreset": "asan-ubsan-linux",
+      "configuration": "Debug",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "tsan-linux",
+      "configurePreset": "tsan-linux",
+      "configuration": "Debug",
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1"
+      },
+      "filter": {
+        "include": {
+          "label": "CONCURRENCY"
+        }
+      },
       "output": {
         "outputOnFailure": true
       },

@@ -32,7 +32,12 @@ if(ATLAS_ENABLE_CLANG_TIDY)
         HINTS ${_atlas_clang_tidy_hints}
     )
 
-    if(NOT ATLAS_CLANG_TIDY_EXECUTABLE)
+    if(NOT ATLAS_CLANG_TIDY_EXECUTABLE AND ATLAS_REQUIRE_CLANG_TIDY)
+        message(
+            FATAL_ERROR
+            "ATLAS_REQUIRE_CLANG_TIDY is ON, but clang-tidy was not found."
+        )
+    elseif(NOT ATLAS_CLANG_TIDY_EXECUTABLE)
         message(
             WARNING
             "ATLAS_ENABLE_CLANG_TIDY is ON, but clang-tidy was not found. "
@@ -45,6 +50,10 @@ if(ATLAS_ENABLE_CLANG_TIDY)
     unset(_atlas_clang_tidy_hints)
     unset(_atlas_compiler_directory)
     unset(_atlas_visual_studio_llvm_directories)
+endif()
+
+if(ATLAS_REQUIRE_CLANG_TIDY AND NOT ATLAS_ENABLE_CLANG_TIDY)
+    message(FATAL_ERROR "ATLAS_REQUIRE_CLANG_TIDY requires ATLAS_ENABLE_CLANG_TIDY.")
 endif()
 
 function(atlas_enable_clang_tidy target)

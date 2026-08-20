@@ -17,11 +17,12 @@ namespace Atlas
      */
     enum class SchedulerStatus : std::uint8_t
     {
-        Success,           ///< Every task completed successfully.
-        InvalidGraph,      ///< The supplied graph is structurally invalid.
-        GraphNotFinalised, ///< The supplied graph has not been finalised.
-        TaskFailed,        ///< A task threw an exception or otherwise failed.
-        Unknown,           ///< An unknown scheduler error occurred.
+        Success,             ///< Every task completed successfully.
+        InvalidGraph,        ///< The supplied graph is structurally invalid.
+        GraphNotFinalised,   ///< The supplied graph has not been finalised.
+        TaskFailed,          ///< A task threw an exception or otherwise failed.
+        ExecutorUnavailable, ///< The CPU executor rejected work or violated its completion contract.
+        Unknown,             ///< An unknown scheduler error occurred.
     };
 
     /**

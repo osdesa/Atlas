@@ -15,8 +15,8 @@ namespace Atlas
      * @brief Identifies the resource on which a task is intended to execute.
      *
      * This classification expresses task intent only. It does not contain
-     * backend objects and does not cause the current sequential executor to
-     * dispatch work to a CPU or GPU backend.
+     * backend objects and does not currently cause KahnScheduler to select a CPU
+     * or GPU backend. All task callables are sent to its injected CPU executor.
      */
     enum class ExecutionResource : std::uint8_t
     {

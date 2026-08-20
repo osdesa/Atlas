@@ -1,8 +1,8 @@
 # Task lifecycle
 
 Atlas currently stores lifecycle state directly on each graph-owned `Task`.
-This is an MVP model for the synchronous Kahn executor, not yet a concurrent
-runtime state machine.
+The scheduler control thread owns state transitions even when a worker pool runs
+multiple task callables concurrently.
 
 ## States
 
@@ -13,7 +13,7 @@ runtime state machine.
 | `Ready` | The task is eligible for selection by the current scheduler. |
 | `Running` | The scheduler has selected the task and its callable is executing. |
 | `Success` | The callable returned normally with no captured exception. |
-| `Failure` | The callable threw and its exception was captured. |
+| `Failure` | Execution failed, or the executor accepted the task but did not return its matching completion. A callable exception is retained when one exists. |
 
 ## Current scheduler behavior
 
@@ -39,6 +39,19 @@ enough to execute a task: selection rechecks that its current state is `Ready`.
 This allows stale or already completed entries to be skipped without changing
 the queue container.
 
+`KahnScheduler` marks a selected task `Running` before submitting it to its
+borrowed CPU executor. A rejected submission restores the task to `Ready`. A
+valid completion changes it to `Success` or `Failure` and supplies its exception
+and callable duration. Ready tasks are submitted until the executor's
+`maxConcurrency()` capacity is full, and completions may arrive in a different
+order from submission. Dependencies are released only by successful
+completions.
+
+The scheduler borrows an initially drained executor and requires exclusive
+access to its public interface during `execute()`. It does not shut the executor
+down. `SynchronousCpuExecutor` reports capacity one;
+`WorkerpoolExecutor` reports its validated, non-zero worker count.
+
 ## Execution information and failure
 
 `TaskExecutionInfo` is the single source of runtime state for a task. It also
@@ -47,13 +60,36 @@ spent executing the callable. Static submission metadata remains separate in
 `TaskOptions`. The graph-level `SchedulerResult` reports total successful
 completions, graph elapsed time, and the first captured task exception.
 
-Execution stops at the first failure. Tasks that still depend on the failed task
-remain `Blocked`, retain an empty exception pointer, and are not executed.
+The first callable failure disables new submissions, but work already accepted
+is drained and every real completion is applied. The result preserves the first
+observed task exception and counts successful completions rather than
+submissions. Dependants that were not released before failure remain `Blocked`.
+
+Callable failure is reported as `TaskFailed`. Submission rejection or a missing,
+unknown, duplicate, extra, or mismatched completion is an executor
+infrastructure failure and is reported as `ExecutorUnavailable`. Infrastructure
+status takes precedence if both kinds of failure are observed.
+
+## Executor lifecycle
+
+`WorkerpoolExecutor` owns its work queue, completion queue, synchronization, and
+threads. Shutdown stops acceptance, drains queued and running work, joins all
+workers, and retains produced completions for retrieval. Repeated shutdown calls
+are safe. `SynchronousCpuExecutor` has no worker lifetime to join but follows the
+same rejection and completion-retention contract.
+
+Executor public calls are serialized by their caller. Worker callables may run
+at the same time, so captured references and other shared application resources
+require application-owned synchronization. Worker threads never access
+`TaskExecutionInfo`.
 
 ## Current limitations
 
-- Scheduling is synchronous and single-threaded; execution information is not atomic.
+- Scheduler control is single-threaded, but worker callables may execute concurrently.
+- Execution information is not atomic and must not be accessed concurrently with execution.
 - A graph is intended for one execution and completed tasks are not run again.
+- One executor must not contain unrelated accepted work or queued completions
+  when lent to `KahnScheduler`.
 - Priority and execution-resource intent do not affect FIFO selection or dispatch.
 - Both CPU- and GPU-designated tasks currently run host callables.
 - Atlas does not currently define task cancellation; it will be introduced only
