@@ -6,7 +6,7 @@
 
 /**
  * @file KahnScheduler.cpp
- * @brief Defines sequential task-graph execution using Kahn's algorithm.
+ * @brief Defines capacity-aware task-graph execution using Kahn's algorithm.
  */
 
 namespace Atlas
@@ -24,6 +24,10 @@ namespace Atlas
                                 .executionTime = std::chrono::microseconds{ 0 } };
 
         const auto startTime{ std::chrono::steady_clock::now() };
+        ExecutionState state{ .executorCapacity = static_cast<std::size_t>(cpuExecutor.maxConcurrency()) };
+
+        inFlightTasks.clear();
+        inFlightTasks.reserve(state.executorCapacity);
 
         if (!parseDependencies())
         {
@@ -31,57 +35,164 @@ namespace Atlas
         }
         else
         {
-            while (const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask() })
+            if (state.executorCapacity == 0U)
             {
-                const bool submissionSuccess{ cpuExecutor.submit(task.value()->handle, task.value()->function) };
-
-                if (!submissionSuccess)
-                {
-                    task.value()->executionInfo.state = TaskState::Ready;
-                    result.status = SchedulerStatus::ExecutorUnavailable;
-                    result.executionTime =
-                        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
-                    return result;
-                }
-
-                const std::optional<TaskCompletion> completion{ cpuExecutor.waitForCompletion() };
-
-                if (!completion.has_value() || completion.value().handle != task.value()->handle)
-                {
-                    task.value()->executionInfo.state = TaskState::Failure;
-                    result.status = SchedulerStatus::ExecutorUnavailable;
-                    result.executionTime =
-                        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
-                    return result;
-                }
-
-                completeTask(completion.value());
-
-                if (!completion.value().succeeded())
-                {
-                    result.status = SchedulerStatus::TaskFailed;
-                    result.exception = completion.value().exception;
-                    result.executionTime =
-                        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
-                    return result;
-                }
-
-                result.executedTaskCount++;
-                updateDependencies(task.value());
+                state.executorFailure = true;
             }
-        }
+            else
+            {
+                runExecutorLoop(state);
+            }
 
-        if (result.executedTaskCount == startingGraph.getTaskCount())
-        {
-            result.status = SchedulerStatus::Success;
-        }
-        else
-        {
-            result.status = SchedulerStatus::InvalidGraph;
+            result.status = determineStatus(state);
+            result.executedTaskCount = state.successfulTaskCount;
+            result.exception = state.firstTaskException;
         }
 
         result.executionTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
         return result;
+    }
+
+    void KahnScheduler::runExecutorLoop(ExecutionState& state)
+    {
+        while (true)
+        {
+            submitReadyTasks(state);
+
+            if (inFlightTasks.empty() || !processNextCompletion(state))
+            {
+                break;
+            }
+        }
+
+        if (!state.completionStreamEndedEarly && cpuExecutor.waitForCompletion().has_value())
+        {
+            state.executorFailure = true;
+        }
+    }
+
+    void KahnScheduler::submitReadyTasks(ExecutionState& state)
+    {
+        while (state.submissionsEnabled && inFlightTasks.size() < state.executorCapacity)
+        {
+            const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask() };
+
+            if (!task.has_value())
+            {
+                return;
+            }
+
+            if (!cpuExecutor.submit(task.value()->handle, task.value()->function))
+            {
+                task.value()->executionInfo.state = TaskState::Ready;
+                task.value()->executionInfo.exception = nullptr;
+                task.value()->executionInfo.executionDuration = std::chrono::microseconds{ 0 };
+                state.executorFailure = true;
+                state.submissionsEnabled = false;
+                return;
+            }
+
+            inFlightTasks.emplace(task.value()->handle);
+        }
+    }
+
+    bool KahnScheduler::processNextCompletion(ExecutionState& state)
+    {
+        const std::optional<TaskCompletion> completion{ cpuExecutor.waitForCompletion() };
+
+        if (!completion.has_value())
+        {
+            handleMissingCompletion(state);
+            return false;
+        }
+
+        processReceivedCompletion(completion.value(), state);
+        return true;
+    }
+
+    void KahnScheduler::handleMissingCompletion(ExecutionState& state)
+    {
+        state.executorFailure = true;
+        state.completionStreamEndedEarly = true;
+        failUnresolvedInFlightTasks();
+        inFlightTasks.clear();
+    }
+
+    void KahnScheduler::processReceivedCompletion(const TaskCompletion& completion, ExecutionState& state)
+    {
+        const std::optional<std::shared_ptr<const Task>> task{ resolveCompletedTask(completion, state) };
+
+        if (task.has_value())
+        {
+            recordCompletionOutcome(task.value(), completion, state);
+        }
+    }
+
+    std::optional<std::shared_ptr<const Task>> KahnScheduler::resolveCompletedTask(const TaskCompletion& completion,
+                                                                                   ExecutionState& state)
+    {
+        const auto inFlightEntry{ inFlightTasks.find(completion.handle) };
+        if (inFlightEntry == inFlightTasks.end())
+        {
+            state.executorFailure = true;
+            state.submissionsEnabled = false;
+            return std::nullopt;
+        }
+
+        inFlightTasks.erase(inFlightEntry);
+        std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(completion.handle) };
+        if (!task.has_value() || task.value()->executionInfo.state != TaskState::Running)
+        {
+            state.executorFailure = true;
+            state.submissionsEnabled = false;
+            return std::nullopt;
+        }
+
+        return task;
+    }
+
+    void KahnScheduler::recordCompletionOutcome(const std::shared_ptr<const Task>& task, const TaskCompletion& completion,
+                                                ExecutionState& state)
+    {
+        completeTask(task, completion);
+
+        if (completion.succeeded())
+        {
+            state.successfulTaskCount++;
+            if (state.submissionsEnabled)
+            {
+                updateDependencies(task);
+            }
+        }
+        else
+        {
+            state.taskFailureObserved = true;
+            state.submissionsEnabled = false;
+            if (state.firstTaskException == nullptr)
+            {
+                state.firstTaskException = completion.exception;
+            }
+        }
+    }
+
+    SchedulerStatus KahnScheduler::determineStatus(const ExecutionState& state) const noexcept
+    {
+        if (state.executorFailure)
+        {
+            return SchedulerStatus::ExecutorUnavailable;
+        }
+
+        if (state.taskFailureObserved)
+        {
+            return SchedulerStatus::TaskFailed;
+        }
+
+        if (state.successfulTaskCount == startingGraph.getTaskCount())
+        {
+            return SchedulerStatus::Success;
+        }
+
+        return SchedulerStatus::InvalidGraph;
     }
 
     bool KahnScheduler::parseDependencies()
@@ -142,10 +253,8 @@ namespace Atlas
         return std::nullopt;
     }
 
-    void KahnScheduler::completeTask(const TaskCompletion& completion)
+    void KahnScheduler::completeTask(const std::shared_ptr<const Task>& task, const TaskCompletion& completion)
     {
-        const std::shared_ptr<const Task> task{ startingGraph.findTask(completion.handle).value() };
-
         if (completion.succeeded())
         {
             task->executionInfo.state = TaskState::Success;
@@ -158,6 +267,20 @@ namespace Atlas
         }
 
         task->executionInfo.executionDuration = completion.executionDuration;
+    }
+
+    void KahnScheduler::failUnresolvedInFlightTasks()
+    {
+        for (const TaskHandle taskHandle : inFlightTasks)
+        {
+            const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(taskHandle) };
+            if (task.has_value() && task.value()->executionInfo.state == TaskState::Running)
+            {
+                task.value()->executionInfo.state = TaskState::Failure;
+                task.value()->executionInfo.exception = nullptr;
+                task.value()->executionInfo.executionDuration = std::chrono::microseconds{ 0 };
+            }
+        }
     }
 
     void KahnScheduler::updateDependencies(const std::shared_ptr<const Task>& executedTask)
