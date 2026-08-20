@@ -37,10 +37,11 @@ namespace Atlas
      * to shutdown are valid.
      *
      * Callers must serialize calls to the public interface unless a concrete
-     * implementation explicitly documents stronger guarantees. A future worker
-     * executor may run accepted callables concurrently while keeping control of
-     * task state in the scheduler thread.
+     * implementation explicitly documents stronger guarantees. Executors run
+     * callables but never mutate graph-owned task state; the scheduler applies
+     * returned completions on its control thread.
      * @hideinheritancegraph
+     * @plantumlfile cpu_executor.puml
      */
     class CpuExecutor
     {

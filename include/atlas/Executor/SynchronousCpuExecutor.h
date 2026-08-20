@@ -24,6 +24,9 @@ namespace Atlas
      * are retrieved. This implementation owns no worker threads and is intended
      * to be called from one thread at a time. It is neither thread-safe nor
      * reentrant; a task callable must not call back into the same executor.
+     *
+     * @par Class diagram
+     * @plantumlfile synchronous_cpu_executor.puml
      */
     class SynchronousCpuExecutor final : public CpuExecutor
     {

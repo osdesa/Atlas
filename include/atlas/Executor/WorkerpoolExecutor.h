@@ -32,6 +32,9 @@ namespace Atlas
      *
      * Public calls must be serialized by the caller. A submitted callable must
      * not call lifecycle operations on this executor.
+     *
+     * @par Class diagram
+     * @plantumlfile workerpool_executor.puml
      */
     class WorkerpoolExecutor final : public CpuExecutor
     {
@@ -47,7 +50,7 @@ namespace Atlas
         ~WorkerpoolExecutor() override;
 
         /**
-         * @brief Executes one accepted callable and queues its completion.
+         * @brief Accepts one callable for asynchronous worker-pool execution.
          * @param taskHandle The identity attached to the completion.
          * @param taskFunction Callable work transferred into the executor.
          * @return True when execution was accepted; false after shutdown.
@@ -63,7 +66,7 @@ namespace Atlas
         std::optional<TaskCompletion> waitForCompletion() override;
 
         /**
-         * @brief Prevents later submissions without discarding queued completions.
+         * @brief Prevents later submissions, drains accepted work, and joins every worker.
          *
          * Repeated calls have the same effect as the first call.
          */

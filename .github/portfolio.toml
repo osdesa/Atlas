@@ -1,6 +1,6 @@
 title = "Atlas"
 
-summary = "Atlas is a tested C++20 task-graph prototype with sequential dependency-ordered execution."
+summary = "Atlas is a tested C++20 task-graph prototype with dependency-aware concurrent CPU execution."
 
 status = "Active"
 
@@ -9,12 +9,14 @@ technologies = [
   "Vulkan SDK",
   "Catch2",
   "CMake",
+  "ThreadSanitizer",
   "Doxygen",
 ]
 
 highlights = [
   "Built directed acyclic task graphs with dependency validation and cycle rejection.",
-  "Implemented deterministic sequential execution using Kahn's algorithm with exception and timing results.",
+  "Implemented capacity-aware Kahn scheduling through interchangeable synchronous and fixed-size worker-pool CPU executors.",
+  "Added attributed completions, exception isolation, draining shutdown, and deterministic concurrent graph tests.",
   "Configured Vulkan SDK discovery as groundwork for a future compute backend; no Vulkan workloads execute yet.",
 ]
 
