@@ -1,7 +1,6 @@
 # Atlas
 
-Atlas is an early C++20 task-graph prototype and the foundation for a future
-user-space heterogeneous CPU/Vulkan GPU scheduler.
+Atlas is a C++20 heterogeneous CPU/Vulkan task-graph prototype.
 
 The current implementation can:
 
@@ -14,32 +13,30 @@ The current implementation can:
   that reports task-attributed completion, exceptions, and duration;
 - execute independent CPU callables concurrently through a fixed-size worker
   pool with failure isolation and draining shutdown;
-- execute a finalised graph through either CPU executor with capacity-bounded
-  Kahn dependency scheduling; and
+- create a compute-only Vulkan runtime with deterministic device selection,
+  persistent storage buffers and pipelines, staging transfers, and validated
+  declarative dispatches;
+- execute Vulkan work asynchronously through a capacity-one draining executor;
+- build explicit CPU and GPU tasks and execute mixed graphs while tracking each
+  backend's capacity independently through one shared completion channel; and
 - record per-task lifecycle state, exceptions, and execution duration alongside
   graph-level completion count, elapsed time, and exceptions.
 
-The example CLI exercises that path with a six-task graph. It constructs a
-`SynchronousCpuExecutor` and lends it to `KahnScheduler`, which submits selected
-tasks and applies attributed completions to their execution information. Unit
-and feature tests cover the current graph, scheduler, synchronous executor, and
-worker-pool executor behaviour.
+The CPU CLI runs the same 17-task sensor pipeline through the synchronous and
+four-thread worker-pool executors and compares their output. Opt-in Vulkan
+examples verify standalone vector addition and a CPU-to-Vulkan-to-CPU graph.
 
-Atlas does **not** yet provide runtime task submission, interchangeable
-scheduling policies, Vulkan initialisation or compute execution, GPU task
-slicing, mixed CPU/GPU scheduling, or a benchmarking framework. Vulkan is
-currently limited to SDK discovery and link validation.
+Atlas does **not** yet provide runtime task submission, interchangeable or
+priority-aware scheduling policies, cancellation, multiple Vulkan queues,
+cooperative GPU slicing, or a benchmarking framework.
 
 ## Task model and lifecycle
 
-`TaskOptions` describes immutable-on-submission intent. An empty name is valid,
-priority is an unsigned 32-bit value where a lower value means higher priority,
-and `ExecutionResource` classifies work as CPU or GPU. The current Kahn scheduler
-is FIFO and dispatches through a borrowed `CpuExecutor`; it does not yet use
-priority for ordering or resource intent for backend dispatch. The CLI supplies
-a `SynchronousCpuExecutor`, so its graph execution remains on the calling thread.
-Supplying a `WorkerpoolExecutor` allows independent ready tasks to overlap up to
-the configured worker count without changing scheduler code.
+`TaskGraph::addCpuTask()` and `addGpuTask()` make payload type authoritative;
+`addTask()` remains a CPU compatibility alias. The FIFO Kahn scheduler borrows a
+CPU executor and, for mixed graphs, a GPU executor. It fills both capacities
+independently and consumes whichever attributed completion arrives first.
+Priority remains metadata only.
 
 Tasks begin `Unknown` while their graph is being constructed. Successful graph
 finalisation makes tasks without dependencies `Ready` and tasks waiting on
@@ -75,6 +72,8 @@ scheduling through cooperative execution slices**.
   - Linux: install the Vulkan loader development package, for example
     `libvulkan-dev` on Ubuntu.
 - Ninja for the generic `dev` and Linux presets
+- `glslc` and SPIR-V Tools for Vulkan integration builds
+- Mesa Lavapipe and Vulkan validation layers for Linux integration execution
 
 The first test-enabled configure downloads Catch2 v3.8.1 through CMake
 `FetchContent`.
@@ -108,7 +107,8 @@ On Ubuntu, the prerequisites can be installed with:
 
 ```bash
 sudo apt-get update
-sudo apt-get install build-essential cmake ninja-build libvulkan-dev
+sudo apt-get install build-essential cmake ninja-build libvulkan-dev \
+  mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
 ```
 
 Then configure, build, and test:
@@ -117,6 +117,10 @@ Then configure, build, and test:
 cmake --preset dev-linux
 cmake --build --preset dev-linux
 ctest --preset dev-linux
+
+cmake --preset vulkan-integration-linux
+cmake --build --preset vulkan-integration-linux
+ctest --preset vulkan-integration-linux
 ```
 
 The generic `dev` preset uses the same Ninja-based development settings and is
@@ -126,6 +130,9 @@ also suitable on Linux.
 
 - `atlas` / `Atlas::Atlas`: compiled Atlas library and namespaced alias
 - `atlas_cli`: example sequential task-graph executable linked to `Atlas::Atlas`
+- `atlas_vulkan_example`: opt-in standalone Vulkan vector addition
+- `atlas_mixed_example`: opt-in CPU/Vulkan dependency graph
+- `atlas_all_example`: opt-in runner that executes all three examples in sequence
 - `atlas_unit_tests`: Catch2 unit-test executable discovered by CTest
 - `atlas_feature_tests`: Catch2 feature-test executable discovered by CTest
 
@@ -134,6 +141,7 @@ also suitable on Linux.
 | Option | Raw CMake default | Purpose |
 | --- | --- | --- |
 | `ATLAS_BUILD_TESTS` | `ON` | Build and register the unit and feature tests |
+| `ATLAS_BUILD_VULKAN_INTEGRATION_TESTS` | `OFF` | Build shaders, examples, and real Vulkan integration tests |
 | `ATLAS_WARNINGS_AS_ERRORS` | `OFF` | Promote warnings on Atlas-owned targets to errors with non-MSVC toolchains |
 | `ATLAS_ENABLE_SANITIZERS` | `OFF` | Enable AddressSanitizer and UndefinedBehaviorSanitizer on compatible non-Windows GCC/Clang builds |
 | `ATLAS_ENABLE_THREAD_SANITIZER` | `OFF` | Enable ThreadSanitizer on compatible non-Windows GCC/Clang builds; mutually exclusive with ASan/UBSan |
@@ -157,10 +165,9 @@ third-party dependencies do not inherit those settings.
 ## Continuous integration
 
 GitHub Actions exposes independent format, GCC, MSVC, Clang-Tidy, ASan/UBSan,
-TSan, and documentation jobs. Ordinary Linux and Windows jobs run the full suite
-and CLI smoke test. TSan repeats the labelled concurrency subset five times.
-The Vulkan SDK is required for discovery and linking, but no physical GPU or
-Vulkan execution is required.
+TSan, documentation, and Lavapipe Vulkan jobs. Ordinary Windows builds remain
+device-independent; Linux integration forces the Mesa software ICD and executes
+both Vulkan examples and the labelled real-compute tests with validation enabled.
 
 The dedicated Linux quality presets are reproducible locally:
 

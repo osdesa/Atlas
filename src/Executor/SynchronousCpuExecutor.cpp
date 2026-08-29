@@ -1,5 +1,7 @@
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 
+#include "atlas/Executor/CompletionChannel.h"
+
 #include <chrono>
 #include <exception>
 #include <stdexcept>
@@ -19,8 +21,29 @@ namespace Atlas
             return false;
         }
 
-        completions.emplace(TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 } });
-        TaskCompletion& completion{ completions.back() };
+        completions.emplace(execute(taskHandle, taskFunction));
+        return true;
+    }
+
+    bool SynchronousCpuExecutor::submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel)
+    {
+        if (!taskHandle.isValid())
+        {
+            throw std::invalid_argument{ "Invalid task handle provided to SynchronousCpuExecutor::submit" };
+        }
+
+        if (!acceptingSubmissions)
+        {
+            return false;
+        }
+
+        completionChannel.publish(execute(taskHandle, taskFunction));
+        return true;
+    }
+
+    TaskCompletion SynchronousCpuExecutor::execute(TaskHandle taskHandle, const TaskFunction& taskFunction)
+    {
+        TaskCompletion completion{ taskHandle, nullptr, std::chrono::microseconds{ 0 }, ExecutionResource::CPU };
 
         const auto startTime{ std::chrono::steady_clock::now() };
         try
@@ -37,7 +60,7 @@ namespace Atlas
 
         const auto endTime{ std::chrono::steady_clock::now() };
         completion.executionDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-        return true;
+        return completion;
     }
 
     std::optional<TaskCompletion> SynchronousCpuExecutor::waitForCompletion()

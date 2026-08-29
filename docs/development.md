@@ -2,29 +2,30 @@
 
 ## Repository layout
 
-The repository is deliberately small while the core task model and concurrent
-CPU task-graph executor are being developed:
+The repository separates tasking, scheduling, CPU execution, and Vulkan compute:
 
 - `include/atlas/`: public Atlas headers
 - `src/`: compiled library implementation
-- `apps/atlas_cli/`: example task-graph executable using the synchronous backend
+- `apps/`: CPU, standalone Vulkan, and mixed CPU/Vulkan examples
 - `tests/`: Catch2/CTest unit and feature tests
 - `cmake/`: target-scoped warnings, sanitizers, and static-analysis helpers
 - `.github/workflows/`: Windows and Linux continuous integration
 
-Directories for future runtime components should be added only when their
-implementations begin.
-
 ## Targets
 
 - `atlas` is a compiled static library. `Atlas::Atlas` is its namespaced alias.
-- `atlas_cli` links to `Atlas::Atlas` and executes an example frame task graph.
+- `atlas_cli` runs the same 17-task pipeline through both CPU executors.
+- `atlas_vulkan_example` and `atlas_mixed_example` are built by the Vulkan
+  integration preset and verify standalone and graph-integrated compute.
+- `atlas_all_example` runs `atlas_cli`, `atlas_vulkan_example`, and
+  `atlas_mixed_example` in sequence, stopping when one fails.
 - `atlas_unit_tests` and `atlas_feature_tests` link to `Atlas::Atlas` and Catch2.
   `catch_discover_tests` registers their test cases with CTest.
 
-The Vulkan SDK is discovered at configure time with `find_package(Vulkan
-REQUIRED)`. `atlas` links to `Vulkan::Vulkan`, but no Vulkan API is called at
-this stage.
+The Vulkan SDK is discovered with `find_package(Vulkan REQUIRED)` and is a
+public link dependency because `VulkanError` exposes `VkResult`. Integration
+builds additionally require `glslc` and `spirv-val`; normal Windows and Linux
+builds remain device-independent.
 
 The executor module defines a backend-neutral CPU submission/completion contract,
 a `SynchronousCpuExecutor`, and a fixed-size `WorkerpoolExecutor`. The synchronous
@@ -36,13 +37,23 @@ duration and any captured exception. `KahnScheduler` remains backend-neutral:
 capacity one preserves synchronous FIFO behavior, while a worker pool keeps
 independent ready tasks in flight up to its worker count.
 
-`KahnScheduler` borrows a `CpuExecutor`; the caller owns that executor, keeps it
-alive, and remains responsible for shutdown. The executor must be initially
-drained and exclusively available to the scheduler during `execute()`. The
-scheduler marks selected work `Running`, tracks accepted handles, and applies
-completions to `TaskExecutionInfo` on its control thread. A rejected submission
-restores the task to `Ready`. Missing, unknown, duplicate, or mismatched
-completions report `ExecutorUnavailable` and never release dependants.
+`VulkanRuntime` owns a compute-only instance, device, queue, and command pool.
+It creates opaque persistent device-local buffers and compute pipelines;
+blocking uploads/downloads use internal staging allocations. `VulkanDispatch`
+contains a pipeline, exact storage-buffer bindings with access declarations,
+and non-zero workgroup dimensions. Invalid SPIR-V, binding sets, runtime
+identity, ranges, or device limits are rejected before queue submission.
+
+`VulkanExecutor` owns one worker and reports capacity one. It drains accepted
+dispatches on shutdown and returns the same task-attributed completion shape as
+CPU executors. Vulkan API failures after acceptance are captured as dispatch
+exceptions rather than escaping the worker.
+
+The CPU-only `KahnScheduler` constructor preserves the original completion path.
+The mixed constructor borrows both executors, maintains separate FIFO queues and
+in-flight counts, and consumes CPU/GPU outcomes through one preallocated
+`CompletionChannel`. A completion must match its handle, resource, and running
+state before it can release dependencies.
 
 `WorkerpoolExecutor` requires a non-zero fixed worker count. Public executor
 calls must be serialized, although accepted callables run concurrently. Its FIFO
@@ -55,19 +66,17 @@ executor.
 ## Current task and execution model
 
 `TaskGraph` owns task definitions and exposes `shared_ptr<const Task>` views.
-Identity, callable work, and options are immutable. `TaskExecutionInfo` groups
+Identity, variant-backed CPU/Vulkan work, and options are immutable. `TaskExecutionInfo` groups
 the logically mutable lifecycle state, captured exception, and callable duration
 so the scheduler control thread can update them through that otherwise read-only
 view. Retaining a returned `shared_ptr` extends the task object's lifetime beyond
 the graph, so callers must not infer a strict non-owning lifetime from the
 graph-owned description.
 
-Task options currently contain an optional name, a static `uint32_t` priority,
-and CPU/GPU execution-resource intent. Lower numeric priorities represent higher
-priority, but the FIFO Kahn scheduler does not yet use priority or resource intent
-when selecting or dispatching work. Both CPU- and GPU-designated tasks are sent
-to the supplied CPU executor; the CLI's synchronous executor runs their host
-callables on the calling thread.
+`addCpuTask()` and `addGpuTask()` make the work type authoritative and reject
+resource metadata disagreement. `addTask()` remains a CPU compatibility alias.
+Lower numeric priorities represent higher priority, but FIFO selection does not
+yet use priority.
 
 Tasks are `Unknown` during graph construction. Successful finalisation assigns
 `Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns
@@ -77,8 +86,8 @@ subsequent state changes and does not call a shared transition validator:
 Unknown --successful graph finalisation--> Ready or Blocked
 Blocked --final dependency succeeds------> Ready
 Ready   --selected by scheduler-----------> Running
-Running --callable returns----------------> Success
-Running --callable throws-----------------> Failure
+Running --backend work succeeds----------> Success
+Running --backend work fails-------------> Failure
 Running --missing/mismatched completion---> Failure (ExecutorUnavailable)
 ```
 
@@ -112,6 +121,7 @@ independent configurations.
 | `analysis-linux` | Ninja/Clang | Debug | Required Clang-Tidy analysis |
 | `asan-ubsan-linux` | Ninja/Clang | Debug | Full ASan/UBSan suite |
 | `tsan-linux` | Ninja/Clang | Debug | Labelled concurrency suite under TSan |
+| `vulkan-integration-linux` | Ninja/GCC | Debug | GLSL/SPIR-V build and real compute through Lavapipe |
 
 Each configure preset has a build and test preset with the same name:
 

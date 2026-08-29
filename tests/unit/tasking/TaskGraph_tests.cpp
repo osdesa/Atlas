@@ -54,7 +54,7 @@ TEST_CASE("TaskGraph exposes read-only task queries", "[UNIT]")
     REQUIRE(task.value()->getDependents().empty());
 }
 
-TEST_CASE("TaskGraph preserves CPU and GPU task metadata", "[UNIT]")
+TEST_CASE("TaskGraph preserves CPU metadata and rejects GPU metadata for CPU work", "[UNIT]")
 {
     Atlas::TaskGraph graph;
     const Atlas::TaskOptions cpuOptions{ "CPU task", Atlas::ExecutionResource::CPU, 2U };
@@ -64,17 +64,12 @@ TEST_CASE("TaskGraph preserves CPU and GPU task metadata", "[UNIT]")
     const std::optional<Atlas::TaskHandle> gpuHandle{ graph.addTask(doNothing, gpuOptions) };
 
     REQUIRE(cpuHandle.has_value());
-    REQUIRE(gpuHandle.has_value());
+    REQUIRE_FALSE(gpuHandle.has_value());
 
     const std::optional<std::shared_ptr<const Atlas::Task>> cpuTask{ graph.findTask(cpuHandle.value()) };
-    const std::optional<std::shared_ptr<const Atlas::Task>> gpuTask{ graph.findTask(gpuHandle.value()) };
-
     REQUIRE(cpuTask.has_value());
-    REQUIRE(gpuTask.has_value());
     REQUIRE(cpuTask.value()->options.executionResource == Atlas::ExecutionResource::CPU);
     REQUIRE(cpuTask.value()->options.priority == 2U);
-    REQUIRE(gpuTask.value()->options.executionResource == Atlas::ExecutionResource::GPU);
-    REQUIRE(gpuTask.value()->options.priority == 5U);
 }
 
 TEST_CASE("TaskGraph accepts anonymous task metadata", "[UNIT]")

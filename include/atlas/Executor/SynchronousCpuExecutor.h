@@ -32,6 +32,7 @@ namespace Atlas
     {
 
       public:
+        /// @brief Constructs a capacity-one synchronous executor.
         SynchronousCpuExecutor() : CpuExecutor{ 1U } {}
 
         /**
@@ -42,6 +43,16 @@ namespace Atlas
          * @throws std::invalid_argument If @p taskHandle is invalid.
          */
         bool submit(TaskHandle taskHandle, TaskFunction taskFunction) override;
+
+        /**
+         * @brief Executes one callable and publishes its completion to a shared channel.
+         * @param taskHandle The identity attached to the completion.
+         * @param taskFunction Callable work transferred into the executor.
+         * @param completionChannel Channel that outlives this synchronous publication.
+         * @return True when execution was accepted; false after shutdown.
+         * @throws std::invalid_argument If @p taskHandle is invalid.
+         */
+        bool submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel) override;
 
         /**
          * @brief Removes and returns the oldest queued completion without blocking.
@@ -57,6 +68,9 @@ namespace Atlas
         void shutdown() noexcept override;
 
       private:
+        /// @brief Invokes one callable and captures its exception and duration.
+        TaskCompletion execute(TaskHandle taskHandle, const TaskFunction& taskFunction);
+
         /// @brief Completed task outcomes waiting to be retrieved in submission order.
         std::queue<TaskCompletion> completions;
 

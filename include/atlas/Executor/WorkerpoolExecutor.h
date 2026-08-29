@@ -59,6 +59,16 @@ namespace Atlas
         bool submit(TaskHandle taskHandle, TaskFunction taskFunction) override;
 
         /**
+         * @brief Accepts one callable and publishes its outcome to a shared channel.
+         * @param taskHandle The identity attached to the completion.
+         * @param taskFunction Callable work transferred into the executor.
+         * @param completionChannel Channel that outlives all accepted work.
+         * @return True when execution was accepted; false after shutdown.
+         * @throws std::invalid_argument If @p taskHandle is invalid.
+         */
+        bool submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel) override;
+
+        /**
          * @brief Waits for and removes the next produced completion.
          * @return The next completion, or an empty optional when no accepted or
          * completed work remains.
@@ -73,18 +83,26 @@ namespace Atlas
         void shutdown() noexcept override;
 
       private:
+        /// @brief Lifecycle states controlling submission and worker shutdown.
         enum class Lifecycle : std::uint8_t
         {
-            Running,
-            ShuttingDown,
-            Stopped
+            Running,      ///< New submissions are accepted.
+            ShuttingDown, ///< Accepted work is draining; new submissions are rejected.
+            Stopped       ///< All workers have exited and no work is accepted.
         };
 
         struct WorkItem
         {
+            /// @brief Callable transferred to a worker.
             TaskFunction function;
+            /// @brief Mutable outcome populated by the worker.
             TaskCompletion completion;
+            /// @brief Optional scheduler-owned publication destination.
+            CompletionChannel* completionChannel{ nullptr };
         };
+
+        /// @brief Queues work for standalone or channel-targeted execution.
+        bool submitWork(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel* completionChannel);
 
         /// @brief Waits for and executes queued work until shutdown has drained it.
         void workerLoop();

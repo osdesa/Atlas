@@ -1,8 +1,8 @@
 # Task lifecycle
 
 Atlas currently stores lifecycle state directly on each graph-owned `Task`.
-The scheduler control thread owns state transitions even when a worker pool runs
-multiple task callables concurrently.
+The scheduler control thread owns state transitions even when CPU and Vulkan
+executor workers run concurrently.
 
 ## States
 
@@ -11,9 +11,9 @@ multiple task callables concurrently.
 | `Unknown` | The graph is still being constructed and no execution state has been assigned. |
 | `Blocked` | At least one dependency has not completed successfully. |
 | `Ready` | The task is eligible for selection by the current scheduler. |
-| `Running` | The scheduler has selected the task and its callable is executing. |
-| `Success` | The callable returned normally with no captured exception. |
-| `Failure` | Execution failed, or the executor accepted the task but did not return its matching completion. A callable exception is retained when one exists. |
+| `Running` | The scheduler has selected the task and its backend payload is executing. |
+| `Success` | Backend execution completed with no captured exception. |
+| `Failure` | Backend execution failed, or accepted work did not return its matching completion. A task-attributed exception is retained when one exists. |
 
 ## Current scheduler behavior
 
@@ -39,18 +39,17 @@ enough to execute a task: selection rechecks that its current state is `Ready`.
 This allows stale or already completed entries to be skipped without changing
 the queue container.
 
-`KahnScheduler` marks a selected task `Running` before submitting it to its
-borrowed CPU executor. A rejected submission restores the task to `Ready`. A
-valid completion changes it to `Success` or `Failure` and supplies its exception
-and callable duration. Ready tasks are submitted until the executor's
-`maxConcurrency()` capacity is full, and completions may arrive in a different
-order from submission. Dependencies are released only by successful
-completions.
+`KahnScheduler` marks a selected task `Running` before submitting its typed
+payload. A rejected submission restores the task to `Ready`. CPU-only execution
+retains the original executor completion path. Mixed execution fills CPU and GPU
+capacities independently and waits on one fixed-capacity completion channel.
+Dependencies are released only by a completion matching an in-flight handle,
+its declared resource, and its `Running` state.
 
-The scheduler borrows an initially drained executor and requires exclusive
-access to its public interface during `execute()`. It does not shut the executor
-down. `SynchronousCpuExecutor` reports capacity one;
-`WorkerpoolExecutor` reports its validated, non-zero worker count.
+The scheduler borrows initially drained executors and requires exclusive access
+to their public interfaces during `execute()`. It never shuts them down.
+`SynchronousCpuExecutor` and `VulkanExecutor` report capacity one;
+`WorkerpoolExecutor` reports its validated worker count.
 
 ## Execution information and failure
 
@@ -60,23 +59,24 @@ spent executing the callable. Static submission metadata remains separate in
 `TaskOptions`. The graph-level `SchedulerResult` reports total successful
 completions, graph elapsed time, and the first captured task exception.
 
-The first callable failure disables new submissions, but work already accepted
+The first callable or dispatch failure disables new submissions, but work already accepted
 is drained and every real completion is applied. The result preserves the first
 observed task exception and counts successful completions rather than
 submissions. Dependants that were not released before failure remain `Blocked`.
 
-Callable failure is reported as `TaskFailed`. Submission rejection or a missing,
-unknown, duplicate, extra, or mismatched completion is an executor
+Task-attributed failure is reported as `TaskFailed`. Submission rejection,
+channel/producer failure, or a missing, unknown, duplicate, extra, or
+resource-mismatched completion is an executor
 infrastructure failure and is reported as `ExecutorUnavailable`. Infrastructure
 status takes precedence if both kinds of failure are observed.
 
 ## Executor lifecycle
 
-`WorkerpoolExecutor` owns its work queue, completion queue, synchronization, and
-threads. Shutdown stops acceptance, drains queued and running work, joins all
-workers, and retains produced completions for retrieval. Repeated shutdown calls
-are safe. `SynchronousCpuExecutor` has no worker lifetime to join but follows the
-same rejection and completion-retention contract.
+`WorkerpoolExecutor` and `VulkanExecutor` own their work/completion queues,
+synchronization, and workers. Shutdown stops acceptance, drains queued and
+running work, joins workers, and retains standalone completions. Repeated calls
+are safe. Channel-targeted submissions publish to the scheduler-owned stream
+instead of the standalone completion queue.
 
 Executor public calls are serialized by their caller. Worker callables may run
 at the same time, so captured references and other shared application resources
@@ -90,8 +90,9 @@ require application-owned synchronization. Worker threads never access
 - A graph is intended for one execution and completed tasks are not run again.
 - One executor must not contain unrelated accepted work or queued completions
   when lent to `KahnScheduler`.
-- Priority and execution-resource intent do not affect FIFO selection or dispatch.
-- Both CPU- and GPU-designated tasks currently run host callables.
+- Priority does not affect FIFO selection; resource type does select the backend.
+- Vulkan execution is capacity one on a single compute queue.
+- Graphics, cancellation, and cooperative dispatch slicing are unavailable.
 - Atlas does not currently define task cancellation; it will be introduced only
   alongside a concrete cancellation API and execution policy.
 - Mutating execution information through a retained task view is possible;

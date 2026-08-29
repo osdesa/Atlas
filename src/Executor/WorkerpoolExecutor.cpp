@@ -1,5 +1,7 @@
 #include "atlas/Executor/WorkerpoolExecutor.h"
 
+#include "atlas/Executor/CompletionChannel.h"
+
 #include <chrono>
 #include <exception>
 #include <stdexcept>
@@ -36,6 +38,16 @@ namespace Atlas
 
     bool WorkerpoolExecutor::submit(TaskHandle taskHandle, TaskFunction taskFunction)
     {
+        return submitWork(taskHandle, std::move(taskFunction), nullptr);
+    }
+
+    bool WorkerpoolExecutor::submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel)
+    {
+        return submitWork(taskHandle, std::move(taskFunction), &completionChannel);
+    }
+
+    bool WorkerpoolExecutor::submitWork(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel* completionChannel)
+    {
         if (!taskHandle.isValid())
         {
             throw std::invalid_argument{ "Invalid task handle provided to WorkerpoolExecutor::submit" };
@@ -48,8 +60,9 @@ namespace Atlas
                 return false;
             }
 
-            taskQueue.emplace_back(
-                WorkItem{ std::move(taskFunction), TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 } } });
+            taskQueue.emplace_back(WorkItem{
+                std::move(taskFunction), TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 }, ExecutionResource::CPU },
+                completionChannel });
             ++unfinishedTasks;
         }
 
@@ -131,6 +144,14 @@ namespace Atlas
             workItem.completion.executionDuration =
                 std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
 
+            CompletionChannel* const completionChannel{ workItem.completionChannel };
+            if (completionChannel != nullptr)
+            {
+                completionChannel->publish(std::move(workItem.completion));
+                std::lock_guard lock{ stateMutex };
+                --unfinishedTasks;
+            }
+            else
             {
                 std::lock_guard lock{ stateMutex };
                 completions.splice(completions.end(), executingWork, executingWork.begin());
