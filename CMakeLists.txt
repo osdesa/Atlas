@@ -16,6 +16,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ATLAS_BUILD_TESTS "Build Atlas tests" ON)
 option(ATLAS_BUILD_DOCUMENTATION "Build Atlas API documentation with Doxygen" OFF)
+option(ATLAS_BUILD_VULKAN_INTEGRATION_TESTS "Build tests that execute Vulkan compute work" OFF)
 option(ATLAS_WARNINGS_AS_ERRORS "Treat compiler warnings in Atlas targets as errors on non-MSVC toolchains" OFF)
 option(ATLAS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer for Atlas targets" OFF)
 option(ATLAS_ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer for Atlas targets" OFF)
@@ -70,7 +71,7 @@ target_include_directories(
 
 target_compile_features(atlas PUBLIC cxx_std_20)
 
-target_link_libraries(atlas PRIVATE Vulkan::Vulkan Threads::Threads)
+target_link_libraries(atlas PUBLIC Vulkan::Vulkan PRIVATE Threads::Threads)
 
 atlas_set_project_warnings(atlas)
 atlas_enable_sanitizers(atlas)
@@ -78,7 +79,21 @@ atlas_enable_clang_tidy(atlas)
 
 atlas_add_documentation()
 
+if(ATLAS_BUILD_VULKAN_INTEGRATION_TESTS)
+    include(VulkanShaders)
+    atlas_compile_shader(
+        atlas_vector_add_shader
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/shaders/vector_add.comp"
+        ATLAS_VECTOR_ADD_SPIRV
+    )
+endif()
+
 add_subdirectory(apps/atlas_cli)
+if(ATLAS_BUILD_VULKAN_INTEGRATION_TESTS)
+    add_subdirectory(apps/atlas_vulkan_example)
+    add_subdirectory(apps/atlas_mixed_example)
+    add_subdirectory(apps/atlas_all_example)
+endif()
 
 if(ATLAS_BUILD_TESTS)
     include(FetchContent)
@@ -95,4 +110,12 @@ if(ATLAS_BUILD_TESTS)
 
     enable_testing()
     add_subdirectory(tests)
+
+    if(ATLAS_BUILD_VULKAN_INTEGRATION_TESTS)
+        add_dependencies(atlas_feature_tests atlas_vector_add_shader)
+        target_compile_definitions(
+            atlas_feature_tests
+            PRIVATE ATLAS_VECTOR_ADD_SPIRV_PATH="${ATLAS_VECTOR_ADD_SPIRV}"
+        )
+    endif()
 endif()

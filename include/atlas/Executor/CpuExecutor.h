@@ -1,12 +1,14 @@
 #ifndef ATLAS_CPU_EXECUTOR
 #define ATLAS_CPU_EXECUTOR
 
+#include "atlas/Executor/CompletionChannel.h"
 #include "atlas/Executor/TaskCompletion.h"
 #include "atlas/Tasking/TaskFunction.h"
 #include "atlas/Tasking/TaskHandle.h"
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 /**
  * @file CpuExecutor.h
@@ -58,6 +60,33 @@ namespace Atlas
          * may propagate to the caller.
          */
         virtual bool submit(TaskHandle taskHandle, TaskFunction taskFunction) = 0;
+
+        /**
+         * @brief Submits CPU work whose outcome is published to a shared channel.
+         * @param taskHandle The identity attached to the completion.
+         * @param taskFunction Callable work transferred into the executor.
+         * @param completionChannel Channel that outlives the accepted work.
+         * @return True when the work was accepted; false after shutdown begins.
+         */
+        virtual bool submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel)
+        {
+            if (!submit(taskHandle, std::move(taskFunction)))
+            {
+                return false;
+            }
+
+            std::optional<TaskCompletion> completion{ waitForCompletion() };
+            if (!completion.has_value())
+            {
+                completionChannel.signalProducerFailure(ExecutionResource::CPU);
+            }
+            else
+            {
+                completion->resource = ExecutionResource::CPU;
+                completionChannel.publish(std::move(completion.value()));
+            }
+            return true;
+        }
 
         /**
          * @brief Retrieves the next completion for previously accepted work.

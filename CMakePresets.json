@@ -190,6 +190,24 @@
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       }
+    },
+    {
+      "name": "vulkan-integration-linux",
+      "displayName": "Linux Vulkan integration (Lavapipe)",
+      "description": "Debug build with real Vulkan compute integration tests",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ATLAS_BUILD_VULKAN_INTEGRATION_TESTS": "ON",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "buildPresets": [
@@ -247,6 +265,11 @@
     {
       "name": "tsan-linux",
       "configurePreset": "tsan-linux",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vulkan-integration-linux",
+      "configurePreset": "vulkan-integration-linux",
       "configuration": "Debug"
     }
   ],
@@ -331,6 +354,22 @@
       "filter": {
         "include": {
           "label": "CONCURRENCY"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "vulkan-integration-linux",
+      "configurePreset": "vulkan-integration-linux",
+      "configuration": "Debug",
+      "filter": {
+        "include": {
+          "label": "VULKAN_INTEGRATION"
         }
       },
       "output": {

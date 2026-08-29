@@ -78,6 +78,40 @@ jobs:
       - name: Run CLI smoke test
         run: .\build\ci-windows\apps\atlas_cli\Release\atlas_cli.exe
 
+  vulkan-integration:
+    name: Ubuntu / Vulkan (Lavapipe)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Vulkan integration dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
+
+      - name: Locate the installed Lavapipe driver manifest
+        run: |
+          lavapipe_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
+          test -n "${lavapipe_icd}"
+          echo "VK_DRIVER_FILES=${lavapipe_icd}" >> "${GITHUB_ENV}"
+
+      - name: Configure
+        run: cmake --preset vulkan-integration-linux
+
+      - name: Build
+        run: cmake --build --preset vulkan-integration-linux --parallel
+
+      - name: Test real Vulkan compute
+        run: ctest --preset vulkan-integration-linux
+
+      - name: Run Vulkan examples
+        run: |
+          ./build/vulkan-integration-linux/apps/atlas_vulkan_example/atlas_vulkan_example
+          ./build/vulkan-integration-linux/apps/atlas_mixed_example/atlas_mixed_example
+          ./build/vulkan-integration-linux/apps/atlas_all_example/atlas_all_example
+
   clang-tidy:
     name: Ubuntu / ClangTidy
     runs-on: ubuntu-24.04

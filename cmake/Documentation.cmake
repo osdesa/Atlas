@@ -44,6 +44,7 @@ function(atlas_add_documentation)
     set(ATLAS_DOXYGEN_INCLUDE_DIRECTORY "${PROJECT_SOURCE_DIR}/include")
     set(ATLAS_DOXYGEN_SOURCE_DIRECTORY "${PROJECT_SOURCE_DIR}/src")
     set(ATLAS_DOXYGEN_INDEX_PAGE "${PROJECT_SOURCE_DIR}/docs/index.md")
+    set(ATLAS_DOXYGEN_ROADMAP_PAGE "${PROJECT_SOURCE_DIR}/docs/milestone-4-5-vulkan-roadmap.md")
     set(ATLAS_DOXYGEN_AWESOME_DIRECTORY "${doxygen_awesome_css_SOURCE_DIR}")
     set(ATLAS_UML_ANALYSIS_BUILD_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/uml-analysis")
     set(ATLAS_UML_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/uml")
@@ -54,6 +55,7 @@ function(atlas_add_documentation)
     file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_INCLUDE_DIRECTORY}" ATLAS_DOXYGEN_INCLUDE_DIRECTORY)
     file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_SOURCE_DIRECTORY}" ATLAS_DOXYGEN_SOURCE_DIRECTORY)
     file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_INDEX_PAGE}" ATLAS_DOXYGEN_INDEX_PAGE)
+    file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_ROADMAP_PAGE}" ATLAS_DOXYGEN_ROADMAP_PAGE)
     file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_AWESOME_DIRECTORY}" ATLAS_DOXYGEN_AWESOME_DIRECTORY)
     file(TO_CMAKE_PATH "${ATLAS_UML_ANALYSIS_BUILD_DIRECTORY}" ATLAS_UML_ANALYSIS_BUILD_DIRECTORY)
     file(TO_CMAKE_PATH "${ATLAS_UML_OUTPUT_DIRECTORY}" ATLAS_UML_OUTPUT_DIRECTORY)
@@ -96,9 +98,14 @@ function(atlas_add_documentation)
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_options.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_graph.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/cpu_executor.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/gpu_executor.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/completion_channel.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_completion.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/synchronous_cpu_executor.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/workerpool_executor.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/vulkan_compute.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/vulkan_runtime.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/vulkan_executor.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/base_scheduler.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/kahn_scheduler.puml"
     )
