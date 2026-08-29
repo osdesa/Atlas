@@ -91,6 +91,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes ninja-build libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
 
+      - name: Locate the installed Lavapipe driver manifest
+        run: |
+          lavapipe_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
+          test -n "${lavapipe_icd}"
+          echo "VK_DRIVER_FILES=${lavapipe_icd}" >> "${GITHUB_ENV}"
+
       - name: Configure
         run: cmake --preset vulkan-integration-linux
 
@@ -98,13 +104,9 @@ jobs:
         run: cmake --build --preset vulkan-integration-linux --parallel
 
       - name: Test real Vulkan compute
-        env:
-          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
         run: ctest --preset vulkan-integration-linux
 
       - name: Run Vulkan examples
-        env:
-          VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
         run: |
           ./build/vulkan-integration-linux/apps/atlas_vulkan_example/atlas_vulkan_example
           ./build/vulkan-integration-linux/apps/atlas_mixed_example/atlas_mixed_example
