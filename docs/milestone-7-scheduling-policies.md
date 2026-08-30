@@ -50,6 +50,8 @@ A newly ready higher-priority GPU task may run before a lower-priority task
 receives its next slice. Intervention occurs only after the active dispatch
 finishes; Atlas never claims to interrupt an executing Vulkan dispatch. Static
 priority is strict, has no aging, and can starve lower-priority work.
+Milestone 9 adds per-task ready-wait and same-resource bypass measurements so
+that starvation exposure is observable without changing this selection rule.
 
 ## Failure contract
 
@@ -77,3 +79,5 @@ Device-independent tests cover policy semantics, stable ties, quantum behavior,
 independent clones, policy contract violations, failure precedence, draining,
 dependency blocking, and exact sliced submission order. Linux integration tests
 run real sliced Vulkan compute under every built-in policy using Lavapipe.
+Cooperative priority intervention and its measurements are specified in
+[Milestone 9: preemptive-style priority scheduling](milestone-9-preemptive-style-priority-scheduling.md).

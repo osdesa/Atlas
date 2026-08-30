@@ -20,6 +20,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -71,6 +72,42 @@ namespace
         {
             return Atlas::SlicedVulkanDispatch{ dispatch(), { 2U, 1U, 1U } };
         }
+    };
+
+    class RecordingGpuExecutor final : public Atlas::GpuExecutor
+    {
+      public:
+        explicit RecordingGpuExecutor(Atlas::VulkanExecutor& executor)
+            : GpuExecutor{ executor.maxConcurrency() }, vulkanExecutor{ executor }
+        {
+        }
+
+        bool submit(const Atlas::TaskHandle handle, Atlas::VulkanDispatch dispatch) override
+        {
+            submittedWorkUnits.emplace_back(handle, dispatch.workUnitIndex());
+            return vulkanExecutor.submit(handle, std::move(dispatch));
+        }
+
+        bool submit(const Atlas::TaskHandle handle, Atlas::VulkanDispatch dispatch, Atlas::CompletionChannel& channel) override
+        {
+            submittedWorkUnits.emplace_back(handle, dispatch.workUnitIndex());
+            return vulkanExecutor.submit(handle, std::move(dispatch), channel);
+        }
+
+        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        {
+            return vulkanExecutor.waitForCompletion();
+        }
+
+        void shutdown() noexcept override
+        {
+            vulkanExecutor.shutdown();
+        }
+
+        std::vector<std::pair<Atlas::TaskHandle, std::size_t>> submittedWorkUnits;
+
+      private:
+        Atlas::VulkanExecutor& vulkanExecutor;
     };
 } // namespace
 
@@ -217,6 +254,58 @@ TEST_CASE("KahnScheduler executes real sliced Vulkan work with every built-in po
         const Atlas::StaticPrioritySchedulingPolicy policy;
         executePolicy(policy);
     }
+}
+
+TEST_CASE("KahnScheduler applies real Vulkan priority intervention at slice boundaries", "[FEATURE][VULKAN_INTEGRATION]")
+{
+    ComputeFixture fixture;
+    std::vector<float> left(ComputeFixture::elementCount);
+    std::vector<float> right(ComputeFixture::elementCount);
+    std::vector<float> output(ComputeFixture::elementCount, -1.0F);
+    for (std::size_t index{ 0U }; index < left.size(); ++index)
+    {
+        left.at(index) = static_cast<float>(index + 2U);
+        right.at(index) = static_cast<float>(index * 4U);
+    }
+    fixture.runtime.upload(fixture.left, bytesOf(left));
+    fixture.runtime.upload(fixture.right, bytesOf(right));
+    fixture.runtime.upload(fixture.output, bytesOf(output));
+
+    Atlas::TaskGraph graph;
+    const std::optional<Atlas::TaskHandle> prerequisite{ graph.addCpuTask([] {}) };
+    const std::optional<Atlas::TaskHandle> lower{ graph.addGpuTask(
+        Atlas::SlicedVulkanDispatch{ fixture.dispatch(), { 3U, 1U, 1U } },
+        Atlas::TaskOptions{ "Lower priority", Atlas::ExecutionResource::GPU, 9U }) };
+    const std::optional<Atlas::TaskHandle> higher{ graph.addGpuTask(
+        Atlas::SlicedVulkanDispatch{ fixture.dispatch(), { 5U, 1U, 1U } },
+        Atlas::TaskOptions{ "Higher priority", Atlas::ExecutionResource::GPU, 1U }) };
+    REQUIRE(prerequisite.has_value());
+    REQUIRE(lower.has_value());
+    REQUIRE(higher.has_value());
+    REQUIRE(graph.addDependency(higher.value(), prerequisite.value()));
+    REQUIRE(graph.finishTaskGraph());
+
+    Atlas::SynchronousCpuExecutor cpuExecutor;
+    Atlas::VulkanExecutor vulkanExecutor{ fixture.runtime };
+    RecordingGpuExecutor gpuExecutor{ vulkanExecutor };
+    Atlas::StaticPrioritySchedulingPolicy policy;
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    fixture.runtime.download(fixture.output, writableBytesOf(output));
+    REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(result.executedTaskCount == 3U);
+    REQUIRE(gpuExecutor.submittedWorkUnits == std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{
+                                                  { lower.value(), 0U }, { higher.value(), 0U }, { lower.value(), 1U } });
+    const Atlas::TaskExecutionInfo& lowerInfo{ graph.findTask(lower.value()).value()->executionInfo };
+    REQUIRE(lowerInfo.completedWorkUnitCount == 2U);
+    REQUIRE(lowerInfo.selectionBypassCount == 1U);
+    REQUIRE(lowerInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
+    for (std::size_t index{ 0U }; index < output.size(); ++index)
+    {
+        REQUIRE(output.at(index) == left.at(index) + right.at(index));
+    }
+    REQUIRE(fixture.validationErrors->empty());
 }
 
 TEST_CASE("VulkanExecutor isolates a rejected-runtime dispatch and continues", "[FEATURE][VULKAN_INTEGRATION]")

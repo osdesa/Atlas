@@ -75,11 +75,12 @@ executor.
 `TaskGraph` owns task definitions and exposes `shared_ptr<const Task>` views.
 Identity, variant-backed CPU/ordinary Vulkan/sliced Vulkan work, and options are
 immutable. `TaskExecutionInfo` groups the logically mutable lifecycle state,
-captured exception, accumulated payload duration, and completed/total work-unit
-counts so the scheduler control thread can update them through that otherwise
-read-only view. Retaining a returned `shared_ptr` extends the task object's
-lifetime beyond the graph, so callers must not infer a strict non-owning
-lifetime from the graph-owned description.
+captured exception, accumulated payload and ready-wait durations, selection
+bypass count, and completed/total work-unit counts so the scheduler control
+thread can update them through that otherwise read-only view. Retaining a
+returned `shared_ptr` extends the task object's lifetime beyond the graph, so
+callers must not infer a strict non-owning lifetime from the graph-owned
+description.
 
 `addCpuTask()` and `addGpuTask()` make the work type authoritative and reject
 resource metadata disagreement. `addTask()` remains a CPU compatibility alias.
@@ -90,6 +91,16 @@ FIFO rotation. `StaticPrioritySchedulingPolicy` selects the lowest numeric value
 and preserves FIFO ties. Policies receive only task handles, priorities, and
 stable enqueue order. They never receive task payloads, executor objects, or
 Vulkan types.
+
+`KahnScheduler` delegates ready-set measurement to a private accounting helper.
+The first interval starts when scheduler parsing enqueues a root, not when graph
+finalisation first marks it `Ready`. Dependency completion and incomplete slice
+resumption start later intervals. Selection closes the chosen interval and
+increments every other valid same-resource candidate still ready or paused.
+Cancellation closes the affected interval, and scheduler termination closes all
+intervals left open by fail-stop behavior. Ready-wait excludes blocked time,
+executor queueing, and payload execution. Bypass counts expose strict-priority
+starvation without changing immutable priorities or adding aging.
 
 Tasks are `Unknown` during graph construction. Successful finalisation assigns
 `Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns
@@ -122,7 +133,8 @@ task exception remains authoritative; otherwise `SchedulerResult::exception`
 contains the policy exception. `executedTaskCount` counts logical successes,
 never individual slices. Duration accumulates executor-reported payload time for
 every attempted slice, including a failed slice; executor queue waiting remains
-excluded.
+excluded. Ready-wait duration is a separate scheduler measurement and may span
+multiple ready intervals for a sliced task.
 
 Scheduler control remains single-threaded and a graph is intended for one
 execution, but worker callables may overlap. Execution-information fields are

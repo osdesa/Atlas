@@ -22,12 +22,12 @@ The current implementation can:
 - build explicit CPU and GPU tasks and execute mixed graphs while tracking each
   backend's capacity independently through one shared completion channel;
 - request fail-stop task cancellation before submission or at sliced GPU
-  work-unit boundaries while draining work already accepted; and
+  work-unit boundaries while draining work already accepted;
 - select ready work through interchangeable FIFO, configurable work-unit
-  round-robin, or stable static-priority policies; and
-- record per-task lifecycle state, exceptions, execution duration, and
-  work-unit progress alongside graph-level logical completion count and elapsed
-  time.
+  round-robin, or stable static-priority policies;
+- measure per-task ready-set wait and same-resource selection bypasses; and
+- record lifecycle state, exceptions, payload duration, and work-unit progress
+  alongside graph-level logical completion count and elapsed time.
 
 The CPU CLI runs the same 17-task sensor pipeline through the synchronous and
 four-thread worker-pool executors and compares their output. Opt-in Vulkan
@@ -36,7 +36,8 @@ graph that reports logical work-unit progress.
 
 Atlas does **not** yet provide runtime task submission, repeated graph
 execution, dynamic priority or starvation mitigation, multiple Vulkan queues,
-true active-dispatch preemption, or a benchmarking framework.
+true active-dispatch preemption, or a benchmarking framework. Static-priority
+starvation exposure is measurable, but Atlas does not claim to prevent it.
 
 ## Task model and lifecycle
 
@@ -56,6 +57,15 @@ then records `Success` or `Failure`, a captured exception when applicable, and
 the payload's execution duration. A sliced GPU task alternates between
 `Running` and scheduler-internal `Paused` states until its final work unit
 succeeds. Only logical task success makes newly unblocked dependants `Ready`.
+For Milestone 9, this dependency-driven `Blocked -> Ready` transition is the
+supported arrival model; finalised graphs are not mutated during execution.
+
+`TaskExecutionInfo::readyWaitDuration` accumulates time resident in a
+resource-specific ready set, starting when scheduler parsing enqueues a root and
+again after every incomplete sliced work unit. It excludes dependency-blocked
+time, executor queueing, and payload execution. `selectionBypassCount` records
+each selection of another valid candidate while the task remains ready or
+paused in that same resource set.
 
 Schedulers own state changes; `Task` does not validate a universal transition
 matrix. `KahnScheduler::execute()` is a single control-thread operation even
@@ -67,7 +77,9 @@ interruptible; running sliced GPU work can stop only after its current work unit
 completes. See [Task lifecycle](docs/task-lifecycle.md) and the
 [Milestone 6 design](docs/milestone-6-cooperative-gpu-slicing.md) for the exact
 contracts. See [Milestone 7 scheduling policies](docs/milestone-7-scheduling-policies.md)
-for selection, quantum, priority, and policy-failure semantics.
+for selection, quantum, priority, and policy-failure semantics. See the
+[Milestone 9 design](docs/milestone-9-preemptive-style-priority-scheduling.md)
+for cooperative intervention and starvation-exposure measurements.
 
 ## Prerequisites
 

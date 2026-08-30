@@ -98,8 +98,9 @@ namespace
     class ScriptedGpuExecutor final : public Atlas::GpuExecutor
     {
       public:
-        explicit ScriptedGpuExecutor(std::vector<ScriptedGpuOutcome> outcomes)
-            : GpuExecutor{ 1U }, scriptedOutcomes{ std::move(outcomes) }
+        explicit ScriptedGpuExecutor(std::vector<ScriptedGpuOutcome> outcomes,
+                                     std::function<void(Atlas::TaskHandle, std::size_t)> beforeCompletionCallback = {})
+            : GpuExecutor{ 1U }, scriptedOutcomes{ std::move(outcomes) }, beforeCompletion{ std::move(beforeCompletionCallback) }
         {
         }
 
@@ -118,6 +119,10 @@ namespace
             }
 
             const ScriptedGpuOutcome& outcome{ scriptedOutcomes.at(attempt) };
+            if (beforeCompletion)
+            {
+                beforeCompletion(handle, dispatch.workUnitIndex());
+            }
             if (outcome.reportedWorkUnitIndices.empty())
             {
                 channel.publish(Atlas::TaskCompletion{ handle, outcome.exception, outcome.duration, Atlas::ExecutionResource::GPU,
@@ -145,7 +150,54 @@ namespace
 
       private:
         std::vector<ScriptedGpuOutcome> scriptedOutcomes;
+        std::function<void(Atlas::TaskHandle, std::size_t)> beforeCompletion;
         std::size_t submissionAttempts{ 0U };
+    };
+
+    class DeferredCpuExecutor final : public Atlas::CpuExecutor
+    {
+      public:
+        DeferredCpuExecutor() : CpuExecutor{ 1U } {}
+
+        bool submit(Atlas::TaskHandle, Atlas::TaskFunction) override
+        {
+            return false;
+        }
+
+        bool submit(const Atlas::TaskHandle handle, Atlas::TaskFunction, Atlas::CompletionChannel& channel) override
+        {
+            if (pendingHandle.has_value())
+            {
+                return false;
+            }
+            pendingHandle = handle;
+            pendingChannel = &channel;
+            return true;
+        }
+
+        bool publishPendingCompletion()
+        {
+            if (!pendingHandle.has_value() || pendingChannel == nullptr)
+            {
+                return false;
+            }
+            const bool published{ pendingChannel->publish(Atlas::TaskCompletion{
+                pendingHandle.value(), nullptr, std::chrono::microseconds{ 1 }, Atlas::ExecutionResource::CPU }) };
+            pendingHandle.reset();
+            pendingChannel = nullptr;
+            return published;
+        }
+
+        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        {
+            return std::nullopt;
+        }
+
+        void shutdown() noexcept override {}
+
+      private:
+        std::optional<Atlas::TaskHandle> pendingHandle;
+        Atlas::CompletionChannel* pendingChannel{ nullptr };
     };
 
     class FailingGpuProducer final : public Atlas::GpuExecutor
@@ -292,6 +344,14 @@ TEST_CASE("KahnScheduler interleaves sliced GPU tasks at work-unit boundaries", 
     REQUIRE(result.executedTaskCount == 2U);
     REQUIRE(gpuExecutor.submittedWorkUnits ==
             std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{ { first, 0U }, { second, 0U }, { first, 1U }, { second, 1U } });
+    const Atlas::TaskExecutionInfo& firstInfo{ graph.findTask(first).value()->executionInfo };
+    const Atlas::TaskExecutionInfo& secondInfo{ graph.findTask(second).value()->executionInfo };
+    REQUIRE(firstInfo.selectionBypassCount == 1U);
+    REQUIRE(secondInfo.selectionBypassCount == 2U);
+    REQUIRE(firstInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
+    REQUIRE(secondInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
+    REQUIRE(firstInfo.readyWaitDuration <= result.executionTime);
+    REQUIRE(secondInfo.readyWaitDuration <= result.executionTime);
 }
 
 TEST_CASE("KahnScheduler applies a round-robin work-unit quantum", "[UNIT]")
@@ -345,15 +405,58 @@ TEST_CASE("KahnScheduler lets newly ready priority work intervene after an activ
     REQUIRE(graph.addDependency(higher, prerequisite));
     REQUIRE(graph.finishTaskGraph());
 
-    Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(3U) };
+    DeferredCpuExecutor cpuExecutor;
+    bool lowerWasRunningWhenHigherBecameEligible{ false };
+    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(3U),
+                                     [&](const Atlas::TaskHandle handle, const std::size_t workUnitIndex)
+                                     {
+                                         if (handle == lower && workUnitIndex == 0U)
+                                         {
+                                             lowerWasRunningWhenHigherBecameEligible =
+                                                 graph.findTask(lower).value()->executionInfo.state == Atlas::TaskState::Running;
+                                             REQUIRE(cpuExecutor.publishPendingCompletion());
+                                         }
+                                     } };
     Atlas::StaticPrioritySchedulingPolicy policy;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(lowerWasRunningWhenHigherBecameEligible);
     REQUIRE(gpuExecutor.submittedWorkUnits ==
             std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{ { lower, 0U }, { higher, 0U }, { lower, 1U } });
+    const Atlas::TaskExecutionInfo& lowerInfo{ graph.findTask(lower).value()->executionInfo };
+    REQUIRE(lowerInfo.completedWorkUnitCount == 2U);
+    REQUIRE(lowerInfo.selectionBypassCount == 1U);
+    REQUIRE(lowerInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
+}
+
+TEST_CASE("KahnScheduler measures a finite strict-priority backlog exactly", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::TaskHandle lower{ requireHandle(
+        graph.addGpuTask(slicedDispatch(1U), Atlas::TaskOptions{ "Lower priority", Atlas::ExecutionResource::GPU, 9U })) };
+    const Atlas::TaskHandle firstHigher{ requireHandle(
+        graph.addGpuTask(slicedDispatch(1U), Atlas::TaskOptions{ "First higher", Atlas::ExecutionResource::GPU, 1U })) };
+    const Atlas::TaskHandle secondHigher{ requireHandle(
+        graph.addGpuTask(slicedDispatch(1U), Atlas::TaskOptions{ "Second higher", Atlas::ExecutionResource::GPU, 2U })) };
+    const Atlas::TaskHandle thirdHigher{ requireHandle(
+        graph.addGpuTask(slicedDispatch(1U), Atlas::TaskOptions{ "Third higher", Atlas::ExecutionResource::GPU, 3U })) };
+    REQUIRE(graph.finishTaskGraph());
+
+    Atlas::SynchronousCpuExecutor cpuExecutor;
+    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(4U) };
+    Atlas::StaticPrioritySchedulingPolicy policy;
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(gpuExecutor.submittedWorkUnits == std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{
+                                                  { firstHigher, 0U }, { secondHigher, 0U }, { thirdHigher, 0U }, { lower, 0U } });
+    REQUIRE(graph.findTask(firstHigher).value()->executionInfo.selectionBypassCount == 0U);
+    REQUIRE(graph.findTask(secondHigher).value()->executionInfo.selectionBypassCount == 1U);
+    REQUIRE(graph.findTask(thirdHigher).value()->executionInfo.selectionBypassCount == 2U);
+    REQUIRE(graph.findTask(lower).value()->executionInfo.selectionBypassCount == 3U);
 }
 
 TEST_CASE("KahnScheduler preserves sliced progress and duration when a later unit fails", "[UNIT]")
