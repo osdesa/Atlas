@@ -63,8 +63,13 @@ namespace Atlas
          * @param taskOptions The metadata associated with this task.
          */
         explicit Task(TaskHandle taskHandle, SlicedVulkanDispatch dispatch, TaskOptions taskOptions) noexcept
-            : handle{ taskHandle }, options{ std::move(taskOptions) },
-              executionInfo{ TaskState::Unknown, nullptr, std::chrono::microseconds{ 0 }, 0U, dispatch.sliceCount() },
+            : handle{ taskHandle }, options{ std::move(taskOptions) }, executionInfo{ TaskState::Unknown,
+                                                                                      nullptr,
+                                                                                      std::chrono::microseconds{ 0 },
+                                                                                      0U,
+                                                                                      dispatch.sliceCount(),
+                                                                                      std::chrono::microseconds{ 0 },
+                                                                                      0U },
               work{ std::move(dispatch) }
         {
         }

@@ -16,7 +16,7 @@ namespace Atlas
 {
     /**
      * @ingroup tasking
-     * @brief Stores lifecycle, failure, duration, and logical work-unit progress.
+     * @brief Stores lifecycle, failure, timing, fairness, and logical work-unit progress.
      */
     struct TaskExecutionInfo
     {
@@ -34,6 +34,23 @@ namespace Atlas
 
         /// @brief Total payload work units required for logical task success.
         std::size_t totalWorkUnitCount{ 1U };
+
+        /**
+         * @brief Accumulated time eligible for selection in a resource ready set.
+         *
+         * This excludes dependency-blocked time, executor queueing, and payload
+         * execution. Sliced tasks accumulate a new interval after every incomplete
+         * work unit is returned to the GPU ready set.
+         */
+        std::chrono::microseconds readyWaitDuration{ 0 };
+
+        /**
+         * @brief Number of same-resource selections that bypassed this ready task.
+         *
+         * The scheduler increments this count whenever it selects another valid
+         * candidate while this task remains Ready or Paused in the same ready set.
+         */
+        std::size_t selectionBypassCount{ 0U };
     };
 } // namespace Atlas
 

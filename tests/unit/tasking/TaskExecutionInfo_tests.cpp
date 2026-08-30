@@ -15,6 +15,8 @@ TEST_CASE("TaskExecutionInfo has safe defaults", "[UNIT]")
     REQUIRE(executionInfo.executionDuration == std::chrono::microseconds{ 0 });
     REQUIRE(executionInfo.completedWorkUnitCount == 0U);
     REQUIRE(executionInfo.totalWorkUnitCount == 1U);
+    REQUIRE(executionInfo.readyWaitDuration == std::chrono::microseconds{ 0 });
+    REQUIRE(executionInfo.selectionBypassCount == 0U);
 }
 
 TEST_CASE("TaskState appends cooperative slicing and cancellation states", "[UNIT]")
@@ -56,4 +58,12 @@ TEST_CASE("TaskExecutionInfo stores failure details", "[UNIT]")
     }
 
     REQUIRE(caughtExpectedFailure);
+}
+
+TEST_CASE("TaskExecutionInfo stores accumulated ready-wait and bypass measurements", "[UNIT]")
+{
+    const Atlas::TaskExecutionInfo executionInfo{ .readyWaitDuration = std::chrono::microseconds{ 37 }, .selectionBypassCount = 4U };
+
+    REQUIRE(executionInfo.readyWaitDuration == std::chrono::microseconds{ 37 });
+    REQUIRE(executionInfo.selectionBypassCount == 4U);
 }

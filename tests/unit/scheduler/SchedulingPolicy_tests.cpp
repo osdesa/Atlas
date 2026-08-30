@@ -352,7 +352,11 @@ TEST_CASE("KahnScheduler drains accepted work after a later policy failure", "[U
     REQUIRE(result.executedTaskCount == 1U);
     REQUIRE(result.exception == policyFailure);
     REQUIRE(graph.findTask(accepted.value()).value()->executionInfo.state == Atlas::TaskState::Success);
-    REQUIRE(graph.findTask(rejected.value()).value()->executionInfo.state == Atlas::TaskState::Ready);
+    const Atlas::TaskExecutionInfo& rejectedInfo{ graph.findTask(rejected.value()).value()->executionInfo };
+    REQUIRE(rejectedInfo.state == Atlas::TaskState::Ready);
+    REQUIRE(rejectedInfo.selectionBypassCount == 1U);
+    REQUIRE(rejectedInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
+    REQUIRE(rejectedInfo.readyWaitDuration <= result.executionTime);
     REQUIRE(graph.findTask(dependent.value()).value()->executionInfo.state == Atlas::TaskState::Blocked);
 }
 

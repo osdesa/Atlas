@@ -53,6 +53,34 @@ higher-priority GPU task can run after the current slice completes, but Atlas
 does not interrupt an active Vulkan dispatch. Strict priority provides no aging
 and may starve ready lower-priority tasks.
 
+For Milestone 9, a task "arrives" when dependency completion changes an
+already-declared task from `Blocked` to `Ready`. Runtime graph mutation remains
+unsupported. This permits a higher-priority task to intervene at a completed
+slice boundary without implying admission of new graph structure or
+interruption of active work.
+
+## Ready-residency and bypass measurements
+
+`TaskExecutionInfo::readyWaitDuration` accumulates each interval in which the
+task is present and eligible in its CPU or GPU ready set. The first root
+interval begins when scheduler parsing enqueues it, not when graph finalisation
+sets its public state. Dependency release starts the first interval for a
+previously blocked task, and every incomplete slice requeue starts another
+interval. Selection, effective cancellation, or scheduler termination closes
+an active interval. Blocked time, executor queueing, and payload execution are
+excluded.
+
+`TaskExecutionInfo::selectionBypassCount` increments whenever another valid
+candidate is selected from the same resource ready set while this task remains
+`Ready` or `Paused`. CPU and GPU selections never increment each other's
+counts. Stale ready-set entries are ignored. Fail-stop termination closes
+intervals for work left ready, preserving useful wait measurements after task,
+executor, policy, or cancellation failure.
+
+These statistics expose finite and unbounded starvation pressure; they do not
+alter selection. Priorities remain immutable and strict, with no aging or
+starvation mitigation.
+
 ## Work-unit progress and attribution
 
 Ordinary CPU and GPU tasks have one work unit. A `SlicedVulkanDispatch` reports

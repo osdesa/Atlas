@@ -10,9 +10,10 @@ finalises directed acyclic task graphs, executes CPU work through synchronous or
 worker-pool executors, executes declarative Vulkan compute dispatches, and can
 schedule mixed CPU/GPU graphs with independent backend capacities.
 
-Milestones 4 through 7 introduced the Vulkan backend, mixed scheduling,
-cooperative dispatch slicing, task cancellation, and interchangeable scheduling
-policies. The current implementation includes:
+Milestones 4 through 9 introduced the Vulkan backend, mixed scheduling,
+cooperative dispatch slicing, task cancellation, interchangeable scheduling
+policies, and ready-set starvation measurements. The current implementation
+includes:
 
 - graph-scoped task identities and immutable, variant-backed CPU/Vulkan work;
 - `TaskGraph::addCpuTask()` and `addGpuTask()`, with `addTask()` retained as the
@@ -25,7 +26,9 @@ policies. The current implementation includes:
 - a resource-aware Kahn scheduler that processes whichever backend completes
   first, supports FIFO, work-unit round-robin, and stable static priority,
   interleaves sliced GPU work at safe boundaries, and applies fail-stop
-  cancellation; and
+  cancellation;
+- per-task ready-wait duration and same-resource selection-bypass accounting;
+  and
 - standalone CPU, Vulkan, mixed, and combined examples.
 
 Read these documents before making architectural changes:
@@ -38,6 +41,8 @@ Read these documents before making architectural changes:
   cancellation contracts;
 - `docs/milestone-7-scheduling-policies.md` for policy selection, priority,
   quantum, and failure contracts;
+- `docs/milestone-9-preemptive-style-priority-scheduling.md` for cooperative
+  intervention and ready-set measurement contracts;
 - `docs/index.md` for the public documentation overview.
 
 ## First actions in a new session

@@ -1,5 +1,6 @@
 #include "atlas/Scheduler/KahnScheduler.h"
 
+#include "ReadyTaskAccounting.h"
 #include "atlas/Scheduler/FifoSchedulingPolicy.h"
 
 #include <algorithm>
@@ -7,6 +8,7 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <span>
 #include <stdexcept>
 
 namespace Atlas
@@ -36,7 +38,8 @@ namespace Atlas
     }
 
     KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor, const SchedulingPolicy& policy)
-        : BaseScheduler{ taskGraph }, cpuExecutor{ executor }, cpuSchedulingPolicy{ clonePolicy(policy) }
+        : BaseScheduler{ taskGraph }, cpuExecutor{ executor }, cpuSchedulingPolicy{ clonePolicy(policy) },
+          readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) }
     {
         cancellationOrder = startingGraph.getTaskHandles();
         cancellationStates.reserve(cancellationOrder.size());
@@ -54,7 +57,8 @@ namespace Atlas
     KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuBackend, GpuExecutor& gpuBackend,
                                  const SchedulingPolicy& policy)
         : BaseScheduler{ taskGraph }, cpuExecutor{ cpuBackend }, gpuExecutor{ &gpuBackend },
-          cpuSchedulingPolicy{ clonePolicy(policy) }, gpuSchedulingPolicy{ clonePolicy(policy) }
+          cpuSchedulingPolicy{ clonePolicy(policy) }, gpuSchedulingPolicy{ clonePolicy(policy) },
+          readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) }
     {
         cancellationOrder = startingGraph.getTaskHandles();
         cancellationStates.reserve(cancellationOrder.size());
@@ -63,6 +67,8 @@ namespace Atlas
             cancellationStates.emplace(handle, CancellationState::None);
         }
     }
+
+    KahnScheduler::~KahnScheduler() = default;
 
     bool KahnScheduler::requestCancellation(const TaskHandle taskHandle)
     {
@@ -537,6 +543,7 @@ namespace Atlas
 
             task.value()->executionInfo.state = TaskState::Cancelled;
             task.value()->executionInfo.exception = nullptr;
+            readyTaskAccounting->closeReadyInterval(task.value());
             cancellation->second = CancellationState::Terminal;
             state.cancellationObserved = true;
             state.submissionsEnabled = false;
@@ -564,6 +571,7 @@ namespace Atlas
     {
         std::lock_guard lock{ cancellationMutex };
         applyPendingCancellationsLocked(state);
+        readyTaskAccounting->finalize();
         executionFinished = true;
     }
 
@@ -594,6 +602,7 @@ namespace Atlas
 
     bool KahnScheduler::parseDependencies()
     {
+        readyTaskAccounting->reset();
         cpuReadyTasks.clear();
         gpuReadyTasks.clear();
         cpuReadyTasks.reserve(startingGraph.getTaskCount());
@@ -644,6 +653,7 @@ namespace Atlas
     {
         readyTasksForResource(task->options.executionResource)
             .emplace_back(SchedulingCandidate{ task->handle, task->options.priority });
+        readyTaskAccounting->recordReady(task);
     }
 
     std::vector<SchedulingCandidate>& KahnScheduler::readyTasksForResource(const ExecutionResource resource) noexcept
@@ -705,6 +715,7 @@ namespace Atlas
                 if (cancellation != cancellationStates.end() && cancellation->second == CancellationState::Requested)
                 {
                     cancellation->second = CancellationState::Terminal;
+                    readyTaskAccounting->closeReadyInterval(task.value());
                     task.value()->executionInfo.state = TaskState::Cancelled;
                     task.value()->executionInfo.exception = nullptr;
                     state.cancellationObserved = true;
@@ -713,6 +724,7 @@ namespace Atlas
                 }
             }
 
+            readyTaskAccounting->recordSelection(task.value(), std::span<const SchedulingCandidate>{ readyQueue });
             const bool resuming{ task.value()->executionInfo.state == TaskState::Paused };
             task.value()->executionInfo.state = TaskState::Running;
             task.value()->executionInfo.exception = nullptr;

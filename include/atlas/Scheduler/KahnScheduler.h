@@ -19,6 +19,11 @@
 
 namespace Atlas
 {
+    namespace Detail
+    {
+        class ReadyTaskAccounting;
+    }
+
     /**
      * @ingroup scheduling
      * @brief Keeps CPU and Vulkan work in flight independently in dependency order.
@@ -73,7 +78,7 @@ namespace Atlas
          */
         bool requestCancellation(TaskHandle taskHandle);
         /// @brief Destroys the scheduler without taking ownership of executors.
-        ~KahnScheduler() override = default;
+        ~KahnScheduler() override;
 
         /// @brief Prevents copying scheduler state.
         KahnScheduler(const KahnScheduler&) = delete;
@@ -224,6 +229,8 @@ namespace Atlas
         std::unique_ptr<SchedulingPolicy> cpuSchedulingPolicy;
         /// @brief Independently stateful GPU ready-task policy, absent for CPU-only schedulers.
         std::unique_ptr<SchedulingPolicy> gpuSchedulingPolicy;
+        /// @brief Scheduler-internal ready-residency and selection-bypass accounting.
+        std::unique_ptr<Detail::ReadyTaskAccounting> readyTaskAccounting;
     };
 } // namespace Atlas
 
