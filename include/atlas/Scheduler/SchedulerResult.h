@@ -27,7 +27,11 @@ namespace Atlas
         /// @brief Number of tasks successfully executed.
         std::size_t executedTaskCount{ 0U };
 
-        /// @brief Exception captured from a failed task, or an empty pointer when none was captured.
+        /**
+         * @brief First task exception, otherwise the policy exception for a policy error.
+         *
+         * Empty when no task or scheduling-policy exception was captured.
+         */
         std::exception_ptr exception;
 
         /// @brief Total elapsed time spent executing the graph, measured in microseconds.

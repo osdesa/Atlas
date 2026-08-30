@@ -1,100 +1,135 @@
 # Task lifecycle
 
-Atlas currently stores lifecycle state directly on each graph-owned `Task`.
-The scheduler control thread owns state transitions even when CPU and Vulkan
-executor workers run concurrently.
+Atlas stores lifecycle and progress directly on each graph-owned `Task`. The
+scheduler control thread owns every transition even when CPU and Vulkan workers
+run concurrently.
 
 ## States
 
-| State | Current meaning |
+| State | Meaning |
 | --- | --- |
-| `Unknown` | The graph is still being constructed and no execution state has been assigned. |
+| `Unknown` | The graph is under construction and has no execution state. |
 | `Blocked` | At least one dependency has not completed successfully. |
-| `Ready` | The task is eligible for selection by the current scheduler. |
-| `Running` | The scheduler has selected the task and its backend payload is executing. |
-| `Success` | Backend execution completed with no captured exception. |
-| `Failure` | Backend execution failed, or accepted work did not return its matching completion. A task-attributed exception is retained when one exists. |
+| `Ready` | The task is eligible for scheduler selection. |
+| `Running` | The scheduler claimed one CPU payload, ordinary GPU dispatch, or sliced GPU work unit. |
+| `Paused` | A sliced GPU unit succeeded and another unit is ready to be selected. This state is scheduler-internal. |
+| `Success` | The logical task completed every required work unit successfully. |
+| `Failure` | Payload execution failed or accepted work violated the completion contract. |
+| `Cancelled` | A request became effective before logical task completion. |
 
-## Current scheduler behavior
-
-Successful graph finalisation directly initializes roots as `Ready` and tasks
-with dependencies as `Blocked`. The FIFO Kahn scheduler then applies these state
-changes:
+Successful graph finalisation initializes roots as `Ready` and tasks with
+dependencies as `Blocked`. The Kahn scheduler applies these transitions:
 
 ```text
-Blocked -> Ready
-Ready -> Running
-Running -> Success
-Running -> Failure
+Unknown --successful graph finalisation-----> Ready or Blocked
+Blocked --final dependency succeeds---------> Ready
+Ready   --scheduler claims payload----------> Running
+Running --ordinary/final unit succeeds------> Success
+Running --sliced unit succeeds, units remain> Paused
+Paused  --scheduler claims next unit--------> Running
+Running --payload or infrastructure fails---> Failure
+Ready/Blocked/Paused --request is applied---> Cancelled
+Running sliced --unit succeeds, units remain> Cancelled (when requested)
 ```
 
-The scheduler is responsible for choosing and applying its state changes. `Task`
-does not enforce a universal transition matrix, allowing future schedulers and
-cooperative GPU execution to define behavior appropriate to their execution
-model. Scheduler tests are therefore responsible for verifying their observable
-lifecycle behavior.
+`Success`, `Failure`, and `Cancelled` are terminal for one scheduler execution.
+The stable ready sets contain backend-neutral handle/priority candidates and may
+retain stale entries; selection always rechecks task state and execution
+resource. An incomplete sliced GPU task is placed at the GPU tail. FIFO and
+round-robin quantum one therefore interleave logical tasks at work-unit
+boundaries, while larger round-robin quanta may retain one task for consecutive
+units.
 
-The ready queue stores task handles in FIFO order. Queue membership alone is not
-enough to execute a task: selection rechecks that its current state is `Ready`.
-This allows stale or already completed entries to be skipped without changing
-the queue container.
+## Scheduling policies
 
-`KahnScheduler` marks a selected task `Running` before submitting its typed
-payload. A rejected submission restores the task to `Ready`. CPU-only execution
-retains the original executor completion path. Mixed execution fills CPU and GPU
-capacities independently and waits on one fixed-capacity completion channel.
-Dependencies are released only by a completion matching an in-flight handle,
-its declared resource, and its `Running` state.
+Existing `KahnScheduler` constructors use FIFO. Policy-aware constructors clone
+one supplied policy independently for each backend, so CPU selection state never
+changes GPU selection state. Policies order only tasks competing for the same
+resource; CPU and GPU capacities remain independent.
+
+Static priority selects lower numeric values first and preserves FIFO order for
+ties. Priorities are immutable for one graph execution. A newly ready
+higher-priority GPU task can run after the current slice completes, but Atlas
+does not interrupt an active Vulkan dispatch. Strict priority provides no aging
+and may starve ready lower-priority tasks.
+
+## Work-unit progress and attribution
+
+Ordinary CPU and GPU tasks have one work unit. A `SlicedVulkanDispatch` reports
+the total number of regions needed to cover its logical dimensions. The
+scheduler increments `completedWorkUnitCount` only after an attributed successful
+completion. `executedTaskCount` increments only after logical `Success`, and
+dependants are released only then.
+
+Every completion must match an in-flight task handle, declared resource,
+`Running` state, and exact work-unit index. Missing, duplicate, unknown, extra,
+stale, skipped, resource-mismatched, or index-mismatched completions are
+infrastructure failures and never release dependants.
+
+`executionDuration` excludes executor queue waiting. Ordinary tasks retain the
+reported payload duration. Sliced tasks accumulate reported durations across
+successful units and include the reported duration of a unit that finishes with
+an exception. Progress counts only successful units.
+
+## Cancellation
+
+`KahnScheduler::requestCancellation()` accepts a graph-owned non-terminal task
+before or concurrently with `execute()`. Cross-graph, unknown, duplicate,
+terminal, and post-execution requests return false. Requests and scheduler
+selection share one mutex-protected claim boundary:
+
+- a task requested before it is claimed becomes `Cancelled`;
+- a running CPU or ordinary GPU payload cannot be interrupted, so its real
+  completion wins and makes the request ineffective;
+- a running sliced GPU task completes its current unit, then becomes
+  `Cancelled` if work remains; and
+- a request during the final sliced unit is ineffective when that unit succeeds,
+  because logical completion wins.
+
+Effective cancellation is fail-stop for the graph. The scheduler stops all new
+submissions, drains accepted CPU and GPU work, does not release dependants from
+the cancelled task, and reports `Cancelled` unless a higher-precedence failure
+occurs. Multiple pending requests are applied in graph insertion order.
+
+## Failure and result precedence
+
+The first task failure stops new submissions, preserves the first task exception,
+and drains accepted work. Submission rejection, channel or producer failure, and
+completion-contract violations are executor infrastructure failures. A thrown
+scheduling policy or an invalid selected index is a policy error. Both stop new
+submissions and drain accepted work. Useful duration and progress recorded
+before a later failure are retained.
+
+Final status precedence is:
+
+```text
+ExecutorUnavailable > PolicyError > TaskFailed > Cancelled > Success > InvalidGraph
+```
+
+This permits already accepted work to reveal a task or infrastructure failure
+while the graph is draining after cancellation.
+
+## Executor and access rules
 
 The scheduler borrows initially drained executors and requires exclusive access
 to their public interfaces during `execute()`. It never shuts them down.
 `SynchronousCpuExecutor` and `VulkanExecutor` report capacity one;
-`WorkerpoolExecutor` reports its validated worker count.
+`WorkerpoolExecutor` reports its validated worker count. Executor shutdown
+rejects new work, drains accepted work, joins workers, and retains required
+standalone completions.
 
-## Execution information and failure
-
-`TaskExecutionInfo` is the single source of runtime state for a task. It also
-stores the exception thrown by the callable, when applicable, and the duration
-spent executing the callable. Static submission metadata remains separate in
-`TaskOptions`. The graph-level `SchedulerResult` reports total successful
-completions, graph elapsed time, and the first captured task exception.
-
-The first callable or dispatch failure disables new submissions, but work already accepted
-is drained and every real completion is applied. The result preserves the first
-observed task exception and counts successful completions rather than
-submissions. Dependants that were not released before failure remain `Blocked`.
-
-Task-attributed failure is reported as `TaskFailed`. Submission rejection,
-channel/producer failure, or a missing, unknown, duplicate, extra, or
-resource-mismatched completion is an executor
-infrastructure failure and is reported as `ExecutorUnavailable`. Infrastructure
-status takes precedence if both kinds of failure are observed.
-
-## Executor lifecycle
-
-`WorkerpoolExecutor` and `VulkanExecutor` own their work/completion queues,
-synchronization, and workers. Shutdown stops acceptance, drains queued and
-running work, joins workers, and retains standalone completions. Repeated calls
-are safe. Channel-targeted submissions publish to the scheduler-owned stream
-instead of the standalone completion queue.
-
-Executor public calls are serialized by their caller. Worker callables may run
-at the same time, so captured references and other shared application resources
-require application-owned synchronization. Worker threads never access
-`TaskExecutionInfo`.
+Task execution information is not atomic and must not be inspected or mutated
+concurrently with execution. The cancellation API is the exception: its private
+request state is synchronized and the scheduler control thread remains the only
+writer of `TaskExecutionInfo`.
 
 ## Current limitations
 
-- Scheduler control is single-threaded, but worker callables may execute concurrently.
-- Execution information is not atomic and must not be accessed concurrently with execution.
-- A graph is intended for one execution and completed tasks are not run again.
-- One executor must not contain unrelated accepted work or queued completions
-  when lent to `KahnScheduler`.
-- Priority does not affect FIFO selection; resource type does select the backend.
-- Vulkan execution is capacity one on a single compute queue.
-- Graphics, cancellation, and cooperative dispatch slicing are unavailable.
-- Atlas does not currently define task cancellation; it will be introduced only
-  alongside a concrete cancellation API and execution policy.
-- Mutating execution information through a retained task view is possible;
-  callers and scheduler implementations are responsible for maintaining
-  coherent values.
+- A graph is intended for one execution; runtime submission and repeated
+  execution are unavailable.
+- Priorities are static; dynamic changes and starvation mitigation are unavailable.
+- Vulkan uses one compute queue and one active dispatch.
+- Pause/resume is not public, and an active CPU or Vulkan payload is not
+  preempted.
+- Graphics, multiple queues, adaptive backend selection, and general
+  cancellation tokens remain unavailable.

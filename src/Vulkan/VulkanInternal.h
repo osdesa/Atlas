@@ -95,6 +95,14 @@ namespace Atlas
         std::vector<std::uint32_t> bindingNumbers;
     };
 
+    struct VulkanDispatch::Impl final
+    {
+        /// @brief Pipeline selected for every work unit in the logical dispatch.
+        VulkanComputePipeline computePipeline;
+        /// @brief Exact storage-buffer bindings shared by every work unit.
+        std::vector<BufferBinding> bufferBindings;
+    };
+
     struct VulkanRuntime::Impl final
     {
         /// @brief Shared context kept alive by runtime-owned resources.

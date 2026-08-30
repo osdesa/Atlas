@@ -53,7 +53,7 @@ namespace Atlas
         }
 
         /// @brief Queues one dispatch unless shutdown has begun.
-        bool submit(TaskHandle taskHandle, VulkanDispatch dispatch, CompletionChannel* completionChannel)
+        bool submit(TaskHandle taskHandle, VulkanDispatch&& dispatch, CompletionChannel* completionChannel)
         {
             if (!taskHandle.isValid())
             {
@@ -66,9 +66,10 @@ namespace Atlas
                 {
                     return false;
                 }
-                pending.emplace_back(WorkItem{
-                    std::move(dispatch), TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 }, ExecutionResource::GPU },
-                    completionChannel });
+                pending.emplace_back(WorkItem{ dispatch,
+                                               TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 },
+                                                               ExecutionResource::GPU, dispatch.workUnitIndex() },
+                                               completionChannel });
                 ++unfinished;
             }
             workAvailable.notify_one();
@@ -264,7 +265,8 @@ namespace Atlas
                 vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipelineLayout, 0U, 1U,
                                         &descriptorSet, 0U, nullptr);
                 const DispatchDimensions dimensions{ dispatch.dimensions() };
-                vkCmdDispatch(commandBuffer, dimensions.x, dimensions.y, dimensions.z);
+                const DispatchOffset offset{ dispatch.baseWorkgroup() };
+                vkCmdDispatchBase(commandBuffer, offset.x, offset.y, offset.z, dimensions.x, dimensions.y, dimensions.z);
 
                 std::vector<VkBufferMemoryBarrier> afterBarriers;
                 afterBarriers.reserve(dispatch.buffers().size());

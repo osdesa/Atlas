@@ -77,6 +77,20 @@ namespace Atlas
 
     /**
      * @ingroup vulkan
+     * @brief Base workgroup coordinates for one region of a logical dispatch.
+     */
+    struct DispatchOffset
+    {
+        /// @brief Base workgroup coordinate on the X axis.
+        std::uint32_t x{ 0U };
+        /// @brief Base workgroup coordinate on the Y axis.
+        std::uint32_t y{ 0U };
+        /// @brief Base workgroup coordinate on the Z axis.
+        std::uint32_t z{ 0U };
+    };
+
+    /**
+     * @ingroup vulkan
      * @brief SPIR-V compute shader code and its expected storage-buffer interface.
      */
     struct ComputeShader
@@ -95,6 +109,7 @@ namespace Atlas
     class VulkanRuntime;
     class VulkanExecutor;
     class VulkanDispatch;
+    class SlicedVulkanDispatch;
 
     /**
      * @ingroup vulkan
@@ -198,16 +213,10 @@ namespace Atlas
         VulkanDispatch(VulkanComputePipeline pipeline, std::vector<BufferBinding> buffers, DispatchDimensions dimensions);
 
         /// @brief Returns the reusable compute pipeline.
-        const VulkanComputePipeline& pipeline() const noexcept
-        {
-            return computePipeline;
-        }
+        const VulkanComputePipeline& pipeline() const noexcept;
 
         /// @brief Returns all validated storage-buffer bindings.
-        std::span<const BufferBinding> buffers() const noexcept
-        {
-            return bufferBindings;
-        }
+        std::span<const BufferBinding> buffers() const noexcept;
 
         /// @brief Returns the validated workgroup counts.
         DispatchDimensions dimensions() const noexcept
@@ -215,15 +224,92 @@ namespace Atlas
             return workgroupDimensions;
         }
 
+        /// @brief Returns the base workgroup coordinates for this work unit.
+        DispatchOffset baseWorkgroup() const noexcept
+        {
+            return workgroupOffset;
+        }
+
+        /// @brief Returns this work unit's zero-based index in its logical dispatch.
+        std::size_t workUnitIndex() const noexcept
+        {
+            return unitIndex;
+        }
+
       private:
-        /// @brief Pipeline selected for this validated dispatch.
-        VulkanComputePipeline computePipeline;
-        /// @brief Exact storage-buffer bindings supplied to the pipeline.
-        std::vector<BufferBinding> bufferBindings;
+        /// @brief Immutable pipeline and bindings shared by every logical slice.
+        struct Impl;
+
+        /// @brief Creates a validated region sharing an existing dispatch description.
+        VulkanDispatch(std::shared_ptr<Impl> description, DispatchOffset offset, DispatchDimensions dimensions,
+                       std::size_t workUnitIndex) noexcept;
+
+        /// @brief Shared immutable pipeline and buffer description.
+        std::shared_ptr<Impl> implementation;
+        /// @brief Base workgroup coordinates for this work unit.
+        DispatchOffset workgroupOffset;
         /// @brief Non-zero workgroup dimensions for this dispatch.
         DispatchDimensions workgroupDimensions;
+        /// @brief Zero-based work-unit index within the logical dispatch.
+        std::size_t unitIndex{ 0U };
 
         friend class Detail::VulkanAccess;
+        friend class SlicedVulkanDispatch;
+    };
+
+    /**
+     * @ingroup vulkan
+     * @brief A logical compute dispatch divided into deterministic cooperative work units.
+     *
+     * Slices cover the logical dimensions exactly once. Enumeration advances X
+     * first, then Y, then Z. Every slice shares the logical dispatch's pipeline
+     * and buffers and differs only in base workgroup coordinates and dimensions.
+     */
+    class SlicedVulkanDispatch final
+    {
+      public:
+        /**
+         * @brief Divides @p dispatch by maximum per-slice workgroup dimensions.
+         * @param dispatch Validated logical dispatch to divide.
+         * @param sliceDimensions Non-zero maximum slice extent on each axis.
+         * @throws std::invalid_argument If a slice dimension is zero or the slice count overflows.
+         */
+        SlicedVulkanDispatch(VulkanDispatch dispatch, DispatchDimensions sliceDimensions);
+
+        /// @brief Returns the complete validated logical dispatch.
+        const VulkanDispatch& logicalDispatch() const noexcept
+        {
+            return dispatch;
+        }
+
+        /// @brief Returns the configured maximum workgroup extent per slice.
+        DispatchDimensions sliceDimensions() const noexcept
+        {
+            return maximumSliceDimensions;
+        }
+
+        /// @brief Returns the number of work units covering the logical dispatch.
+        std::size_t sliceCount() const noexcept
+        {
+            return workUnitCount;
+        }
+
+        /**
+         * @brief Returns one validated work unit in X-major enumeration order.
+         * @param index Zero-based work-unit index to materialize.
+         * @return A dispatch sharing the logical pipeline and bindings with the
+         * requested base coordinates and edge-clamped dimensions.
+         * @throws std::out_of_range If @p index is not less than sliceCount().
+         */
+        VulkanDispatch slice(std::size_t index) const;
+
+      private:
+        /// @brief Complete logical dispatch whose resources are shared by slices.
+        VulkanDispatch dispatch;
+        /// @brief Maximum workgroup extent of one slice.
+        DispatchDimensions maximumSliceDimensions;
+        /// @brief Checked product of the per-axis tile counts.
+        std::size_t workUnitCount{ 0U };
     };
 } // namespace Atlas
 

@@ -22,7 +22,7 @@
 namespace Atlas
 {
     /// @brief Exactly one typed CPU callable or declarative Vulkan dispatch.
-    using TaskWork = std::variant<TaskFunction, VulkanDispatch>;
+    using TaskWork = std::variant<TaskFunction, VulkanDispatch, SlicedVulkanDispatch>;
 
     /**
      * @ingroup tasking
@@ -56,6 +56,19 @@ namespace Atlas
         {
         }
 
+        /**
+         * @brief Constructs a task containing one cooperatively sliced Vulkan dispatch.
+         * @param taskHandle The immutable identity assigned by the task graph.
+         * @param dispatch The validated logical GPU work and slicing geometry.
+         * @param taskOptions The metadata associated with this task.
+         */
+        explicit Task(TaskHandle taskHandle, SlicedVulkanDispatch dispatch, TaskOptions taskOptions) noexcept
+            : handle{ taskHandle }, options{ std::move(taskOptions) },
+              executionInfo{ TaskState::Unknown, nullptr, std::chrono::microseconds{ 0 }, 0U, dispatch.sliceCount() },
+              work{ std::move(dispatch) }
+        {
+        }
+
         /// @brief The immutable identity information of the task.
         const TaskHandle handle;
 
@@ -73,7 +86,8 @@ namespace Atlas
         {
             const bool payloadMatchesResource{
                 (std::holds_alternative<TaskFunction>(work) && options.executionResource == ExecutionResource::CPU) ||
-                (std::holds_alternative<VulkanDispatch>(work) && options.executionResource == ExecutionResource::GPU)
+                ((std::holds_alternative<VulkanDispatch>(work) || std::holds_alternative<SlicedVulkanDispatch>(work)) &&
+                 options.executionResource == ExecutionResource::GPU)
             };
             return handle.isValid() && options.isValid() && payloadMatchesResource;
         }
@@ -88,6 +102,12 @@ namespace Atlas
         const VulkanDispatch* gpuDispatch() const noexcept
         {
             return std::get_if<VulkanDispatch>(&work);
+        }
+
+        /// @brief Returns the sliced Vulkan dispatch, or null for ordinary CPU or GPU work.
+        const SlicedVulkanDispatch* slicedGpuDispatch() const noexcept
+        {
+            return std::get_if<SlicedVulkanDispatch>(&work);
         }
 
         /**
@@ -155,7 +175,7 @@ namespace Atlas
         Task& operator=(Task&&) = delete;
 
       private:
-        /// @brief Exactly one immutable CPU callable or Vulkan dispatch.
+        /// @brief Exactly one immutable CPU, ordinary Vulkan, or sliced Vulkan payload.
         const TaskWork work;
 
         /// @brief The tasks which need to be done before this task can be executed.

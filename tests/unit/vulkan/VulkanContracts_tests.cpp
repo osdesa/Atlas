@@ -60,6 +60,67 @@ TEST_CASE("DispatchDimensions require every dimension to be non-zero", "[UNIT]")
     REQUIRE_FALSE(Atlas::DispatchDimensions{ 1U, 0U, 1U }.isValid());
 }
 
+TEST_CASE("SlicedVulkanDispatch tiles three dimensions in X-major order", "[UNIT]")
+{
+    Atlas::Testing::VulkanTestFactory::Resources resources{ Atlas::Testing::VulkanTestFactory::resources() };
+    const Atlas::VulkanDispatch logicalDispatch{ resources.pipeline,
+                                                 { { 0U, resources.buffers.front(), Atlas::BufferAccess::ReadWrite } },
+                                                 { 5U, 3U, 2U } };
+    const Atlas::SlicedVulkanDispatch slicedDispatch{ logicalDispatch, { 2U, 2U, 1U } };
+
+    REQUIRE(slicedDispatch.sliceCount() == 12U);
+    REQUIRE(slicedDispatch.logicalDispatch().dimensions().x == 5U);
+
+    const Atlas::VulkanDispatch first{ slicedDispatch.slice(0U) };
+    REQUIRE(first.baseWorkgroup().x == 0U);
+    REQUIRE(first.baseWorkgroup().y == 0U);
+    REQUIRE(first.baseWorkgroup().z == 0U);
+    REQUIRE(first.dimensions().x == 2U);
+    REQUIRE(first.dimensions().y == 2U);
+    REQUIRE(first.dimensions().z == 1U);
+    REQUIRE(first.workUnitIndex() == 0U);
+
+    const Atlas::VulkanDispatch partialX{ slicedDispatch.slice(2U) };
+    REQUIRE(partialX.baseWorkgroup().x == 4U);
+    REQUIRE(partialX.baseWorkgroup().y == 0U);
+    REQUIRE(partialX.dimensions().x == 1U);
+
+    const Atlas::VulkanDispatch nextRow{ slicedDispatch.slice(3U) };
+    REQUIRE(nextRow.baseWorkgroup().x == 0U);
+    REQUIRE(nextRow.baseWorkgroup().y == 2U);
+    REQUIRE(nextRow.dimensions().y == 1U);
+
+    const Atlas::VulkanDispatch nextPlane{ slicedDispatch.slice(6U) };
+    REQUIRE(nextPlane.baseWorkgroup().x == 0U);
+    REQUIRE(nextPlane.baseWorkgroup().y == 0U);
+    REQUIRE(nextPlane.baseWorkgroup().z == 1U);
+
+    const Atlas::VulkanDispatch last{ slicedDispatch.slice(11U) };
+    REQUIRE(last.baseWorkgroup().x == 4U);
+    REQUIRE(last.baseWorkgroup().y == 2U);
+    REQUIRE(last.baseWorkgroup().z == 1U);
+    REQUIRE(last.dimensions().x == 1U);
+    REQUIRE(last.dimensions().y == 1U);
+    REQUIRE(last.workUnitIndex() == 11U);
+    REQUIRE(&last.pipeline() == &first.pipeline());
+    REQUIRE(last.buffers().data() == first.buffers().data());
+}
+
+TEST_CASE("SlicedVulkanDispatch validates geometry and indices", "[UNIT]")
+{
+    Atlas::Testing::VulkanTestFactory::Resources resources{ Atlas::Testing::VulkanTestFactory::resources() };
+    const Atlas::VulkanDispatch logicalDispatch{ resources.pipeline,
+                                                 { { 0U, resources.buffers.front(), Atlas::BufferAccess::ReadWrite } },
+                                                 { 2U, 2U, 2U } };
+
+    REQUIRE_THROWS_AS((Atlas::SlicedVulkanDispatch{ logicalDispatch, { 0U, 1U, 1U } }), std::invalid_argument);
+
+    const Atlas::SlicedVulkanDispatch oneSlice{ logicalDispatch, { 8U, 8U, 8U } };
+    REQUIRE(oneSlice.sliceCount() == 1U);
+    REQUIRE(oneSlice.slice(0U).dimensions().x == 2U);
+    REQUIRE_THROWS_AS(oneSlice.slice(1U), std::out_of_range);
+}
+
 TEST_CASE("VulkanRuntime default device selection is stable", "[UNIT]")
 {
     const std::array devices{ Atlas::VulkanDeviceInfo{ 5U, "CPU", VK_PHYSICAL_DEVICE_TYPE_CPU, 0U, { 0U } },

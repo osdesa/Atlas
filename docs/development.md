@@ -37,12 +37,15 @@ duration and any captured exception. `KahnScheduler` remains backend-neutral:
 capacity one preserves synchronous FIFO behavior, while a worker pool keeps
 independent ready tasks in flight up to its worker count.
 
-`VulkanRuntime` owns a compute-only instance, device, queue, and command pool.
+`VulkanRuntime` owns a Vulkan 1.1 compute-only instance, device, queue, and command pool.
 It creates opaque persistent device-local buffers and compute pipelines;
 blocking uploads/downloads use internal staging allocations. `VulkanDispatch`
 contains a pipeline, exact storage-buffer bindings with access declarations,
-and non-zero workgroup dimensions. Invalid SPIR-V, binding sets, runtime
-identity, ranges, or device limits are rejected before queue submission.
+and non-zero workgroup dimensions. Pipelines opt into dispatch-base execution.
+`SlicedVulkanDispatch` retains one logical dispatch and divides it into maximum
+X/Y/Z extents, enumerated with X advancing fastest and partial edge units where
+needed. Invalid SPIR-V, binding sets, runtime identity, ranges, slice geometry,
+or device limits are rejected before queue submission.
 
 `VulkanExecutor` owns one worker and reports capacity one. It drains accepted
 dispatches on shutdown and returns the same task-attributed completion shape as
@@ -50,10 +53,14 @@ CPU executors. Vulkan API failures after acceptance are captured as dispatch
 exceptions rather than escaping the worker.
 
 The CPU-only `KahnScheduler` constructor preserves the original completion path.
-The mixed constructor borrows both executors, maintains separate FIFO queues and
-in-flight counts, and consumes CPU/GPU outcomes through one preallocated
-`CompletionChannel`. A completion must match its handle, resource, and running
-state before it can release dependencies.
+The mixed constructor borrows both executors, maintains separate stable ready
+sets and in-flight counts, and consumes CPU/GPU outcomes through one
+preallocated `CompletionChannel`. Existing constructors install FIFO. Policy-
+aware overloads clone one backend-neutral `SchedulingPolicy` independently for
+CPU and GPU. A completion must match its handle, resource, running state, and
+exact work-unit index before it can update progress. An incomplete sliced task
+becomes `Paused` and returns to the GPU ready-set tail. Dependencies are released
+only after its final unit succeeds.
 
 `WorkerpoolExecutor` requires a non-zero fixed worker count. Public executor
 calls must be serialized, although accepted callables run concurrently. Its FIFO
@@ -66,17 +73,23 @@ executor.
 ## Current task and execution model
 
 `TaskGraph` owns task definitions and exposes `shared_ptr<const Task>` views.
-Identity, variant-backed CPU/Vulkan work, and options are immutable. `TaskExecutionInfo` groups
-the logically mutable lifecycle state, captured exception, and callable duration
-so the scheduler control thread can update them through that otherwise read-only
-view. Retaining a returned `shared_ptr` extends the task object's lifetime beyond
-the graph, so callers must not infer a strict non-owning lifetime from the
-graph-owned description.
+Identity, variant-backed CPU/ordinary Vulkan/sliced Vulkan work, and options are
+immutable. `TaskExecutionInfo` groups the logically mutable lifecycle state,
+captured exception, accumulated payload duration, and completed/total work-unit
+counts so the scheduler control thread can update them through that otherwise
+read-only view. Retaining a returned `shared_ptr` extends the task object's
+lifetime beyond the graph, so callers must not infer a strict non-owning
+lifetime from the graph-owned description.
 
 `addCpuTask()` and `addGpuTask()` make the work type authoritative and reject
 resource metadata disagreement. `addTask()` remains a CPU compatibility alias.
-Lower numeric priorities represent higher priority, but FIFO selection does not
-yet use priority.
+Lower numeric priorities represent higher priority. `FifoSchedulingPolicy`
+selects the oldest candidate. `RoundRobinSchedulingPolicy` retains an incomplete
+logical task for at most its configured work-unit quantum; quantum one matches
+FIFO rotation. `StaticPrioritySchedulingPolicy` selects the lowest numeric value
+and preserves FIFO ties. Policies receive only task handles, priorities, and
+stable enqueue order. They never receive task payloads, executor objects, or
+Vulkan types.
 
 Tasks are `Unknown` during graph construction. Successful finalisation assigns
 `Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns
@@ -89,14 +102,27 @@ Ready   --selected by scheduler-----------> Running
 Running --backend work succeeds----------> Success
 Running --backend work fails-------------> Failure
 Running --missing/mismatched completion---> Failure (ExecutorUnavailable)
+Running --sliced unit succeeds, units remain--> Paused
+Paused  --selected from GPU ready set-----> Running
+Ready/Blocked/Paused --effective request--> Cancelled
 ```
 
-`Success` and `Failure` are terminal for the current scheduler. The task's
-execution information retains the captured exception when applicable and the
-time spent executing its callable. A queued task not marked `Ready` is skipped;
-if this prevents every graph task from completing, execution is reported as
-`InvalidGraph`. Atlas does not currently define a cancellation state or
-cancellation API.
+`Success`, `Failure`, and `Cancelled` are terminal for the current scheduler.
+`KahnScheduler::requestCancellation()` accepts a graph-owned, non-terminal task
+before or concurrently with execution. Selection and request handling use one
+mutex-protected claim boundary. A running CPU or ordinary GPU task completes
+normally; a sliced GPU request becomes effective only after a successful unit
+when more units remain. Effective cancellation stops new submissions and drains
+accepted work without releasing dependants.
+
+The result precedence is `ExecutorUnavailable`, then `PolicyError`, then
+`TaskFailed`, `Cancelled`, `Success`, and `InvalidGraph`. A thrown policy or an
+invalid returned index stops new submissions and drains accepted work. The first
+task exception remains authoritative; otherwise `SchedulerResult::exception`
+contains the policy exception. `executedTaskCount` counts logical successes,
+never individual slices. Duration accumulates executor-reported payload time for
+every attempted slice, including a failed slice; executor queue waiting remains
+excluded.
 
 Scheduler control remains single-threaded and a graph is intended for one
 execution, but worker callables may overlap. Execution-information fields are
