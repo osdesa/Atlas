@@ -23,6 +23,8 @@ The current implementation can:
   backend's capacity independently through one shared completion channel;
 - request fail-stop task cancellation before submission or at sliced GPU
   work-unit boundaries while draining work already accepted; and
+- select ready work through interchangeable FIFO, configurable work-unit
+  round-robin, or stable static-priority policies; and
 - record per-task lifecycle state, exceptions, execution duration, and
   work-unit progress alongside graph-level logical completion count and elapsed
   time.
@@ -33,16 +35,19 @@ examples verify standalone vector addition and a CPU-to-sliced-Vulkan-to-CPU
 graph that reports logical work-unit progress.
 
 Atlas does **not** yet provide runtime task submission, repeated graph
-execution, interchangeable or priority-aware scheduling policies, multiple
-Vulkan queues, true active-dispatch preemption, or a benchmarking framework.
+execution, dynamic priority or starvation mitigation, multiple Vulkan queues,
+true active-dispatch preemption, or a benchmarking framework.
 
 ## Task model and lifecycle
 
 `TaskGraph::addCpuTask()` and `addGpuTask()` make payload type authoritative;
-`addTask()` remains a CPU compatibility alias. The FIFO Kahn scheduler borrows a
-CPU executor and, for mixed graphs, a GPU executor. It fills both capacities
-independently and consumes whichever attributed completion arrives first.
-Priority remains metadata only.
+`addTask()` remains a CPU compatibility alias. The Kahn scheduler borrows a CPU
+executor and, for mixed graphs, a GPU executor. It fills both capacities
+independently, consumes whichever attributed completion arrives first, and uses
+independently cloned policy state for each backend. Existing constructors use
+FIFO; overloads accept FIFO, round-robin, static-priority, or user-defined
+backend-neutral policies. Lower numeric priorities run first under static
+priority, with FIFO ordering for ties.
 
 Tasks begin `Unknown` while their graph is being constructed. Successful graph
 finalisation makes tasks without dependencies `Ready` and tasks waiting on
@@ -61,7 +66,8 @@ concurrently with `execute()`. Running CPU and ordinary GPU payloads are not
 interruptible; running sliced GPU work can stop only after its current work unit
 completes. See [Task lifecycle](docs/task-lifecycle.md) and the
 [Milestone 6 design](docs/milestone-6-cooperative-gpu-slicing.md) for the exact
-contracts.
+contracts. See [Milestone 7 scheduling policies](docs/milestone-7-scheduling-policies.md)
+for selection, quantum, priority, and policy-failure semantics.
 
 ## Prerequisites
 

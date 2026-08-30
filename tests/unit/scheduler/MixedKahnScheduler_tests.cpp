@@ -3,6 +3,8 @@
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Executor/WorkerpoolExecutor.h"
 #include "atlas/Scheduler/KahnScheduler.h"
+#include "atlas/Scheduler/RoundRobinSchedulingPolicy.h"
+#include "atlas/Scheduler/StaticPrioritySchedulingPolicy.h"
 #include "atlas/Tasking/TaskGraph.h"
 
 #include <atomic>
@@ -290,6 +292,68 @@ TEST_CASE("KahnScheduler interleaves sliced GPU tasks at work-unit boundaries", 
     REQUIRE(result.executedTaskCount == 2U);
     REQUIRE(gpuExecutor.submittedWorkUnits ==
             std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{ { first, 0U }, { second, 0U }, { first, 1U }, { second, 1U } });
+}
+
+TEST_CASE("KahnScheduler applies a round-robin work-unit quantum", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::TaskHandle first{ requireHandle(graph.addGpuTask(slicedDispatch(4U))) };
+    const Atlas::TaskHandle second{ requireHandle(graph.addGpuTask(slicedDispatch(2U))) };
+    REQUIRE(graph.finishTaskGraph());
+
+    Atlas::SynchronousCpuExecutor cpuExecutor;
+    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(6U) };
+    Atlas::RoundRobinSchedulingPolicy policy{ 2U };
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(gpuExecutor.submittedWorkUnits ==
+            std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{
+                { first, 0U }, { first, 1U }, { second, 0U }, { second, 1U }, { first, 2U }, { first, 3U } });
+}
+
+TEST_CASE("KahnScheduler applies stable static priority at sliced boundaries", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::TaskHandle first{ requireHandle(
+        graph.addGpuTask(slicedDispatch(4U), Atlas::TaskOptions{ "Lower priority", Atlas::ExecutionResource::GPU, 8U })) };
+    const Atlas::TaskHandle second{ requireHandle(
+        graph.addGpuTask(slicedDispatch(2U), Atlas::TaskOptions{ "Higher priority", Atlas::ExecutionResource::GPU, 2U })) };
+    REQUIRE(graph.finishTaskGraph());
+
+    Atlas::SynchronousCpuExecutor cpuExecutor;
+    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(6U) };
+    Atlas::StaticPrioritySchedulingPolicy policy;
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(gpuExecutor.submittedWorkUnits ==
+            std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{
+                { second, 0U }, { second, 1U }, { first, 0U }, { first, 1U }, { first, 2U }, { first, 3U } });
+}
+
+TEST_CASE("KahnScheduler lets newly ready priority work intervene after an active GPU slice", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::TaskHandle prerequisite{ requireHandle(graph.addCpuTask([] {})) };
+    const Atlas::TaskHandle lower{ requireHandle(
+        graph.addGpuTask(slicedDispatch(2U), Atlas::TaskOptions{ "Lower priority", Atlas::ExecutionResource::GPU, 9U })) };
+    const Atlas::TaskHandle higher{ requireHandle(
+        graph.addGpuTask(slicedDispatch(1U), Atlas::TaskOptions{ "Higher priority", Atlas::ExecutionResource::GPU, 1U })) };
+    REQUIRE(graph.addDependency(higher, prerequisite));
+    REQUIRE(graph.finishTaskGraph());
+
+    Atlas::SynchronousCpuExecutor cpuExecutor;
+    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(3U) };
+    Atlas::StaticPrioritySchedulingPolicy policy;
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(gpuExecutor.submittedWorkUnits ==
+            std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{ { lower, 0U }, { higher, 0U }, { lower, 1U } });
 }
 
 TEST_CASE("KahnScheduler preserves sliced progress and duration when a later unit fails", "[UNIT]")

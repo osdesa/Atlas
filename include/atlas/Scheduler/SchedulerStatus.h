@@ -24,6 +24,7 @@ namespace Atlas
         ExecutorUnavailable, ///< A backend rejected work or violated its completion contract.
         Unknown,             ///< An unknown scheduler error occurred.
         Cancelled,           ///< At least one requested cancellation became effective.
+        PolicyError,         ///< Ready-task selection failed or violated its contract.
     };
 
     /**

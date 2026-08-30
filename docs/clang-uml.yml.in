@@ -359,3 +359,25 @@ diagrams:
         - '  ArrowColor #64748B'
         - '  FontColor #0F172A'
         - '}'
+
+  scheduling_policy:
+    type: class
+    glob:
+      - src/Scheduler/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::SchedulingPolicy
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'

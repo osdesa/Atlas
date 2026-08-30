@@ -2,6 +2,7 @@
 
 /** @file main.cpp @brief Runs and verifies a CPU-to-Vulkan-to-CPU task graph. */
 #include "atlas/Executor/VulkanExecutor.h"
+#include "atlas/Scheduler/FifoSchedulingPolicy.h"
 #include "atlas/Scheduler/KahnScheduler.h"
 #include "atlas/Tasking/TaskGraph.h"
 #include "atlas/Vulkan/VulkanRuntime.h"
@@ -85,7 +86,8 @@ int main()
 
         Atlas::SynchronousCpuExecutor cpuExecutor;
         Atlas::VulkanExecutor gpuExecutor{ runtime };
-        Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
+        const Atlas::FifoSchedulingPolicy policy;
+        Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
         const Atlas::SchedulerResult result{ scheduler.execute() };
         const Atlas::TaskExecutionInfo& computeProgress{ graph.findTask(compute.value()).value()->executionInfo };
         if (result.status != Atlas::SchedulerStatus::Success || !verified || computeProgress.completedWorkUnitCount != 2U ||

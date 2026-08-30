@@ -25,6 +25,8 @@ namespace Atlas
             return "Unknown";
         case SchedulerStatus::Cancelled:
             return "Cancelled";
+        case SchedulerStatus::PolicyError:
+            return "PolicyError";
         }
 
         return "Unknown";

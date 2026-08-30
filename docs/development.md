@@ -53,12 +53,14 @@ CPU executors. Vulkan API failures after acceptance are captured as dispatch
 exceptions rather than escaping the worker.
 
 The CPU-only `KahnScheduler` constructor preserves the original completion path.
-The mixed constructor borrows both executors, maintains separate FIFO queues and
-in-flight counts, and consumes CPU/GPU outcomes through one preallocated
-`CompletionChannel`. A completion must match its handle, resource, running
-state, and exact work-unit index before it can update progress. An incomplete
-sliced task becomes `Paused` and returns to the GPU FIFO tail. Dependencies are
-released only after its final unit succeeds.
+The mixed constructor borrows both executors, maintains separate stable ready
+sets and in-flight counts, and consumes CPU/GPU outcomes through one
+preallocated `CompletionChannel`. Existing constructors install FIFO. Policy-
+aware overloads clone one backend-neutral `SchedulingPolicy` independently for
+CPU and GPU. A completion must match its handle, resource, running state, and
+exact work-unit index before it can update progress. An incomplete sliced task
+becomes `Paused` and returns to the GPU ready-set tail. Dependencies are released
+only after its final unit succeeds.
 
 `WorkerpoolExecutor` requires a non-zero fixed worker count. Public executor
 calls must be serialized, although accepted callables run concurrently. Its FIFO
@@ -81,8 +83,13 @@ lifetime from the graph-owned description.
 
 `addCpuTask()` and `addGpuTask()` make the work type authoritative and reject
 resource metadata disagreement. `addTask()` remains a CPU compatibility alias.
-Lower numeric priorities represent higher priority, but FIFO selection does not
-yet use priority.
+Lower numeric priorities represent higher priority. `FifoSchedulingPolicy`
+selects the oldest candidate. `RoundRobinSchedulingPolicy` retains an incomplete
+logical task for at most its configured work-unit quantum; quantum one matches
+FIFO rotation. `StaticPrioritySchedulingPolicy` selects the lowest numeric value
+and preserves FIFO ties. Policies receive only task handles, priorities, and
+stable enqueue order. They never receive task payloads, executor objects, or
+Vulkan types.
 
 Tasks are `Unknown` during graph construction. Successful finalisation assigns
 `Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns
@@ -96,7 +103,7 @@ Running --backend work succeeds----------> Success
 Running --backend work fails-------------> Failure
 Running --missing/mismatched completion---> Failure (ExecutorUnavailable)
 Running --sliced unit succeeds, units remain--> Paused
-Paused  --selected from GPU FIFO tail-----> Running
+Paused  --selected from GPU ready set-----> Running
 Ready/Blocked/Paused --effective request--> Cancelled
 ```
 
@@ -108,11 +115,14 @@ normally; a sliced GPU request becomes effective only after a successful unit
 when more units remain. Effective cancellation stops new submissions and drains
 accepted work without releasing dependants.
 
-The result precedence is `ExecutorUnavailable`, then `TaskFailed`, then
-`Cancelled`, then `Success`, then `InvalidGraph`. `executedTaskCount` counts
-logical successes, never individual slices. Duration accumulates executor-
-reported payload time for every attempted slice, including a failed slice;
-executor queue waiting remains excluded.
+The result precedence is `ExecutorUnavailable`, then `PolicyError`, then
+`TaskFailed`, `Cancelled`, `Success`, and `InvalidGraph`. A thrown policy or an
+invalid returned index stops new submissions and drains accepted work. The first
+task exception remains authoritative; otherwise `SchedulerResult::exception`
+contains the policy exception. `executedTaskCount` counts logical successes,
+never individual slices. Duration accumulates executor-reported payload time for
+every attempted slice, including a failed slice; executor queue waiting remains
+excluded.
 
 Scheduler control remains single-threaded and a graph is intended for one
 execution, but worker callables may overlap. Execution-information fields are

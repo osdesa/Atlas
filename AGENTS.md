@@ -10,9 +10,9 @@ finalises directed acyclic task graphs, executes CPU work through synchronous or
 worker-pool executors, executes declarative Vulkan compute dispatches, and can
 schedule mixed CPU/GPU graphs with independent backend capacities.
 
-Milestones 4 through 6 introduced the Vulkan backend, mixed scheduling,
-cooperative dispatch slicing, and task cancellation. The current implementation
-includes:
+Milestones 4 through 7 introduced the Vulkan backend, mixed scheduling,
+cooperative dispatch slicing, task cancellation, and interchangeable scheduling
+policies. The current implementation includes:
 
 - graph-scoped task identities and immutable, variant-backed CPU/Vulkan work;
 - `TaskGraph::addCpuTask()` and `addGpuTask()`, with `addTask()` retained as the
@@ -23,7 +23,8 @@ includes:
   executor;
 - a preallocated shared completion channel for CPU and GPU producers;
 - a resource-aware Kahn scheduler that processes whichever backend completes
-  first, interleaves sliced GPU work at FIFO boundaries, and applies fail-stop
+  first, supports FIFO, work-unit round-robin, and stable static priority,
+  interleaves sliced GPU work at safe boundaries, and applies fail-stop
   cancellation; and
 - standalone CPU, Vulkan, mixed, and combined examples.
 
@@ -35,6 +36,8 @@ Read these documents before making architectural changes:
 - `docs/milestone-4-5-vulkan-roadmap.md` for the implemented design boundaries;
 - `docs/milestone-6-cooperative-gpu-slicing.md` for slicing, progress, and
   cancellation contracts;
+- `docs/milestone-7-scheduling-policies.md` for policy selection, priority,
+  quantum, and failure contracts;
 - `docs/index.md` for the public documentation overview.
 
 ## First actions in a new session
@@ -184,8 +187,11 @@ git diff --check
   Invalid, missing, duplicate, unknown, extra, resource-mismatched, or
   work-unit-mismatched completions must never release dependants.
 - Incomplete sliced GPU tasks retain accumulated progress and duration, enter
-  `Paused`, and return to the GPU FIFO tail. Only logical success increments
+  `Paused`, and return to the GPU ready-set tail. Only logical success increments
   `executedTaskCount` or releases dependants.
+- Scheduling policies receive only stable handle/priority candidates and are
+  cloned independently per backend. They never own task state, dependencies,
+  executors, or Vulkan payloads.
 - Cancellation requests synchronize with scheduler task claiming. Effective
   cancellation stops submissions and drains accepted work; running CPU and
   ordinary GPU payloads complete normally, while sliced work can stop only at a
@@ -193,6 +199,9 @@ git diff --check
 - After the first task or infrastructure failure, stop new submissions and drain
   all accepted work. Preserve the first task exception. Infrastructure failures
   map to `SchedulerStatus::ExecutorUnavailable`.
+- Policy exceptions and invalid selections stop submissions, drain accepted
+  work, and map to `SchedulerStatus::PolicyError` without displacing a captured
+  task exception.
 - `CompletionChannel` storage is allocated before producers publish. Producer
   publication must remain thread-safe, allocation-free, and non-throwing.
 - Executor shutdown rejects new work, drains accepted work, retains required
@@ -286,7 +295,7 @@ the project scope:
 
 - runtime graph submission and repeated graph execution;
 - public pause/resume and general cancellation tokens;
-- priority-aware or interchangeable scheduling policies;
+- dynamic priorities and starvation mitigation;
 - multiple Vulkan queues or concurrent Vulkan dispatch execution;
 - graphics/presentation support;
 - true CPU or Vulkan dispatch preemption;

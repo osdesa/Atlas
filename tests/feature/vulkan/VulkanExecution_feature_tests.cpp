@@ -2,7 +2,10 @@
 
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Executor/VulkanExecutor.h"
+#include "atlas/Scheduler/FifoSchedulingPolicy.h"
 #include "atlas/Scheduler/KahnScheduler.h"
+#include "atlas/Scheduler/RoundRobinSchedulingPolicy.h"
+#include "atlas/Scheduler/StaticPrioritySchedulingPolicy.h"
 #include "atlas/Tasking/TaskGraph.h"
 #include "atlas/Vulkan/VulkanRuntime.h"
 
@@ -154,6 +157,66 @@ TEST_CASE("KahnScheduler executes uneven Vulkan dispatch-base slices", "[FEATURE
         REQUIRE(output.at(index) == left.at(index) + right.at(index));
     }
     REQUIRE(fixture.validationErrors->empty());
+}
+
+TEST_CASE("KahnScheduler executes real sliced Vulkan work with every built-in policy", "[FEATURE][VULKAN_INTEGRATION]")
+{
+    ComputeFixture fixture;
+    std::vector<float> left(ComputeFixture::elementCount);
+    std::vector<float> right(ComputeFixture::elementCount);
+    std::vector<float> output(ComputeFixture::elementCount, -1.0F);
+    for (std::size_t index{ 0U }; index < left.size(); ++index)
+    {
+        left.at(index) = static_cast<float>(index + 1U);
+        right.at(index) = static_cast<float>(index * 2U);
+    }
+    fixture.runtime.upload(fixture.left, bytesOf(left));
+    fixture.runtime.upload(fixture.right, bytesOf(right));
+
+    const auto executePolicy = [&](const Atlas::SchedulingPolicy& policy)
+    {
+        std::fill(output.begin(), output.end(), -1.0F);
+        fixture.runtime.upload(fixture.output, bytesOf(output));
+        Atlas::TaskGraph graph;
+        const std::optional<Atlas::TaskHandle> compute{ graph.addGpuTask(
+            fixture.slicedDispatch(), Atlas::TaskOptions{ "Policy sliced vector addition", Atlas::ExecutionResource::GPU }) };
+        REQUIRE(compute.has_value());
+        REQUIRE(graph.finishTaskGraph());
+
+        Atlas::SynchronousCpuExecutor cpuExecutor;
+        Atlas::VulkanExecutor gpuExecutor{ fixture.runtime };
+        Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
+        const Atlas::SchedulerResult result{ scheduler.execute() };
+
+        fixture.runtime.download(fixture.output, writableBytesOf(output));
+        REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+        REQUIRE(result.executedTaskCount == 1U);
+        const Atlas::TaskExecutionInfo& progress{ graph.findTask(compute.value()).value()->executionInfo };
+        REQUIRE(progress.state == Atlas::TaskState::Success);
+        REQUIRE(progress.completedWorkUnitCount == 3U);
+        REQUIRE(progress.totalWorkUnitCount == 3U);
+        for (std::size_t index{ 0U }; index < output.size(); ++index)
+        {
+            REQUIRE(output.at(index) == left.at(index) + right.at(index));
+        }
+        REQUIRE(fixture.validationErrors->empty());
+    };
+
+    SECTION("FIFO")
+    {
+        const Atlas::FifoSchedulingPolicy policy;
+        executePolicy(policy);
+    }
+    SECTION("round-robin")
+    {
+        const Atlas::RoundRobinSchedulingPolicy policy{ 2U };
+        executePolicy(policy);
+    }
+    SECTION("static priority")
+    {
+        const Atlas::StaticPrioritySchedulingPolicy policy;
+        executePolicy(policy);
+    }
 }
 
 TEST_CASE("VulkanExecutor isolates a rejected-runtime dispatch and continues", "[FEATURE][VULKAN_INTEGRATION]")

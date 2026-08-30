@@ -1,15 +1,42 @@
 #include "atlas/Scheduler/KahnScheduler.h"
 
+#include "atlas/Scheduler/FifoSchedulingPolicy.h"
+
 #include <algorithm>
 #include <chrono>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 
 namespace Atlas
 {
+    namespace
+    {
+        /**
+         * @brief Clones and validates one user-supplied scheduling policy.
+         * @param policy Policy configuration to clone.
+         * @return A fresh, non-null policy instance.
+         * @throws std::invalid_argument When the policy returns a null clone.
+         */
+        std::unique_ptr<SchedulingPolicy> clonePolicy(const SchedulingPolicy& policy)
+        {
+            std::unique_ptr<SchedulingPolicy> clone{ policy.clone() };
+            if (clone == nullptr)
+            {
+                throw std::invalid_argument{ "SchedulingPolicy::clone returned null" };
+            }
+            return clone;
+        }
+    } // namespace
+
     KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor)
-        : BaseScheduler{ taskGraph }, cpuExecutor{ executor }
+        : KahnScheduler{ taskGraph, executor, FifoSchedulingPolicy{} }
+    {
+    }
+
+    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor, const SchedulingPolicy& policy)
+        : BaseScheduler{ taskGraph }, cpuExecutor{ executor }, cpuSchedulingPolicy{ clonePolicy(policy) }
     {
         cancellationOrder = startingGraph.getTaskHandles();
         cancellationStates.reserve(cancellationOrder.size());
@@ -20,7 +47,14 @@ namespace Atlas
     }
 
     KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuBackend, GpuExecutor& gpuBackend)
-        : BaseScheduler{ taskGraph }, cpuExecutor{ cpuBackend }, gpuExecutor{ &gpuBackend }
+        : KahnScheduler{ taskGraph, cpuBackend, gpuBackend, FifoSchedulingPolicy{} }
+    {
+    }
+
+    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuBackend, GpuExecutor& gpuBackend,
+                                 const SchedulingPolicy& policy)
+        : BaseScheduler{ taskGraph }, cpuExecutor{ cpuBackend }, gpuExecutor{ &gpuBackend },
+          cpuSchedulingPolicy{ clonePolicy(policy) }, gpuSchedulingPolicy{ clonePolicy(policy) }
     {
         cancellationOrder = startingGraph.getTaskHandles();
         cancellationStates.reserve(cancellationOrder.size());
@@ -102,7 +136,7 @@ namespace Atlas
         finishExecution(state);
         result.status = forcedStatus.value_or(determineStatus(state));
         result.executedTaskCount = state.successfulTaskCount;
-        result.exception = state.firstTaskException;
+        result.exception = state.firstTaskException != nullptr ? state.firstTaskException : state.firstPolicyException;
         result.executionTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
         return result;
     }
@@ -219,7 +253,7 @@ namespace Atlas
     {
         std::size_t& inFlight{ resource == ExecutionResource::CPU ? state.cpuInFlight : state.gpuInFlight };
         const std::size_t capacity{ resource == ExecutionResource::CPU ? state.cpuCapacity : state.gpuCapacity };
-        std::queue<TaskHandle>& readyQueue{ resource == ExecutionResource::CPU ? cpuReadyTasks : gpuReadyTasks };
+        const std::vector<SchedulingCandidate>& readyQueue{ readyTasksForResource(resource) };
 
         if (resource == ExecutionResource::GPU && !readyQueue.empty() && gpuExecutor == nullptr)
         {
@@ -390,7 +424,7 @@ namespace Atlas
                 }
                 else
                 {
-                    gpuReadyTasks.emplace(completion.handle);
+                    appendReadyTask(task.value());
                 }
                 return;
             }
@@ -539,6 +573,10 @@ namespace Atlas
         {
             return SchedulerStatus::ExecutorUnavailable;
         }
+        if (state.policyFailure)
+        {
+            return SchedulerStatus::PolicyError;
+        }
         if (state.taskFailureObserved)
         {
             return SchedulerStatus::TaskFailed;
@@ -556,8 +594,10 @@ namespace Atlas
 
     bool KahnScheduler::parseDependencies()
     {
-        cpuReadyTasks = {};
-        gpuReadyTasks = {};
+        cpuReadyTasks.clear();
+        gpuReadyTasks.clear();
+        cpuReadyTasks.reserve(startingGraph.getTaskCount());
+        gpuReadyTasks.reserve(startingGraph.getTaskCount());
         remainingDependencies.clear();
         cpuTaskCount = 0U;
         gpuTaskCount = 0U;
@@ -579,14 +619,7 @@ namespace Atlas
             }
             if (task.value()->getDependencies().empty())
             {
-                if (task.value()->options.executionResource == ExecutionResource::CPU)
-                {
-                    cpuReadyTasks.emplace(handle);
-                }
-                else
-                {
-                    gpuReadyTasks.emplace(handle);
-                }
+                appendReadyTask(task.value());
             }
             else
             {
@@ -604,24 +637,59 @@ namespace Atlas
             return;
         }
         task.value()->executionInfo.state = TaskState::Ready;
-        if (task.value()->options.executionResource == ExecutionResource::CPU)
+        appendReadyTask(task.value());
+    }
+
+    void KahnScheduler::appendReadyTask(const std::shared_ptr<const Task>& task)
+    {
+        readyTasksForResource(task->options.executionResource)
+            .emplace_back(SchedulingCandidate{ task->handle, task->options.priority });
+    }
+
+    std::vector<SchedulingCandidate>& KahnScheduler::readyTasksForResource(const ExecutionResource resource) noexcept
+    {
+        return resource == ExecutionResource::CPU ? cpuReadyTasks : gpuReadyTasks;
+    }
+
+    SchedulingPolicy& KahnScheduler::policyForResource(const ExecutionResource resource) noexcept
+    {
+        return resource == ExecutionResource::CPU ? *cpuSchedulingPolicy : *gpuSchedulingPolicy;
+    }
+
+    void KahnScheduler::recordPolicyFailure(ExecutionState& state, std::exception_ptr exception) noexcept
+    {
+        state.policyFailure = true;
+        state.submissionsEnabled = false;
+        if (state.firstPolicyException == nullptr)
         {
-            cpuReadyTasks.emplace(handle);
-        }
-        else
-        {
-            gpuReadyTasks.emplace(handle);
+            state.firstPolicyException = std::move(exception);
         }
     }
 
     std::optional<std::shared_ptr<const Task>> KahnScheduler::takeNextReadyTask(const ExecutionResource resource,
                                                                                 ExecutionState& state)
     {
-        std::queue<TaskHandle>& readyQueue{ resource == ExecutionResource::CPU ? cpuReadyTasks : gpuReadyTasks };
+        std::vector<SchedulingCandidate>& readyQueue{ readyTasksForResource(resource) };
         while (!readyQueue.empty())
         {
-            const TaskHandle handle{ readyQueue.front() };
-            readyQueue.pop();
+            std::size_t selectedIndex{ 0U };
+            try
+            {
+                selectedIndex = policyForResource(resource).selectNext(readyQueue);
+                if (selectedIndex >= readyQueue.size())
+                {
+                    throw std::out_of_range{ "Scheduling policy selected an invalid candidate index" };
+                }
+            }
+            catch (...)
+            {
+                recordPolicyFailure(state, std::current_exception());
+                return std::nullopt;
+            }
+
+            const TaskHandle handle{ readyQueue.at(selectedIndex).handle };
+            using ReadyDifference = std::vector<SchedulingCandidate>::difference_type;
+            readyQueue.erase(std::next(readyQueue.begin(), static_cast<ReadyDifference>(selectedIndex)));
             const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(handle) };
             const bool schedulableState{ task.has_value() && (task.value()->executionInfo.state == TaskState::Ready ||
                                                               (resource == ExecutionResource::GPU &&

@@ -46,6 +46,7 @@ function(atlas_add_documentation)
     set(ATLAS_DOXYGEN_INDEX_PAGE "${PROJECT_SOURCE_DIR}/docs/index.md")
     set(ATLAS_DOXYGEN_ROADMAP_PAGE "${PROJECT_SOURCE_DIR}/docs/milestone-4-5-vulkan-roadmap.md")
     set(ATLAS_DOXYGEN_MILESTONE_6_PAGE "${PROJECT_SOURCE_DIR}/docs/milestone-6-cooperative-gpu-slicing.md")
+    set(ATLAS_DOXYGEN_MILESTONE_7_PAGE "${PROJECT_SOURCE_DIR}/docs/milestone-7-scheduling-policies.md")
     set(ATLAS_DOXYGEN_AWESOME_DIRECTORY "${doxygen_awesome_css_SOURCE_DIR}")
     set(ATLAS_UML_ANALYSIS_BUILD_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/uml-analysis")
     set(ATLAS_UML_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/uml")
@@ -58,6 +59,7 @@ function(atlas_add_documentation)
     file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_INDEX_PAGE}" ATLAS_DOXYGEN_INDEX_PAGE)
     file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_ROADMAP_PAGE}" ATLAS_DOXYGEN_ROADMAP_PAGE)
     file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_MILESTONE_6_PAGE}" ATLAS_DOXYGEN_MILESTONE_6_PAGE)
+    file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_MILESTONE_7_PAGE}" ATLAS_DOXYGEN_MILESTONE_7_PAGE)
     file(TO_CMAKE_PATH "${ATLAS_DOXYGEN_AWESOME_DIRECTORY}" ATLAS_DOXYGEN_AWESOME_DIRECTORY)
     file(TO_CMAKE_PATH "${ATLAS_UML_ANALYSIS_BUILD_DIRECTORY}" ATLAS_UML_ANALYSIS_BUILD_DIRECTORY)
     file(TO_CMAKE_PATH "${ATLAS_UML_OUTPUT_DIRECTORY}" ATLAS_UML_OUTPUT_DIRECTORY)
@@ -110,6 +112,7 @@ function(atlas_add_documentation)
         "${ATLAS_UML_OUTPUT_DIRECTORY}/vulkan_executor.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/base_scheduler.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/kahn_scheduler.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/scheduling_policy.puml"
     )
 
     add_custom_command(

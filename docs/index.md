@@ -10,28 +10,31 @@ dispatch or a logical dispatch divided into deterministic work units. Execution
 records lifecycle state, exceptions, accumulated payload duration, work-unit
 progress, logical completed-task count, and total elapsed time.
 
-The scheduler retains FIFO ready-task selection and a single control thread.
-Explicit CPU and Vulkan tasks are dispatched through independently capacity-
-bounded executors, and one shared completion channel returns whichever backend
-finishes first. The scheduler alone applies task state, exceptions, durations,
-progress, cancellation, and dependency release. Cancellation can become
-effective before submission or at a sliced GPU boundary; accepted work is
-always drained. Repeated graph execution remains unsupported.
+The scheduler uses interchangeable FIFO, configurable work-unit round-robin,
+and stable static-priority selection with a single control thread. Explicit CPU
+and Vulkan tasks are dispatched through independently capacity-bounded
+executors, and one shared completion channel returns whichever backend finishes
+first. The scheduler alone applies task state, exceptions, durations, progress,
+cancellation, and dependency release. Cancellation can become effective before
+submission or at a sliced GPU boundary; accepted work is always drained.
+Repeated graph execution remains unsupported.
 
 Atlas provides Vulkan 1.1 compute initialization, persistent storage buffers and
 dispatch-base pipelines, staging transfers, ordinary and sliced declarative
 dispatch, standalone execution, and mixed CPU/GPU graphs. Sliced tasks return
-to the GPU FIFO tail after each incomplete work unit, enabling cooperative
+to the GPU ready-set tail after each incomplete work unit, enabling cooperative
 interleaving without claiming to interrupt an active Vulkan dispatch.
 
-Graphics, multiple queues, public pause/resume, priority policies, runtime graph
-submission, repeated execution, and true Vulkan dispatch preemption remain
-deferred.
+Graphics, multiple queues, public pause/resume, dynamic priorities, starvation
+mitigation, runtime graph submission, repeated execution, and true Vulkan
+dispatch preemption remain deferred.
 
 The Vulkan backend and mixed CPU/GPU scheduling design is recorded in the
 [Milestones 4 and 5 Vulkan roadmap](milestone-4-5-vulkan-roadmap.md).
 Cooperative work units and fail-stop cancellation are specified in the
 [Milestone 6 design](milestone-6-cooperative-gpu-slicing.md).
+Interchangeable selection and failure semantics are specified in the
+[Milestone 7 design](milestone-7-scheduling-policies.md).
 
 ## API documentation
 

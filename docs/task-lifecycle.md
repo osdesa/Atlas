@@ -33,10 +33,25 @@ Running sliced --unit succeeds, units remain> Cancelled (when requested)
 ```
 
 `Success`, `Failure`, and `Cancelled` are terminal for one scheduler execution.
-The ready queues contain handles and may retain stale entries; selection always
-rechecks task state and execution resource. An incomplete sliced GPU task is
-placed at the tail of the GPU FIFO, so capacity-one Vulkan execution can
-interleave logical tasks at work-unit boundaries.
+The stable ready sets contain backend-neutral handle/priority candidates and may
+retain stale entries; selection always rechecks task state and execution
+resource. An incomplete sliced GPU task is placed at the GPU tail. FIFO and
+round-robin quantum one therefore interleave logical tasks at work-unit
+boundaries, while larger round-robin quanta may retain one task for consecutive
+units.
+
+## Scheduling policies
+
+Existing `KahnScheduler` constructors use FIFO. Policy-aware constructors clone
+one supplied policy independently for each backend, so CPU selection state never
+changes GPU selection state. Policies order only tasks competing for the same
+resource; CPU and GPU capacities remain independent.
+
+Static priority selects lower numeric values first and preserves FIFO order for
+ties. Priorities are immutable for one graph execution. A newly ready
+higher-priority GPU task can run after the current slice completes, but Atlas
+does not interrupt an active Vulkan dispatch. Strict priority provides no aging
+and may starve ready lower-priority tasks.
 
 ## Work-unit progress and attribution
 
@@ -80,13 +95,15 @@ occurs. Multiple pending requests are applied in graph insertion order.
 
 The first task failure stops new submissions, preserves the first task exception,
 and drains accepted work. Submission rejection, channel or producer failure, and
-completion-contract violations are executor infrastructure failures. Useful
-duration and progress recorded before a later failure are retained.
+completion-contract violations are executor infrastructure failures. A thrown
+scheduling policy or an invalid selected index is a policy error. Both stop new
+submissions and drain accepted work. Useful duration and progress recorded
+before a later failure are retained.
 
 Final status precedence is:
 
 ```text
-ExecutorUnavailable > TaskFailed > Cancelled > Success > InvalidGraph
+ExecutorUnavailable > PolicyError > TaskFailed > Cancelled > Success > InvalidGraph
 ```
 
 This permits already accepted work to reveal a task or infrastructure failure
@@ -110,7 +127,7 @@ writer of `TaskExecutionInfo`.
 
 - A graph is intended for one execution; runtime submission and repeated
   execution are unavailable.
-- Priority is metadata only; FIFO is the only selection policy.
+- Priorities are static; dynamic changes and starvation mitigation are unavailable.
 - Vulkan uses one compute queue and one active dispatch.
 - Pause/resume is not public, and an active CPU or Vulkan payload is not
   preempted.

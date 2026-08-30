@@ -5,13 +5,13 @@
 #include "atlas/Executor/CompletionChannel.h"
 #include "atlas/Executor/CpuExecutor.h"
 #include "atlas/Executor/GpuExecutor.h"
+#include "atlas/Scheduler/SchedulingPolicy.h"
 #include "atlas/Tasking/TaskGraph.h"
 
 #include <cstddef>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <queue>
 #include <unordered_map>
 #include <vector>
 
@@ -34,12 +34,29 @@ namespace Atlas
          */
         explicit KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor);
         /**
+         * @brief Borrows one CPU executor and clones a scheduling policy.
+         * @param taskGraph Finalised graph to execute.
+         * @param executor CPU backend used for callable tasks.
+         * @param policy Backend-neutral selection policy to clone for CPU work.
+         * @throws std::invalid_argument When the policy clone is null.
+         */
+        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor, const SchedulingPolicy& policy);
+        /**
          * @brief Borrows independent CPU and GPU executors for mixed graph execution.
          * @param taskGraph Finalised graph to execute.
          * @param cpuExecutor CPU backend used for callable tasks.
          * @param gpuExecutor GPU backend used for declarative dispatches.
          */
         KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, GpuExecutor& gpuExecutor);
+        /**
+         * @brief Borrows independent executors and clones one policy per backend.
+         * @param taskGraph Finalised graph to execute.
+         * @param cpuExecutor CPU backend used for callable tasks.
+         * @param gpuExecutor GPU backend used for declarative dispatches.
+         * @param policy Backend-neutral selection policy cloned independently for CPU and GPU work.
+         * @throws std::invalid_argument When either policy clone is null.
+         */
+        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, GpuExecutor& gpuExecutor, const SchedulingPolicy& policy);
 
         /// @brief Executes the finalised graph until all accepted work drains.
         SchedulerResult execute() override;
@@ -82,12 +99,16 @@ namespace Atlas
             std::size_t successfulTaskCount{ 0U };
             /// @brief First callable or dispatch exception observed.
             std::exception_ptr firstTaskException{ nullptr };
+            /// @brief First policy exception or synthesized contract error observed.
+            std::exception_ptr firstPolicyException{ nullptr };
             /// @brief Whether new task submissions are still permitted.
             bool submissionsEnabled{ true };
             /// @brief Whether an executor or completion contract failed.
             bool executorFailure{ false };
             /// @brief Whether a task-attributed execution failure was observed.
             bool taskFailureObserved{ false };
+            /// @brief Whether selection failed or violated the policy contract.
+            bool policyFailure{ false };
             /// @brief Whether the completion producer ended before in-flight work drained.
             bool completionStreamEndedEarly{ false };
             /// @brief Whether at least one cancellation request became effective.
@@ -154,9 +175,17 @@ namespace Atlas
 
         /// @brief Converts accumulated execution state into the public scheduler status.
         SchedulerStatus determineStatus(const ExecutionState& state) const noexcept;
-        /// @brief Marks a task ready and places it in the matching FIFO queue.
+        /// @brief Marks a task ready and appends it to the matching ready set.
         void enqueueReadyTask(TaskHandle taskHandle);
-        /// @brief Removes the next currently-ready task for one resource.
+        /// @brief Appends one task to its resource-specific ready set without changing its state.
+        void appendReadyTask(const std::shared_ptr<const Task>& task);
+        /// @brief Returns the ready set matching one execution resource.
+        std::vector<SchedulingCandidate>& readyTasksForResource(ExecutionResource resource) noexcept;
+        /// @brief Returns the independent policy matching one execution resource.
+        SchedulingPolicy& policyForResource(ExecutionResource resource) noexcept;
+        /// @brief Records a policy exception and stops new submissions.
+        void recordPolicyFailure(ExecutionState& state, std::exception_ptr exception) noexcept;
+        /// @brief Uses the resource policy to remove the next currently-ready task.
         std::optional<std::shared_ptr<const Task>> takeNextReadyTask(ExecutionResource resource, ExecutionState& state);
         /// @brief Restores a task after its executor rejected submission.
         void restoreRejectedTask(const std::shared_ptr<const Task>& task) noexcept;
@@ -165,10 +194,10 @@ namespace Atlas
         /// @brief Releases dependants after a successful prerequisite.
         void updateDependencies(const std::shared_ptr<const Task>& executedTask);
 
-        /// @brief FIFO queue of ready CPU task handles.
-        std::queue<TaskHandle> cpuReadyTasks;
-        /// @brief FIFO queue of ready GPU task handles.
-        std::queue<TaskHandle> gpuReadyTasks;
+        /// @brief Stable enqueue-ordered ready CPU candidates.
+        std::vector<SchedulingCandidate> cpuReadyTasks;
+        /// @brief Stable enqueue-ordered ready GPU candidates.
+        std::vector<SchedulingCandidate> gpuReadyTasks;
         /// @brief Remaining prerequisite counts keyed by dependent handle.
         std::unordered_map<TaskHandle, std::size_t, TaskHandle::Hash> remainingDependencies;
         /// @brief Accepted tasks and their expected completion resource.
@@ -191,6 +220,10 @@ namespace Atlas
         CpuExecutor& cpuExecutor;
         /// @brief Optional borrowed GPU executor for mixed execution.
         GpuExecutor* gpuExecutor{ nullptr };
+        /// @brief Independently stateful CPU ready-task policy.
+        std::unique_ptr<SchedulingPolicy> cpuSchedulingPolicy;
+        /// @brief Independently stateful GPU ready-task policy, absent for CPU-only schedulers.
+        std::unique_ptr<SchedulingPolicy> gpuSchedulingPolicy;
     };
 } // namespace Atlas
 
