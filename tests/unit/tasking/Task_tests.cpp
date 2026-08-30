@@ -1,3 +1,4 @@
+#include "../../support/VulkanTestFactory.h"
 #include "atlas/Tasking/Task.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -52,6 +53,30 @@ TEST_CASE("Task exposes its callable work", "[UNIT]")
     task.cpuFunction()->operator()();
 
     REQUIRE(executed);
+}
+
+TEST_CASE("Task exposes cooperatively sliced Vulkan work and progress", "[UNIT]")
+{
+    const Atlas::SlicedVulkanDispatch slicedDispatch{ Atlas::Testing::VulkanTestFactory::dispatch(), { 1U, 1U, 1U } };
+    const Atlas::Task task{ VALID_TASK_HANDLE, slicedDispatch,
+                            Atlas::TaskOptions{ "Sliced GPU task", Atlas::ExecutionResource::GPU } };
+
+    REQUIRE(task.isValid());
+    REQUIRE(task.cpuFunction() == nullptr);
+    REQUIRE(task.gpuDispatch() == nullptr);
+    REQUIRE(task.slicedGpuDispatch() != nullptr);
+    REQUIRE(task.slicedGpuDispatch()->sliceCount() == 1U);
+    REQUIRE(task.executionInfo.completedWorkUnitCount == 0U);
+    REQUIRE(task.executionInfo.totalWorkUnitCount == 1U);
+}
+
+TEST_CASE("Task rejects resource metadata that disagrees with sliced Vulkan work", "[UNIT]")
+{
+    const Atlas::SlicedVulkanDispatch slicedDispatch{ Atlas::Testing::VulkanTestFactory::dispatch(), { 1U, 1U, 1U } };
+    const Atlas::Task task{ VALID_TASK_HANDLE, slicedDispatch, Atlas::TaskOptions{ "Mismatched sliced task" } };
+
+    REQUIRE_FALSE(task.isValid());
+    REQUIRE(task.slicedGpuDispatch() != nullptr);
 }
 
 TEST_CASE("Task preserves and exposes immutable task metadata", "[UNIT]")

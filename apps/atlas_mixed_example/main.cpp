@@ -48,11 +48,12 @@ int main()
         const Atlas::VulkanBuffer outputBuffer{ runtime.createBuffer(elementCount * sizeof(float)) };
         const Atlas::VulkanComputePipeline pipeline{ runtime.createComputePipeline(
             Atlas::ComputeShader{ readShader(), "main", { 0U, 1U, 2U } }) };
-        const Atlas::VulkanDispatch dispatch{ pipeline,
-                                              { { 0U, leftBuffer, Atlas::BufferAccess::ReadOnly },
-                                                { 1U, rightBuffer, Atlas::BufferAccess::ReadOnly },
-                                                { 2U, outputBuffer, Atlas::BufferAccess::WriteOnly } },
-                                              { 4U, 1U, 1U } };
+        const Atlas::VulkanDispatch logicalDispatch{ pipeline,
+                                                     { { 0U, leftBuffer, Atlas::BufferAccess::ReadOnly },
+                                                       { 1U, rightBuffer, Atlas::BufferAccess::ReadOnly },
+                                                       { 2U, outputBuffer, Atlas::BufferAccess::WriteOnly } },
+                                                     { 4U, 1U, 1U } };
+        const Atlas::SlicedVulkanDispatch slicedDispatch{ logicalDispatch, { 3U, 1U, 1U } };
 
         std::vector<float> left(elementCount, 4.0F);
         std::vector<float> right(elementCount, 7.0F);
@@ -67,7 +68,7 @@ int main()
                 runtime.upload(rightBuffer, std::as_bytes(std::span{ right }));
             },
             Atlas::TaskOptions{ "Prepare" }) };
-        const auto compute{ graph.addGpuTask(dispatch, Atlas::TaskOptions{ "Compute", Atlas::ExecutionResource::GPU }) };
+        const auto compute{ graph.addGpuTask(slicedDispatch, Atlas::TaskOptions{ "Sliced compute", Atlas::ExecutionResource::GPU }) };
         const auto verify{ graph.addCpuTask(
             [&]
             {
@@ -86,12 +87,15 @@ int main()
         Atlas::VulkanExecutor gpuExecutor{ runtime };
         Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
         const Atlas::SchedulerResult result{ scheduler.execute() };
-        if (result.status != Atlas::SchedulerStatus::Success || !verified)
+        const Atlas::TaskExecutionInfo& computeProgress{ graph.findTask(compute.value()).value()->executionInfo };
+        if (result.status != Atlas::SchedulerStatus::Success || !verified || computeProgress.completedWorkUnitCount != 2U ||
+            computeProgress.totalWorkUnitCount != 2U)
         {
             std::cerr << "Mixed graph execution failed\n";
             return EXIT_FAILURE;
         }
-        std::cout << "Verified CPU -> Vulkan -> CPU graph on " << runtime.deviceInfo().name << '\n';
+        std::cout << "Verified CPU -> sliced Vulkan (" << computeProgress.completedWorkUnitCount << " work units) -> CPU graph on "
+                  << runtime.deviceInfo().name << '\n';
         return EXIT_SUCCESS;
     }
     catch (const std::exception& exception)

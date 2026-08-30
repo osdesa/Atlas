@@ -5,31 +5,33 @@ Atlas is a C++20 heterogeneous CPU/Vulkan task-graph prototype.
 The current API builds directed acyclic graphs of graph-scoped task handles,
 validates dependencies, and executes finalised graphs with a capacity-aware
 Kahn scheduler. Tasks carry optional names, static priorities, and
-backend-neutral CPU/GPU resource intent. Graph finalisation assigns initial
-`Ready` or `Blocked` states, and execution records `Running`, `Success`, or
-`Failure` in each task's execution information. Task execution duration,
-exceptions, completed-task count, and total elapsed time are also reported.
+backend-neutral CPU/GPU resource intent. Vulkan work may be one ordinary
+dispatch or a logical dispatch divided into deterministic work units. Execution
+records lifecycle state, exceptions, accumulated payload duration, work-unit
+progress, logical completed-task count, and total elapsed time.
 
 The scheduler retains FIFO ready-task selection and a single control thread.
 Explicit CPU and Vulkan tasks are dispatched through independently capacity-
 bounded executors, and one shared completion channel returns whichever backend
 finishes first. The scheduler alone applies task state, exceptions, durations,
-and dependency release. Repeated graph execution and cancellation remain
-unsupported.
+progress, cancellation, and dependency release. Cancellation can become
+effective before submission or at a sliced GPU boundary; accepted work is
+always drained. Repeated graph execution remains unsupported.
 
-Atlas provides compute-only Vulkan initialization, persistent storage buffers
-and pipelines, staging transfers, declarative dispatch, standalone execution,
-and mixed CPU/GPU graphs. Graphics, multiple queues, cancellation, GPU slices,
-and multiple scheduling policies remain deferred.
+Atlas provides Vulkan 1.1 compute initialization, persistent storage buffers and
+dispatch-base pipelines, staging transfers, ordinary and sliced declarative
+dispatch, standalone execution, and mixed CPU/GPU graphs. Sliced tasks return
+to the GPU FIFO tail after each incomplete work unit, enabling cooperative
+interleaving without claiming to interrupt an active Vulkan dispatch.
 
-Future GPU scheduling will be cooperative. A logical GPU task will consist of
-independently submitted slices, allowing Atlas to reconsider scheduling between
-slices without claiming to interrupt a Vulkan dispatch already in flight. The
-intended description is **preemptive-style GPU scheduling through cooperative
-execution slices**.
+Graphics, multiple queues, public pause/resume, priority policies, runtime graph
+submission, repeated execution, and true Vulkan dispatch preemption remain
+deferred.
 
 The Vulkan backend and mixed CPU/GPU scheduling design is recorded in the
 [Milestones 4 and 5 Vulkan roadmap](milestone-4-5-vulkan-roadmap.md).
+Cooperative work units and fail-stop cancellation are specified in the
+[Milestone 6 design](milestone-6-cooperative-gpu-slicing.md).
 
 ## API documentation
 

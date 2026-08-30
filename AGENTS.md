@@ -10,18 +10,21 @@ finalises directed acyclic task graphs, executes CPU work through synchronous or
 worker-pool executors, executes declarative Vulkan compute dispatches, and can
 schedule mixed CPU/GPU graphs with independent backend capacities.
 
-Milestones 4 and 5 introduced the Vulkan backend and mixed scheduling. The
-current implementation includes:
+Milestones 4 through 6 introduced the Vulkan backend, mixed scheduling,
+cooperative dispatch slicing, and task cancellation. The current implementation
+includes:
 
 - graph-scoped task identities and immutable, variant-backed CPU/Vulkan work;
 - `TaskGraph::addCpuTask()` and `addGpuTask()`, with `addTask()` retained as the
   CPU compatibility API;
 - synchronous and fixed-size worker-pool CPU executors;
 - a compute-only Vulkan runtime, persistent buffers and pipelines, staging
-  transfers, declarative dispatches, and a capacity-one Vulkan executor;
+  transfers, Vulkan 1.1 dispatch-base execution, and a capacity-one Vulkan
+  executor;
 - a preallocated shared completion channel for CPU and GPU producers;
 - a resource-aware Kahn scheduler that processes whichever backend completes
-  first; and
+  first, interleaves sliced GPU work at FIFO boundaries, and applies fail-stop
+  cancellation; and
 - standalone CPU, Vulkan, mixed, and combined examples.
 
 Read these documents before making architectural changes:
@@ -30,12 +33,14 @@ Read these documents before making architectural changes:
 - `docs/development.md` for ownership, lifecycle, build, and coding details;
 - `docs/task-lifecycle.md` for scheduler state transitions and failure rules;
 - `docs/milestone-4-5-vulkan-roadmap.md` for the implemented design boundaries;
+- `docs/milestone-6-cooperative-gpu-slicing.md` for slicing, progress, and
+  cancellation contracts;
 - `docs/index.md` for the public documentation overview.
 
 ## First actions in a new session
 
 1. Run `git status --short` and inspect relevant diffs before editing. The
-   worktree may contain uncommitted Milestones 4/5 changes belonging to the
+   worktree may contain uncommitted milestone changes belonging to the
    user. Never reset, overwrite, or reformat unrelated changes.
 2. Use `rg` and `rg --files` for repository searches.
 3. Read the nearest implementation, public header, and tests together before
@@ -68,8 +73,9 @@ Do not edit or commit generated content below `build/`.
 ## Build prerequisites
 
 Atlas requires CMake 3.24+, a C++20 compiler, Ninja for Linux presets, Threads,
-and Vulkan development headers and loader libraries. Real Vulkan integration
-also requires `glslc`, `spirv-val`, Mesa Lavapipe, and Vulkan validation layers.
+Vulkan development headers, and a Vulkan 1.1 loader/device. Real Vulkan
+integration also requires `glslc`, `spirv-val`, Mesa Lavapipe, and Vulkan
+validation layers.
 
 On Ubuntu the expected packages are:
 
@@ -163,8 +169,9 @@ git diff --check
 
 - A task handle is valid only within its graph identity. Cross-graph handles
   must never be accepted as graph members or dependency endpoints.
-- Each `Task` contains exactly one `TaskFunction` or `VulkanDispatch`. The
-  variant alternative must agree with `TaskOptions::executionResource`.
+- Each `Task` contains exactly one `TaskFunction`, `VulkanDispatch`, or
+  `SlicedVulkanDispatch`. The variant alternative must agree with
+  `TaskOptions::executionResource`.
 - `addTask()` remains a CPU compatibility alias. Do not silently reinterpret a
   CPU callable as GPU work or infer a backend from runtime types.
 - A graph is structurally mutable only before successful finalisation and is
@@ -174,8 +181,15 @@ git diff --check
 - CPU and GPU capacities and in-flight counts are independent. A busy backend
   must not prevent ready work from being submitted to the other backend.
 - Every accepted submission must produce exactly one task-attributed completion.
-  Invalid, missing, duplicate, unknown, extra, or resource-mismatched
-  completions must never release dependants.
+  Invalid, missing, duplicate, unknown, extra, resource-mismatched, or
+  work-unit-mismatched completions must never release dependants.
+- Incomplete sliced GPU tasks retain accumulated progress and duration, enter
+  `Paused`, and return to the GPU FIFO tail. Only logical success increments
+  `executedTaskCount` or releases dependants.
+- Cancellation requests synchronize with scheduler task claiming. Effective
+  cancellation stops submissions and drains accepted work; running CPU and
+  ordinary GPU payloads complete normally, while sliced work can stop only at a
+  completed unit boundary.
 - After the first task or infrastructure failure, stop new submissions and drain
   all accepted work. Preserve the first task exception. Infrastructure failures
   map to `SchedulerStatus::ExecutorUnavailable`.
@@ -271,11 +285,11 @@ The following are intentionally deferred unless the user explicitly changes
 the project scope:
 
 - runtime graph submission and repeated graph execution;
-- cancellation;
+- public pause/resume and general cancellation tokens;
 - priority-aware or interchangeable scheduling policies;
 - multiple Vulkan queues or concurrent Vulkan dispatch execution;
 - graphics/presentation support;
-- cooperative GPU slicing or claims of true Vulkan dispatch preemption;
+- true CPU or Vulkan dispatch preemption;
 - adaptive backend selection, benchmarking, and allocator/pipeline-cache
   optimization.
 

@@ -13,6 +13,16 @@ TEST_CASE("TaskExecutionInfo has safe defaults", "[UNIT]")
     REQUIRE(executionInfo.state == Atlas::TaskState::Unknown);
     REQUIRE(executionInfo.exception == nullptr);
     REQUIRE(executionInfo.executionDuration == std::chrono::microseconds{ 0 });
+    REQUIRE(executionInfo.completedWorkUnitCount == 0U);
+    REQUIRE(executionInfo.totalWorkUnitCount == 1U);
+}
+
+TEST_CASE("TaskState appends cooperative slicing and cancellation states", "[UNIT]")
+{
+    REQUIRE(static_cast<std::uint8_t>(Atlas::TaskState::Unknown) == 0U);
+    REQUIRE(static_cast<std::uint8_t>(Atlas::TaskState::Blocked) == 5U);
+    REQUIRE(static_cast<std::uint8_t>(Atlas::TaskState::Paused) == 6U);
+    REQUIRE(static_cast<std::uint8_t>(Atlas::TaskState::Cancelled) == 7U);
 }
 
 TEST_CASE("TaskExecutionInfo stores failure details", "[UNIT]")

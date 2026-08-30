@@ -364,6 +364,15 @@ namespace Atlas
 
     VulkanRuntime::VulkanRuntime(VulkanRuntimeOptions options) : implementation{ std::make_unique<Impl>() }
     {
+        const auto enumerateInstanceVersion{ reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
+            vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion")) };
+        std::uint32_t loaderVersion{ VK_API_VERSION_1_0 };
+        if (enumerateInstanceVersion == nullptr || enumerateInstanceVersion(&loaderVersion) != VK_SUCCESS ||
+            loaderVersion < VK_API_VERSION_1_1)
+        {
+            throw VulkanError{ VK_ERROR_INCOMPATIBLE_DRIVER, "require a Vulkan 1.1 loader" };
+        }
+
         auto context{ std::make_shared<Detail::VulkanContext>() };
         context->validationCallback = std::move(options.validationCallback);
 
@@ -399,7 +408,7 @@ namespace Atlas
                                                  .applicationVersion = VK_MAKE_API_VERSION(0U, 0U, 3U, 0U),
                                                  .pEngineName = "Atlas",
                                                  .engineVersion = VK_MAKE_API_VERSION(0U, 0U, 3U, 0U),
-                                                 .apiVersion = VK_API_VERSION_1_0 };
+                                                 .apiVersion = VK_API_VERSION_1_1 };
         const VkInstanceCreateInfo instanceInfo{ .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                                                  .pNext = options.enableValidation ? &debugInfo : nullptr,
                                                  .flags = 0U,
@@ -440,7 +449,7 @@ namespace Atlas
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(physicalDevices.at(index), &properties);
             std::vector<std::uint32_t> queues{ computeQueueFamilies(physicalDevices.at(index)) };
-            if (!queues.empty())
+            if (properties.apiVersion >= VK_API_VERSION_1_1 && !queues.empty())
             {
                 compatibleDevices.emplace_back(physicalDevices.at(index));
                 deviceDescriptions.emplace_back(
@@ -450,7 +459,7 @@ namespace Atlas
 
         if (compatibleDevices.empty())
         {
-            throw VulkanError{ VK_ERROR_FEATURE_NOT_PRESENT, "find a compute-capable Vulkan device" };
+            throw VulkanError{ VK_ERROR_FEATURE_NOT_PRESENT, "find a Vulkan 1.1 compute-capable device" };
         }
 
         const std::optional<std::size_t> selection{ options.deviceSelector ? options.deviceSelector(deviceDescriptions)
@@ -585,7 +594,7 @@ namespace Atlas
                                                              .pSpecializationInfo = nullptr };
             const VkComputePipelineCreateInfo pipelineInfo{ .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
                                                             .pNext = nullptr,
-                                                            .flags = 0U,
+                                                            .flags = VK_PIPELINE_CREATE_DISPATCH_BASE_BIT,
                                                             .stage = stageInfo,
                                                             .layout = resource->pipelineLayout,
                                                             .basePipelineHandle = VK_NULL_HANDLE,

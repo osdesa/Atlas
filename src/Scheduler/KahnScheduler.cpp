@@ -11,11 +11,45 @@ namespace Atlas
     KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor)
         : BaseScheduler{ taskGraph }, cpuExecutor{ executor }
     {
+        cancellationOrder = startingGraph.getTaskHandles();
+        cancellationStates.reserve(cancellationOrder.size());
+        for (const TaskHandle handle : cancellationOrder)
+        {
+            cancellationStates.emplace(handle, CancellationState::None);
+        }
     }
 
     KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuBackend, GpuExecutor& gpuBackend)
         : BaseScheduler{ taskGraph }, cpuExecutor{ cpuBackend }, gpuExecutor{ &gpuBackend }
     {
+        cancellationOrder = startingGraph.getTaskHandles();
+        cancellationStates.reserve(cancellationOrder.size());
+        for (const TaskHandle handle : cancellationOrder)
+        {
+            cancellationStates.emplace(handle, CancellationState::None);
+        }
+    }
+
+    bool KahnScheduler::requestCancellation(const TaskHandle taskHandle)
+    {
+        std::lock_guard lock{ cancellationMutex };
+        const auto entry{ cancellationStates.find(taskHandle) };
+        if (executionFinished || entry == cancellationStates.end() || entry->second != CancellationState::None)
+        {
+            return false;
+        }
+        if (!executionStarted)
+        {
+            const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(taskHandle) };
+            if (!task.has_value() || task.value()->executionInfo.state == TaskState::Success ||
+                task.value()->executionInfo.state == TaskState::Failure || task.value()->executionInfo.state == TaskState::Cancelled)
+            {
+                entry->second = CancellationState::Terminal;
+                return false;
+            }
+        }
+        entry->second = CancellationState::Requested;
+        return true;
     }
 
     SchedulerResult KahnScheduler::execute()
@@ -28,10 +62,16 @@ namespace Atlas
 
         ExecutionState state;
         inFlightTasks.clear();
+        {
+            std::lock_guard lock{ cancellationMutex };
+            executionStarted = true;
+        }
+
+        std::optional<SchedulerStatus> forcedStatus;
 
         if (!parseDependencies())
         {
-            result.status = SchedulerStatus::InvalidGraph;
+            forcedStatus = SchedulerStatus::InvalidGraph;
         }
         else
         {
@@ -43,26 +83,26 @@ namespace Atlas
             if ((cpuTaskCount != 0U && state.cpuCapacity == 0U) ||
                 (gpuTaskCount != 0U && (gpuExecutor == nullptr || state.gpuCapacity == 0U)))
             {
-                result.status = SchedulerStatus::ExecutorUnavailable;
+                forcedStatus = SchedulerStatus::ExecutorUnavailable;
             }
             else if (gpuTaskCount == 0U)
             {
+                applyPendingCancellations(state);
                 runCpuOnlyExecutorLoop(state);
-                result.status = determineStatus(state);
-                result.executedTaskCount = state.successfulTaskCount;
-                result.exception = state.firstTaskException;
             }
             else
             {
                 CompletionChannel channel{ state.cpuCapacity + state.gpuCapacity };
+                applyPendingCancellations(state);
                 runExecutorLoop(state, channel);
                 channel.close();
-                result.status = determineStatus(state);
-                result.executedTaskCount = state.successfulTaskCount;
-                result.exception = state.firstTaskException;
             }
         }
 
+        finishExecution(state);
+        result.status = forcedStatus.value_or(determineStatus(state));
+        result.executedTaskCount = state.successfulTaskCount;
+        result.exception = state.firstTaskException;
         result.executionTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
         return result;
     }
@@ -71,6 +111,7 @@ namespace Atlas
     {
         while (true)
         {
+            applyPendingCancellations(state);
             submitCpuOnlyReadyTasks(state);
             if (inFlightTasks.empty())
             {
@@ -89,6 +130,7 @@ namespace Atlas
             TaskCompletion attributedCompletion{ completion.value() };
             attributedCompletion.resource = ExecutionResource::CPU;
             processCompletion(attributedCompletion, state);
+            applyPendingCancellations(state);
         }
 
         if (!state.completionStreamEndedEarly && cpuExecutor.waitForCompletion().has_value())
@@ -102,7 +144,7 @@ namespace Atlas
     {
         while (state.submissionsEnabled && state.cpuInFlight < state.cpuCapacity)
         {
-            const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask(ExecutionResource::CPU) };
+            const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask(ExecutionResource::CPU, state) };
             if (!task.has_value())
             {
                 return;
@@ -126,7 +168,7 @@ namespace Atlas
                 state.submissionsEnabled = false;
                 return;
             }
-            inFlightTasks.emplace(task.value()->handle, ExecutionResource::CPU);
+            inFlightTasks.emplace(task.value()->handle, InFlightWork{ ExecutionResource::CPU, 0U });
             ++state.cpuInFlight;
         }
     }
@@ -139,6 +181,7 @@ namespace Atlas
             {
                 break;
             }
+            applyPendingCancellations(state);
             submitReadyTasks(state, channel);
 
             if (inFlightTasks.empty())
@@ -187,13 +230,14 @@ namespace Atlas
 
         while (state.submissionsEnabled && inFlight < capacity)
         {
-            const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask(resource) };
+            const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask(resource, state) };
             if (!task.has_value())
             {
                 return;
             }
 
             bool accepted{ false };
+            std::size_t workUnitIndex{ 0U };
             try
             {
                 if (resource == ExecutionResource::CPU)
@@ -207,12 +251,26 @@ namespace Atlas
                 }
                 else
                 {
-                    const VulkanDispatch* const dispatch{ task.value()->gpuDispatch() };
-                    if (dispatch == nullptr || gpuExecutor == nullptr)
+                    if (gpuExecutor == nullptr)
                     {
                         throw std::logic_error{ "GPU task has no GPU payload or executor" };
                     }
-                    accepted = gpuExecutor->submit(task.value()->handle, *dispatch, channel);
+                    if (const VulkanDispatch* const dispatch{ task.value()->gpuDispatch() }; dispatch != nullptr)
+                    {
+                        workUnitIndex = dispatch->workUnitIndex();
+                        accepted = gpuExecutor->submit(task.value()->handle, *dispatch, channel);
+                    }
+                    else if (const SlicedVulkanDispatch* const slicedDispatch{ task.value()->slicedGpuDispatch() };
+                             slicedDispatch != nullptr)
+                    {
+                        VulkanDispatch workUnit{ slicedDispatch->slice(task.value()->executionInfo.completedWorkUnitCount) };
+                        workUnitIndex = workUnit.workUnitIndex();
+                        accepted = gpuExecutor->submit(task.value()->handle, std::move(workUnit), channel);
+                    }
+                    else
+                    {
+                        throw std::logic_error{ "GPU task has no GPU payload" };
+                    }
                 }
             }
             catch (...)
@@ -231,7 +289,7 @@ namespace Atlas
                 return;
             }
 
-            inFlightTasks.emplace(task.value()->handle, resource);
+            inFlightTasks.emplace(task.value()->handle, InFlightWork{ resource, workUnitIndex });
             ++inFlight;
         }
     }
@@ -300,12 +358,14 @@ namespace Atlas
             return;
         }
 
-        const ExecutionResource expectedResource{ inFlightEntry->second };
+        const InFlightWork expectedWork{ inFlightEntry->second };
+        const ExecutionResource expectedResource{ expectedWork.resource };
         decrementInFlight(expectedResource, state);
         inFlightTasks.erase(inFlightEntry);
 
         const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(completion.handle) };
-        if (!task.has_value() || task.value()->executionInfo.state != TaskState::Running || completion.resource != expectedResource)
+        if (!task.has_value() || task.value()->executionInfo.state != TaskState::Running || completion.resource != expectedResource ||
+            completion.workUnitIndex != expectedWork.workUnitIndex)
         {
             state.executorFailure = true;
             state.submissionsEnabled = false;
@@ -319,6 +379,23 @@ namespace Atlas
         completeTask(task.value(), completion);
         if (completion.succeeded())
         {
+            if (task.value()->executionInfo.state == TaskState::Paused)
+            {
+                if (cancellationRequested(completion.handle))
+                {
+                    task.value()->executionInfo.state = TaskState::Cancelled;
+                    state.cancellationObserved = true;
+                    state.submissionsEnabled = false;
+                    markCancellationTerminal(completion.handle);
+                }
+                else
+                {
+                    gpuReadyTasks.emplace(completion.handle);
+                }
+                return;
+            }
+
+            markCancellationTerminal(completion.handle);
             ++state.successfulTaskCount;
             if (state.submissionsEnabled)
             {
@@ -327,6 +404,7 @@ namespace Atlas
         }
         else
         {
+            markCancellationTerminal(completion.handle);
             state.taskFailureObserved = true;
             state.submissionsEnabled = false;
             if (state.firstTaskException == nullptr)
@@ -350,7 +428,7 @@ namespace Atlas
         {
             task.value()->executionInfo.state = TaskState::Failure;
             task.value()->executionInfo.exception = nullptr;
-            task.value()->executionInfo.executionDuration = std::chrono::microseconds{ 0 };
+            markCancellationTerminal(handle);
         }
     }
 
@@ -358,7 +436,7 @@ namespace Atlas
     {
         for (auto entry{ inFlightTasks.begin() }; entry != inFlightTasks.end();)
         {
-            if (entry->second == resource)
+            if (entry->second.resource == resource)
             {
                 failInFlightTask(entry->first);
                 decrementInFlight(resource, state);
@@ -373,10 +451,10 @@ namespace Atlas
 
     void KahnScheduler::failAllInFlight(ExecutionState& state) noexcept
     {
-        for (const auto& [handle, resource] : inFlightTasks)
+        for (const auto& [handle, work] : inFlightTasks)
         {
             failInFlightTask(handle);
-            decrementInFlight(resource, state);
+            decrementInFlight(work.resource, state);
         }
         inFlightTasks.clear();
     }
@@ -390,6 +468,71 @@ namespace Atlas
         }
     }
 
+    void KahnScheduler::applyPendingCancellations(ExecutionState& state)
+    {
+        std::lock_guard lock{ cancellationMutex };
+        applyPendingCancellationsLocked(state);
+    }
+
+    void KahnScheduler::applyPendingCancellationsLocked(ExecutionState& state) noexcept
+    {
+        for (const TaskHandle handle : cancellationOrder)
+        {
+            auto cancellation{ cancellationStates.find(handle) };
+            if (cancellation == cancellationStates.end() || cancellation->second != CancellationState::Requested)
+            {
+                continue;
+            }
+
+            const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(handle) };
+            if (!task.has_value())
+            {
+                cancellation->second = CancellationState::Terminal;
+                continue;
+            }
+            if (task.value()->executionInfo.state == TaskState::Running)
+            {
+                continue;
+            }
+            if (task.value()->executionInfo.state == TaskState::Success || task.value()->executionInfo.state == TaskState::Failure ||
+                task.value()->executionInfo.state == TaskState::Cancelled)
+            {
+                cancellation->second = CancellationState::Terminal;
+                continue;
+            }
+
+            task.value()->executionInfo.state = TaskState::Cancelled;
+            task.value()->executionInfo.exception = nullptr;
+            cancellation->second = CancellationState::Terminal;
+            state.cancellationObserved = true;
+            state.submissionsEnabled = false;
+        }
+    }
+
+    bool KahnScheduler::cancellationRequested(const TaskHandle handle) const
+    {
+        std::lock_guard lock{ cancellationMutex };
+        const auto cancellation{ cancellationStates.find(handle) };
+        return cancellation != cancellationStates.end() && cancellation->second == CancellationState::Requested;
+    }
+
+    void KahnScheduler::markCancellationTerminal(const TaskHandle handle) noexcept
+    {
+        std::lock_guard lock{ cancellationMutex };
+        const auto cancellation{ cancellationStates.find(handle) };
+        if (cancellation != cancellationStates.end())
+        {
+            cancellation->second = CancellationState::Terminal;
+        }
+    }
+
+    void KahnScheduler::finishExecution(ExecutionState& state) noexcept
+    {
+        std::lock_guard lock{ cancellationMutex };
+        applyPendingCancellationsLocked(state);
+        executionFinished = true;
+    }
+
     SchedulerStatus KahnScheduler::determineStatus(const ExecutionState& state) const noexcept
     {
         if (state.executorFailure)
@@ -399,6 +542,10 @@ namespace Atlas
         if (state.taskFailureObserved)
         {
             return SchedulerStatus::TaskFailed;
+        }
+        if (state.cancellationObserved)
+        {
+            return SchedulerStatus::Cancelled;
         }
         if (state.successfulTaskCount == startingGraph.getTaskCount())
         {
@@ -467,7 +614,8 @@ namespace Atlas
         }
     }
 
-    std::optional<std::shared_ptr<const Task>> KahnScheduler::takeNextReadyTask(const ExecutionResource resource)
+    std::optional<std::shared_ptr<const Task>> KahnScheduler::takeNextReadyTask(const ExecutionResource resource,
+                                                                                ExecutionState& state)
     {
         std::queue<TaskHandle>& readyQueue{ resource == ExecutionResource::CPU ? cpuReadyTasks : gpuReadyTasks };
         while (!readyQueue.empty())
@@ -475,32 +623,60 @@ namespace Atlas
             const TaskHandle handle{ readyQueue.front() };
             readyQueue.pop();
             const std::optional<std::shared_ptr<const Task>> task{ startingGraph.findTask(handle) };
-            if (!task.has_value() || task.value()->executionInfo.state != TaskState::Ready ||
-                task.value()->options.executionResource != resource)
+            const bool schedulableState{ task.has_value() && (task.value()->executionInfo.state == TaskState::Ready ||
+                                                              (resource == ExecutionResource::GPU &&
+                                                               task.value()->executionInfo.state == TaskState::Paused)) };
+            if (!schedulableState || task.value()->options.executionResource != resource)
             {
                 continue;
             }
 
+            {
+                std::lock_guard lock{ cancellationMutex };
+                auto cancellation{ cancellationStates.find(handle) };
+                if (cancellation != cancellationStates.end() && cancellation->second == CancellationState::Requested)
+                {
+                    cancellation->second = CancellationState::Terminal;
+                    task.value()->executionInfo.state = TaskState::Cancelled;
+                    task.value()->executionInfo.exception = nullptr;
+                    state.cancellationObserved = true;
+                    state.submissionsEnabled = false;
+                    return std::nullopt;
+                }
+            }
+
+            const bool resuming{ task.value()->executionInfo.state == TaskState::Paused };
             task.value()->executionInfo.state = TaskState::Running;
             task.value()->executionInfo.exception = nullptr;
-            task.value()->executionInfo.executionDuration = std::chrono::microseconds{ 0 };
-            return task;
+            if (!resuming)
+            {
+                task.value()->executionInfo.executionDuration = std::chrono::microseconds{ 0 };
+            }
+            return task.value();
         }
         return std::nullopt;
     }
 
     void KahnScheduler::restoreRejectedTask(const std::shared_ptr<const Task>& task) noexcept
     {
-        task->executionInfo.state = TaskState::Ready;
+        task->executionInfo.state = task->executionInfo.completedWorkUnitCount == 0U ? TaskState::Ready : TaskState::Paused;
         task->executionInfo.exception = nullptr;
-        task->executionInfo.executionDuration = std::chrono::microseconds{ 0 };
     }
 
     void KahnScheduler::completeTask(const std::shared_ptr<const Task>& task, const TaskCompletion& completion)
     {
-        task->executionInfo.state = completion.succeeded() ? TaskState::Success : TaskState::Failure;
         task->executionInfo.exception = completion.exception;
-        task->executionInfo.executionDuration = completion.executionDuration;
+        task->executionInfo.executionDuration += completion.executionDuration;
+        if (!completion.succeeded())
+        {
+            task->executionInfo.state = TaskState::Failure;
+            return;
+        }
+
+        ++task->executionInfo.completedWorkUnitCount;
+        task->executionInfo.state = task->executionInfo.completedWorkUnitCount < task->executionInfo.totalWorkUnitCount
+                                        ? TaskState::Paused
+                                        : TaskState::Success;
     }
 
     void KahnScheduler::updateDependencies(const std::shared_ptr<const Task>& executedTask)

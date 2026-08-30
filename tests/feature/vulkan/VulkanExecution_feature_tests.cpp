@@ -44,7 +44,7 @@ namespace
 
     struct ComputeFixture
     {
-        static constexpr std::size_t elementCount{ 256U };
+        static constexpr std::size_t elementCount{ 320U };
 
         std::shared_ptr<std::vector<std::string>> validationErrors{ std::make_shared<std::vector<std::string>>() };
         Atlas::VulkanRuntime runtime{ Atlas::VulkanRuntimeOptions{
@@ -62,6 +62,11 @@ namespace
                                             { 1U, right, Atlas::BufferAccess::ReadOnly },
                                             { 2U, output, Atlas::BufferAccess::WriteOnly } },
                                           { static_cast<std::uint32_t>(elementCount / 64U), 1U, 1U } };
+        }
+
+        Atlas::SlicedVulkanDispatch slicedDispatch() const
+        {
+            return Atlas::SlicedVulkanDispatch{ dispatch(), { 2U, 1U, 1U } };
         }
     };
 } // namespace
@@ -96,6 +101,8 @@ TEST_CASE("VulkanExecutor executes and reuses persistent compute resources", "[F
     REQUIRE(secondCompletion->handle == second);
     REQUIRE(firstCompletion->succeeded());
     REQUIRE(secondCompletion->succeeded());
+    REQUIRE(firstCompletion->workUnitIndex == 0U);
+    REQUIRE(secondCompletion->workUnitIndex == 0U);
     REQUIRE_FALSE(executor.waitForCompletion().has_value());
 
     fixture.runtime.download(fixture.output, writableBytesOf(output));
@@ -106,6 +113,46 @@ TEST_CASE("VulkanExecutor executes and reuses persistent compute resources", "[F
 
     executor.shutdown();
     REQUIRE_FALSE(executor.submit(first, fixture.dispatch()));
+    REQUIRE(fixture.validationErrors->empty());
+}
+
+TEST_CASE("KahnScheduler executes uneven Vulkan dispatch-base slices", "[FEATURE][VULKAN_INTEGRATION]")
+{
+    ComputeFixture fixture;
+    std::vector<float> left(ComputeFixture::elementCount);
+    std::vector<float> right(ComputeFixture::elementCount);
+    std::vector<float> output(ComputeFixture::elementCount, -1.0F);
+    for (std::size_t index{ 0U }; index < left.size(); ++index)
+    {
+        left.at(index) = static_cast<float>(index);
+        right.at(index) = static_cast<float>(index * 3U);
+    }
+    fixture.runtime.upload(fixture.left, bytesOf(left));
+    fixture.runtime.upload(fixture.right, bytesOf(right));
+    fixture.runtime.upload(fixture.output, bytesOf(output));
+
+    Atlas::TaskGraph graph;
+    const std::optional<Atlas::TaskHandle> compute{ graph.addGpuTask(
+        fixture.slicedDispatch(), Atlas::TaskOptions{ "Uneven sliced vector addition", Atlas::ExecutionResource::GPU }) };
+    REQUIRE(compute.has_value());
+    REQUIRE(graph.finishTaskGraph());
+
+    Atlas::SynchronousCpuExecutor cpuExecutor;
+    Atlas::VulkanExecutor gpuExecutor{ fixture.runtime };
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    fixture.runtime.download(fixture.output, writableBytesOf(output));
+    REQUIRE(result.status == Atlas::SchedulerStatus::Success);
+    REQUIRE(result.executedTaskCount == 1U);
+    const Atlas::TaskExecutionInfo& progress{ graph.findTask(compute.value()).value()->executionInfo };
+    REQUIRE(progress.state == Atlas::TaskState::Success);
+    REQUIRE(progress.completedWorkUnitCount == 3U);
+    REQUIRE(progress.totalWorkUnitCount == 3U);
+    for (std::size_t index{ 0U }; index < output.size(); ++index)
+    {
+        REQUIRE(output.at(index) == left.at(index) + right.at(index));
+    }
     REQUIRE(fixture.validationErrors->empty());
 }
 

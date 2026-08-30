@@ -21,8 +21,9 @@ namespace Atlas
         InvalidGraph,        ///< The supplied graph is structurally invalid.
         GraphNotFinalised,   ///< The supplied graph has not been finalised.
         TaskFailed,          ///< A task threw an exception or otherwise failed.
-        ExecutorUnavailable, ///< The CPU executor rejected work or violated its completion contract.
+        ExecutorUnavailable, ///< A backend rejected work or violated its completion contract.
         Unknown,             ///< An unknown scheduler error occurred.
+        Cancelled,           ///< At least one requested cancellation became effective.
     };
 
     /**

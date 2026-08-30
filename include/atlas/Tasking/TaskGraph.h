@@ -68,6 +68,15 @@ namespace Atlas
                                              TaskOptions taskOptions = TaskOptions{ {}, ExecutionResource::GPU });
 
         /**
+         * @brief Adds cooperatively sliced Vulkan work to the graph.
+         * @param dispatch The validated logical dispatch and slice geometry.
+         * @param taskOptions GPU task metadata; its resource must remain GPU.
+         * @return The assigned handle, or empty when the graph rejects the task.
+         */
+        std::optional<TaskHandle> addGpuTask(SlicedVulkanDispatch dispatch,
+                                             TaskOptions taskOptions = TaskOptions{ {}, ExecutionResource::GPU });
+
+        /**
          * @brief Retrieves the handles of every task owned by this graph.
          * @return The task handles in insertion order.
          */

@@ -68,3 +68,18 @@ TEST_CASE("CompletionChannel wakes for producer failure and closure", "[UNIT][CO
     channel.close();
     REQUIRE(channel.wait().kind == Atlas::CompletionEventKind::Closed);
 }
+
+TEST_CASE("CompletionChannel preserves a completion work-unit index", "[UNIT]")
+{
+    Atlas::CompletionChannel channel{ 1U };
+    const Atlas::TaskHandle handle{ testHandle(3U) };
+
+    REQUIRE(
+        channel.publish(Atlas::TaskCompletion{ handle, nullptr, std::chrono::microseconds{ 7 }, Atlas::ExecutionResource::GPU, 4U }));
+
+    const Atlas::CompletionEvent event{ channel.wait() };
+    REQUIRE(event.kind == Atlas::CompletionEventKind::Completion);
+    REQUIRE(event.completion.has_value());
+    REQUIRE(event.completion->handle == handle);
+    REQUIRE(event.completion->workUnitIndex == 4U);
+}

@@ -9,9 +9,11 @@
 
 #include <cstddef>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <queue>
 #include <unordered_map>
+#include <vector>
 
 /** @file KahnScheduler.h @brief Declares resource-aware dependency scheduling. */
 
@@ -41,6 +43,18 @@ namespace Atlas
 
         /// @brief Executes the finalised graph until all accepted work drains.
         SchedulerResult execute() override;
+
+        /**
+         * @brief Requests fail-stop cancellation of one graph-owned task.
+         *
+         * The request may be made before or concurrently with execute(). It is
+         * effective for work not yet claimed by the scheduler and at sliced GPU
+         * work-unit boundaries. Running CPU and ordinary GPU work complete normally.
+         * @param taskHandle Task in this scheduler's graph to cancel.
+         * @return True when a new request was latched; false for invalid, duplicate,
+         * terminal, or post-execution requests.
+         */
+        bool requestCancellation(TaskHandle taskHandle);
         /// @brief Destroys the scheduler without taking ownership of executors.
         ~KahnScheduler() override = default;
 
@@ -76,6 +90,25 @@ namespace Atlas
             bool taskFailureObserved{ false };
             /// @brief Whether the completion producer ended before in-flight work drained.
             bool completionStreamEndedEarly{ false };
+            /// @brief Whether at least one cancellation request became effective.
+            bool cancellationObserved{ false };
+        };
+
+        /// @brief Completion identity expected for one accepted backend work unit.
+        struct InFlightWork
+        {
+            /// @brief Backend expected to produce the completion.
+            ExecutionResource resource{ ExecutionResource::CPU };
+            /// @brief Exact work-unit index expected from that backend.
+            std::size_t workUnitIndex{ 0U };
+        };
+
+        /// @brief Scheduler-side lifecycle of an externally requested cancellation.
+        enum class CancellationState : std::uint8_t
+        {
+            None,      ///< No request has been made.
+            Requested, ///< A request is awaiting a scheduler boundary.
+            Terminal   ///< The target has completed or cancellation became effective.
         };
 
         /// @brief Parses graph dependencies and seeds resource-specific ready queues.
@@ -108,13 +141,23 @@ namespace Atlas
         void failAllInFlight(ExecutionState& state) noexcept;
         /// @brief Decrements the resource-specific in-flight counter safely.
         void decrementInFlight(ExecutionResource resource, ExecutionState& state) noexcept;
+        /// @brief Applies pending cancellation requests that do not target in-flight work.
+        void applyPendingCancellations(ExecutionState& state);
+        /// @brief Applies pending cancellation requests while @ref cancellationMutex is held.
+        void applyPendingCancellationsLocked(ExecutionState& state) noexcept;
+        /// @brief Reports whether cancellation is pending for one task.
+        bool cancellationRequested(TaskHandle handle) const;
+        /// @brief Marks one task's cancellation record terminal.
+        void markCancellationTerminal(TaskHandle handle) noexcept;
+        /// @brief Applies the final request boundary and rejects all later requests.
+        void finishExecution(ExecutionState& state) noexcept;
 
         /// @brief Converts accumulated execution state into the public scheduler status.
         SchedulerStatus determineStatus(const ExecutionState& state) const noexcept;
         /// @brief Marks a task ready and places it in the matching FIFO queue.
         void enqueueReadyTask(TaskHandle taskHandle);
         /// @brief Removes the next currently-ready task for one resource.
-        std::optional<std::shared_ptr<const Task>> takeNextReadyTask(ExecutionResource resource);
+        std::optional<std::shared_ptr<const Task>> takeNextReadyTask(ExecutionResource resource, ExecutionState& state);
         /// @brief Restores a task after its executor rejected submission.
         void restoreRejectedTask(const std::shared_ptr<const Task>& task) noexcept;
         /// @brief Applies a completion to graph-owned task execution state.
@@ -129,7 +172,17 @@ namespace Atlas
         /// @brief Remaining prerequisite counts keyed by dependent handle.
         std::unordered_map<TaskHandle, std::size_t, TaskHandle::Hash> remainingDependencies;
         /// @brief Accepted tasks and their expected completion resource.
-        std::unordered_map<TaskHandle, ExecutionResource, TaskHandle::Hash> inFlightTasks;
+        std::unordered_map<TaskHandle, InFlightWork, TaskHandle::Hash> inFlightTasks;
+        /// @brief Synchronizes cancellation requests with scheduler boundary checks.
+        mutable std::mutex cancellationMutex;
+        /// @brief Preallocated request state for every task in the starting graph.
+        std::unordered_map<TaskHandle, CancellationState, TaskHandle::Hash> cancellationStates;
+        /// @brief Stable graph order used to apply concurrent cancellation requests.
+        std::vector<TaskHandle> cancellationOrder;
+        /// @brief Distinguishes pre-execution terminal-state validation from concurrent requests.
+        bool executionStarted{ false };
+        /// @brief Rejects cancellation requests after graph execution returns.
+        bool executionFinished{ false };
         /// @brief Number of CPU tasks parsed from the graph for capacity validation.
         std::size_t cpuTaskCount{ 0U };
         /// @brief Number of GPU tasks parsed from the graph for capacity validation.

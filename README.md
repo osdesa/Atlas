@@ -16,19 +16,25 @@ The current implementation can:
 - create a compute-only Vulkan runtime with deterministic device selection,
   persistent storage buffers and pipelines, staging transfers, and validated
   declarative dispatches;
+- divide a logical Vulkan dispatch into deterministic X-major work units using
+  Vulkan 1.1 dispatch-base execution, including uneven edge slices;
 - execute Vulkan work asynchronously through a capacity-one draining executor;
 - build explicit CPU and GPU tasks and execute mixed graphs while tracking each
-  backend's capacity independently through one shared completion channel; and
-- record per-task lifecycle state, exceptions, and execution duration alongside
-  graph-level completion count, elapsed time, and exceptions.
+  backend's capacity independently through one shared completion channel;
+- request fail-stop task cancellation before submission or at sliced GPU
+  work-unit boundaries while draining work already accepted; and
+- record per-task lifecycle state, exceptions, execution duration, and
+  work-unit progress alongside graph-level logical completion count and elapsed
+  time.
 
 The CPU CLI runs the same 17-task sensor pipeline through the synchronous and
 four-thread worker-pool executors and compares their output. Opt-in Vulkan
-examples verify standalone vector addition and a CPU-to-Vulkan-to-CPU graph.
+examples verify standalone vector addition and a CPU-to-sliced-Vulkan-to-CPU
+graph that reports logical work-unit progress.
 
-Atlas does **not** yet provide runtime task submission, interchangeable or
-priority-aware scheduling policies, cancellation, multiple Vulkan queues,
-cooperative GPU slicing, or a benchmarking framework.
+Atlas does **not** yet provide runtime task submission, repeated graph
+execution, interchangeable or priority-aware scheduling policies, multiple
+Vulkan queues, true active-dispatch preemption, or a benchmarking framework.
 
 ## Task model and lifecycle
 
@@ -42,21 +48,20 @@ Tasks begin `Unknown` while their graph is being constructed. Successful graph
 finalisation makes tasks without dependencies `Ready` and tasks waiting on
 dependencies `Blocked`. `KahnScheduler` changes a selected task to `Running`,
 then records `Success` or `Failure`, a captured exception when applicable, and
-the callable's execution duration. Successful completion makes newly unblocked
-dependants `Ready`.
+the payload's execution duration. A sliced GPU task alternates between
+`Running` and scheduler-internal `Paused` states until its final work unit
+succeeds. Only logical task success makes newly unblocked dependants `Ready`.
 
 Schedulers own state changes; `Task` does not validate a universal transition
 matrix. `KahnScheduler::execute()` is a single control-thread operation even
 when worker threads run callables concurrently, and a graph is intended for one
 execution. Callers must not read or mutate execution information concurrently
-with execution. Atlas does not currently expose cancellation. See
-[Task lifecycle](docs/task-lifecycle.md) for the exact contract and limitations.
-
-The intended GPU design is cooperative: a logical GPU task will be divided into
-independently submitted execution slices, and scheduling control will return to
-Atlas between slices. Atlas will not claim to interrupt a Vulkan dispatch that
-is already executing. The accurate future description is **preemptive-style GPU
-scheduling through cooperative execution slices**.
+with execution. `KahnScheduler::requestCancellation()` may be called before or
+concurrently with `execute()`. Running CPU and ordinary GPU payloads are not
+interruptible; running sliced GPU work can stop only after its current work unit
+completes. See [Task lifecycle](docs/task-lifecycle.md) and the
+[Milestone 6 design](docs/milestone-6-cooperative-gpu-slicing.md) for the exact
+contracts.
 
 ## Prerequisites
 
@@ -71,6 +76,9 @@ scheduling through cooperative execution slices**.
     and open a new terminal so `VULKAN_SDK` is available.
   - Linux: install the Vulkan loader development package, for example
     `libvulkan-dev` on Ubuntu.
+  - A Vulkan 1.1 loader and compute-capable Vulkan 1.1 device or software
+    implementation. Atlas uses `vkCmdDispatchBase` for ordinary and sliced
+    dispatches.
 - Ninja for the generic `dev` and Linux presets
 - `glslc` and SPIR-V Tools for Vulkan integration builds
 - Mesa Lavapipe and Vulkan validation layers for Linux integration execution

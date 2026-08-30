@@ -256,6 +256,9 @@ diagrams:
         - match:
             radius: 1
             pattern: Atlas::VulkanDispatch
+        - match:
+            radius: 1
+            pattern: Atlas::SlicedVulkanDispatch
     exclude:
       namespaces:
         - std

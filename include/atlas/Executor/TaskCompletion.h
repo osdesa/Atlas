@@ -5,6 +5,7 @@
 #include "atlas/Tasking/TaskHandle.h"
 
 #include <chrono>
+#include <cstddef>
 #include <exception>
 
 /**
@@ -37,6 +38,9 @@ namespace Atlas
 
         /// @brief Backend resource that produced this completion.
         ExecutionResource resource{ ExecutionResource::CPU };
+
+        /// @brief Zero-based work-unit index, or zero for an ordinary task payload.
+        std::size_t workUnitIndex{ 0U };
 
         /**
          * @brief Reports whether backend execution completed without an exception.

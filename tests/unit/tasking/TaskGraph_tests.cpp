@@ -1,3 +1,4 @@
+#include "../../support/VulkanTestFactory.h"
 #include "atlas/Tasking/TaskGraph.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -70,6 +71,30 @@ TEST_CASE("TaskGraph preserves CPU metadata and rejects GPU metadata for CPU wor
     REQUIRE(cpuTask.has_value());
     REQUIRE(cpuTask.value()->options.executionResource == Atlas::ExecutionResource::CPU);
     REQUIRE(cpuTask.value()->options.priority == 2U);
+}
+
+TEST_CASE("TaskGraph accepts sliced GPU work and rejects CPU metadata", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::SlicedVulkanDispatch firstDispatch{ Atlas::Testing::VulkanTestFactory::dispatch(), { 1U, 1U, 1U } };
+    const Atlas::SlicedVulkanDispatch rejectedDispatch{ Atlas::Testing::VulkanTestFactory::dispatch(), { 1U, 1U, 1U } };
+
+    const std::optional<Atlas::TaskHandle> gpuHandle{ graph.addGpuTask(
+        firstDispatch, Atlas::TaskOptions{ "Sliced GPU", Atlas::ExecutionResource::GPU, 3U }) };
+    const std::optional<Atlas::TaskHandle> rejectedHandle{ graph.addGpuTask(
+        rejectedDispatch, Atlas::TaskOptions{ "Wrong backend", Atlas::ExecutionResource::CPU }) };
+
+    REQUIRE(gpuHandle.has_value());
+    REQUIRE_FALSE(rejectedHandle.has_value());
+    REQUIRE(graph.getTaskCount() == 1U);
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> gpuTask{ graph.findTask(gpuHandle.value()) };
+    REQUIRE(gpuTask.has_value());
+    REQUIRE(gpuTask.value()->isValid());
+    REQUIRE(gpuTask.value()->slicedGpuDispatch() != nullptr);
+    REQUIRE(gpuTask.value()->options.priority == 3U);
+    REQUIRE(gpuTask.value()->executionInfo.completedWorkUnitCount == 0U);
+    REQUIRE(gpuTask.value()->executionInfo.totalWorkUnitCount == 1U);
 }
 
 TEST_CASE("TaskGraph accepts anonymous task metadata", "[UNIT]")

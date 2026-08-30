@@ -270,6 +270,9 @@ failure behaviour in repeatable CI.
 
 ## Later milestones
 
-Priority-aware policy, interchangeable schedulers, runtime graph submission,
-cancellation, multiple GPU queues, benchmarking, adaptive scheduling, and
-cooperative GPU slices remain explicitly deferred beyond Milestone 5.
+At the Milestone 5 boundary, priority-aware policy, interchangeable schedulers,
+runtime graph submission, cancellation, multiple GPU queues, benchmarking,
+adaptive scheduling, and cooperative GPU slices were deferred. Milestone 6 now
+implements cooperative slices and task cancellation under the narrower contract
+documented in [Milestone 6: cooperative GPU slicing and task cancellation](milestone-6-cooperative-gpu-slicing.md).
+The other items remain deferred.
