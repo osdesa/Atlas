@@ -1,17 +1,16 @@
-#ifndef ATLAS_BENCHMARK_CONFIG
-#define ATLAS_BENCHMARK_CONFIG
+#ifndef ATLAS_BENCHMARK_TYPES
+#define ATLAS_BENCHMARK_TYPES
 
 #include "atlas/Vulkan/VulkanCompute.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <vector>
 
 /**
- * @file BenchmarkConfig.h
- * @brief Declares the version-one Atlas benchmark manifest model.
+ * @file BenchmarkTypes.h
+ * @brief Declares resolved benchmark experiment types used by baseline suites.
  */
 
 namespace Atlas::Benchmark
@@ -101,14 +100,6 @@ namespace Atlas::Benchmark
         BurstConfig bursts;
     };
 
-    /**
-     * @brief Loads and strictly validates one version-one JSON manifest.
-     * @param path Manifest file to read.
-     * @return Fully resolved benchmark configuration.
-     * @throws std::runtime_error When the file or schema is invalid.
-     */
-    ExperimentManifest loadManifest(const std::filesystem::path& path);
-
     /// @brief Returns the stable manifest spelling for a policy kind.
     std::string toString(PolicyKind kind);
     /// @brief Returns the stable manifest spelling for a dependency shape.
@@ -117,4 +108,4 @@ namespace Atlas::Benchmark
     std::string toString(PriorityAssignment assignment);
 } // namespace Atlas::Benchmark
 
-#endif // !ATLAS_BENCHMARK_CONFIG
+#endif // !ATLAS_BENCHMARK_TYPES

@@ -9,22 +9,6 @@
 
 namespace Atlas
 {
-    bool SynchronousCpuExecutor::submit(TaskHandle taskHandle, TaskFunction taskFunction)
-    {
-        if (!taskHandle.isValid())
-        {
-            throw std::invalid_argument{ "Invalid task handle provided to SynchronousCpuExecutor::submit" };
-        }
-
-        if (!acceptingSubmissions)
-        {
-            return false;
-        }
-
-        completions.emplace(execute(taskHandle, taskFunction));
-        return true;
-    }
-
     bool SynchronousCpuExecutor::submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel)
     {
         if (!taskHandle.isValid())
@@ -60,18 +44,6 @@ namespace Atlas
 
         const auto endTime{ std::chrono::steady_clock::now() };
         completion.executionDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-        return completion;
-    }
-
-    std::optional<TaskCompletion> SynchronousCpuExecutor::waitForCompletion()
-    {
-        if (completions.empty())
-        {
-            return std::nullopt;
-        }
-
-        TaskCompletion completion{ std::move(completions.front()) };
-        completions.pop();
         return completion;
     }
 

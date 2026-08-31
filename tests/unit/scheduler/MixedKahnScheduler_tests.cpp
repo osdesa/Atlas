@@ -1,6 +1,7 @@
+#include "../../support/UnusedVulkanDispatchExecutor.h"
 #include "../../support/VulkanTestFactory.h"
-#include "atlas/Executor/GpuExecutor.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
+#include "atlas/Executor/VulkanDispatchExecutor.h"
 #include "atlas/Executor/WorkerpoolExecutor.h"
 #include "atlas/Scheduler/KahnScheduler.h"
 #include "atlas/Scheduler/RoundRobinSchedulingPolicy.h"
@@ -21,18 +22,18 @@
 
 namespace
 {
-    class ImmediateGpuExecutor final : public Atlas::GpuExecutor
+    class ImmediateVulkanDispatchExecutor final : public Atlas::VulkanDispatchExecutor
     {
       public:
-        explicit ImmediateGpuExecutor(const Atlas::ExecutionResource reportedResource = Atlas::ExecutionResource::GPU,
-                                      std::exception_ptr outcome = nullptr,
-                                      std::function<void(Atlas::TaskHandle)> submissionCallback = {})
-            : GpuExecutor{ 1U }, completionResource{ reportedResource }, completionException{ std::move(outcome) },
+        explicit ImmediateVulkanDispatchExecutor(const Atlas::ExecutionResource reportedResource = Atlas::ExecutionResource::GPU,
+                                                 std::exception_ptr outcome = nullptr,
+                                                 std::function<void(Atlas::TaskHandle)> submissionCallback = {})
+            : VulkanDispatchExecutor{ 1U }, completionResource{ reportedResource }, completionException{ std::move(outcome) },
               onSubmission{ std::move(submissionCallback) }
         {
         }
 
-        bool submit(const Atlas::TaskHandle handle, Atlas::VulkanDispatch dispatch) override
+        bool submit(const Atlas::TaskHandle handle, Atlas::VulkanDispatch dispatch)
         {
             if (!accepting)
             {
@@ -66,7 +67,7 @@ namespace
             return true;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::exchange(standaloneCompletion, std::nullopt);
         }
@@ -95,16 +96,17 @@ namespace
         std::vector<std::size_t> reportedWorkUnitIndices;
     };
 
-    class ScriptedGpuExecutor final : public Atlas::GpuExecutor
+    class ScriptedVulkanDispatchExecutor final : public Atlas::VulkanDispatchExecutor
     {
       public:
-        explicit ScriptedGpuExecutor(std::vector<ScriptedGpuOutcome> outcomes,
-                                     std::function<void(Atlas::TaskHandle, std::size_t)> beforeCompletionCallback = {})
-            : GpuExecutor{ 1U }, scriptedOutcomes{ std::move(outcomes) }, beforeCompletion{ std::move(beforeCompletionCallback) }
+        explicit ScriptedVulkanDispatchExecutor(std::vector<ScriptedGpuOutcome> outcomes,
+                                                std::function<void(Atlas::TaskHandle, std::size_t)> beforeCompletionCallback = {})
+            : VulkanDispatchExecutor{ 1U }, scriptedOutcomes{ std::move(outcomes) },
+              beforeCompletion{ std::move(beforeCompletionCallback) }
         {
         }
 
-        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch) override
+        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch)
         {
             return false;
         }
@@ -139,7 +141,7 @@ namespace
             return true;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::nullopt;
         }
@@ -159,7 +161,7 @@ namespace
       public:
         DeferredCpuExecutor() : CpuExecutor{ 1U } {}
 
-        bool submit(Atlas::TaskHandle, Atlas::TaskFunction) override
+        bool submit(Atlas::TaskHandle, Atlas::TaskFunction)
         {
             return false;
         }
@@ -188,7 +190,7 @@ namespace
             return published;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::nullopt;
         }
@@ -200,12 +202,12 @@ namespace
         Atlas::CompletionChannel* pendingChannel{ nullptr };
     };
 
-    class FailingGpuProducer final : public Atlas::GpuExecutor
+    class FailingGpuProducer final : public Atlas::VulkanDispatchExecutor
     {
       public:
-        FailingGpuProducer() : GpuExecutor{ 1U } {}
+        FailingGpuProducer() : VulkanDispatchExecutor{ 1U } {}
 
-        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch) override
+        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch)
         {
             return false;
         }
@@ -216,7 +218,7 @@ namespace
             return true;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::nullopt;
         }
@@ -224,12 +226,12 @@ namespace
         void shutdown() noexcept override {}
     };
 
-    class ClosingGpuProducer final : public Atlas::GpuExecutor
+    class ClosingGpuProducer final : public Atlas::VulkanDispatchExecutor
     {
       public:
-        ClosingGpuProducer() : GpuExecutor{ 1U } {}
+        ClosingGpuProducer() : VulkanDispatchExecutor{ 1U } {}
 
-        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch) override
+        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch)
         {
             return false;
         }
@@ -240,7 +242,7 @@ namespace
             return true;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::nullopt;
         }
@@ -253,12 +255,17 @@ namespace
       public:
         ZeroCapacityCpuExecutor() : CpuExecutor{ 0U } {}
 
-        bool submit(Atlas::TaskHandle, Atlas::TaskFunction) override
+        bool submit(Atlas::TaskHandle, Atlas::TaskFunction)
         {
             return false;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        bool submit(Atlas::TaskHandle, Atlas::TaskFunction, Atlas::CompletionChannel&) override
+        {
+            return false;
+        }
+
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::nullopt;
         }
@@ -266,17 +273,22 @@ namespace
         void shutdown() noexcept override {}
     };
 
-    class ZeroCapacityGpuExecutor final : public Atlas::GpuExecutor
+    class ZeroCapacityVulkanDispatchExecutor final : public Atlas::VulkanDispatchExecutor
     {
       public:
-        ZeroCapacityGpuExecutor() : GpuExecutor{ 0U } {}
+        ZeroCapacityVulkanDispatchExecutor() : VulkanDispatchExecutor{ 0U } {}
 
-        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch) override
+        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch)
         {
             return false;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch, Atlas::CompletionChannel&) override
+        {
+            return false;
+        }
+
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::nullopt;
         }
@@ -310,9 +322,9 @@ TEST_CASE("KahnScheduler submits sliced GPU work in order and releases dependant
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 2 }, {} },
-                                       { true, nullptr, std::chrono::microseconds{ 3 }, {} },
-                                       { true, nullptr, std::chrono::microseconds{ 5 }, {} } } };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 2 }, {} },
+                                                  { true, nullptr, std::chrono::microseconds{ 3 }, {} },
+                                                  { true, nullptr, std::chrono::microseconds{ 5 }, {} } } };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -339,7 +351,7 @@ TEST_CASE("KahnScheduler interleaves sliced GPU tasks at work-unit boundaries", 
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(4U) };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(4U) };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -368,7 +380,7 @@ TEST_CASE("KahnScheduler applies a round-robin work-unit quantum", "[UNIT]")
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(6U) };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(6U) };
     Atlas::RoundRobinSchedulingPolicy policy{ 2U };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
     const Atlas::SchedulerResult result{ scheduler.execute() };
@@ -389,7 +401,7 @@ TEST_CASE("KahnScheduler applies stable static priority at sliced boundaries", "
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(6U) };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(6U) };
     Atlas::StaticPrioritySchedulingPolicy policy;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
     const Atlas::SchedulerResult result{ scheduler.execute() };
@@ -413,16 +425,17 @@ TEST_CASE("KahnScheduler lets newly ready priority work intervene after an activ
 
     DeferredCpuExecutor cpuExecutor;
     bool lowerWasRunningWhenHigherBecameEligible{ false };
-    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(3U),
-                                     [&](const Atlas::TaskHandle handle, const std::size_t workUnitIndex)
-                                     {
-                                         if (handle == lower && workUnitIndex == 0U)
-                                         {
-                                             lowerWasRunningWhenHigherBecameEligible =
-                                                 graph.findTask(lower).value()->executionInfo.state == Atlas::TaskState::Running;
-                                             REQUIRE(cpuExecutor.publishPendingCompletion());
-                                         }
-                                     } };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(3U),
+                                                [&](const Atlas::TaskHandle handle, const std::size_t workUnitIndex)
+                                                {
+                                                    if (handle == lower && workUnitIndex == 0U)
+                                                    {
+                                                        lowerWasRunningWhenHigherBecameEligible =
+                                                            graph.findTask(lower).value()->executionInfo.state ==
+                                                            Atlas::TaskState::Running;
+                                                        REQUIRE(cpuExecutor.publishPendingCompletion());
+                                                    }
+                                                } };
     Atlas::StaticPrioritySchedulingPolicy policy;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
     const Atlas::SchedulerResult result{ scheduler.execute() };
@@ -451,7 +464,7 @@ TEST_CASE("KahnScheduler measures a finite strict-priority backlog exactly", "[U
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(4U) };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ std::vector<ScriptedGpuOutcome>(4U) };
     Atlas::StaticPrioritySchedulingPolicy policy;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
     const Atlas::SchedulerResult result{ scheduler.execute() };
@@ -475,8 +488,8 @@ TEST_CASE("KahnScheduler preserves sliced progress and duration when a later uni
     const std::exception_ptr failure{ std::make_exception_ptr(std::runtime_error{ "second slice failed" }) };
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 7 }, {} },
-                                       { true, failure, std::chrono::microseconds{ 11 }, {} } } };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 7 }, {} },
+                                                  { true, failure, std::chrono::microseconds{ 11 }, {} } } };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -500,7 +513,7 @@ TEST_CASE("KahnScheduler rejects mismatched sliced work-unit attribution", "[UNI
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 3 }, { 1U } } } };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 3 }, { 1U } } } };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -520,7 +533,7 @@ TEST_CASE("KahnScheduler rejects duplicate or stale sliced completions", "[UNIT]
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 3 }, { 0U, 0U } } } };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 3 }, { 0U, 0U } } } };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -538,8 +551,8 @@ TEST_CASE("KahnScheduler restores Paused when a later sliced submission is rejec
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ScriptedGpuExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 13 }, {} },
-                                       { false, nullptr, std::chrono::microseconds{ 1 }, {} } } };
+    ScriptedVulkanDispatchExecutor gpuExecutor{ { { true, nullptr, std::chrono::microseconds{ 13 }, {} },
+                                                  { false, nullptr, std::chrono::microseconds{ 1 }, {} } } };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -563,7 +576,7 @@ TEST_CASE("KahnScheduler executes a device-independent CPU GPU CPU chain", "[UNI
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ImmediateGpuExecutor gpuExecutor;
+    ImmediateVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -580,7 +593,7 @@ TEST_CASE("KahnScheduler requires a GPU executor for explicit GPU work", "[UNIT]
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    Atlas::KahnScheduler scheduler{ graph, cpuExecutor };
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, Atlas::Test::unusedVulkanDispatchExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
@@ -596,13 +609,13 @@ TEST_CASE("KahnScheduler requires a GPU executor for blocked GPU work", "[UNIT]"
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    Atlas::KahnScheduler scheduler{ graph, cpuExecutor };
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, Atlas::Test::unusedVulkanDispatchExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
-    REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(graph.findTask(cpuTask).value()->executionInfo.state == Atlas::TaskState::Ready);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(result.executedTaskCount == 1U);
+    REQUIRE(graph.findTask(cpuTask).value()->executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Ready);
 }
 
 TEST_CASE("KahnScheduler ignores an unused zero-capacity CPU backend for a GPU-only graph", "[UNIT]")
@@ -612,7 +625,7 @@ TEST_CASE("KahnScheduler ignores an unused zero-capacity CPU backend for a GPU-o
     REQUIRE(graph.finishTaskGraph());
 
     ZeroCapacityCpuExecutor cpuExecutor;
-    ImmediateGpuExecutor gpuExecutor;
+    ImmediateVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -629,7 +642,7 @@ TEST_CASE("KahnScheduler ignores an unused zero-capacity GPU backend for a CPU-o
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ZeroCapacityGpuExecutor gpuExecutor;
+    ZeroCapacityVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -646,7 +659,7 @@ TEST_CASE("KahnScheduler rejects a GPU completion reported as CPU work", "[UNIT]
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ImmediateGpuExecutor gpuExecutor{ Atlas::ExecutionResource::CPU };
+    ImmediateVulkanDispatchExecutor gpuExecutor{ Atlas::ExecutionResource::CPU };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -664,7 +677,7 @@ TEST_CASE("KahnScheduler preserves a GPU dispatch exception and blocks dependant
     const std::exception_ptr failure{ std::make_exception_ptr(std::runtime_error{ "dispatch failed" }) };
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ImmediateGpuExecutor gpuExecutor{ Atlas::ExecutionResource::GPU, failure };
+    ImmediateVulkanDispatchExecutor gpuExecutor{ Atlas::ExecutionResource::GPU, failure };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -691,14 +704,14 @@ TEST_CASE("KahnScheduler releases mixed fan-out and cross-resource fan-in", "[UN
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::WorkerpoolExecutor cpuExecutor{ 2U };
-    ImmediateGpuExecutor gpuExecutor{ Atlas::ExecutionResource::GPU, nullptr,
-                                      [gpuBranch, &completedBranches](const Atlas::TaskHandle handle)
-                                      {
-                                          if (handle == gpuBranch)
-                                          {
-                                              completedBranches.fetch_or(2U);
-                                          }
-                                      } };
+    ImmediateVulkanDispatchExecutor gpuExecutor{ Atlas::ExecutionResource::GPU, nullptr,
+                                                 [gpuBranch, &completedBranches](const Atlas::TaskHandle handle)
+                                                 {
+                                                     if (handle == gpuBranch)
+                                                     {
+                                                         completedBranches.fetch_or(2U);
+                                                     }
+                                                 } };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -718,14 +731,14 @@ TEST_CASE("KahnScheduler processes GPU progress while CPU work remains in flight
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::WorkerpoolExecutor cpuExecutor{ 1U };
-    ImmediateGpuExecutor gpuExecutor{ Atlas::ExecutionResource::GPU, nullptr,
-                                      [secondGpu, &allowCpuCompletion](const Atlas::TaskHandle handle)
-                                      {
-                                          if (handle == secondGpu)
-                                          {
-                                              allowCpuCompletion.release();
-                                          }
-                                      } };
+    ImmediateVulkanDispatchExecutor gpuExecutor{ Atlas::ExecutionResource::GPU, nullptr,
+                                                 [secondGpu, &allowCpuCompletion](const Atlas::TaskHandle handle)
+                                                 {
+                                                     if (handle == secondGpu)
+                                                     {
+                                                         allowCpuCompletion.release();
+                                                     }
+                                                 } };
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     const Atlas::SchedulerResult result{ scheduler.execute() };
 

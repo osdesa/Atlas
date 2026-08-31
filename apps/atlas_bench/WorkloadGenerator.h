@@ -1,7 +1,7 @@
 #ifndef ATLAS_BENCHMARK_WORKLOAD_GENERATOR
 #define ATLAS_BENCHMARK_WORKLOAD_GENERATOR
 
-#include "BenchmarkConfig.h"
+#include "BenchmarkTypes.h"
 #include "atlas/Tasking/ExecutionResource.h"
 
 #include <cstddef>

@@ -4,7 +4,7 @@
 #include "BaseScheduler.h"
 #include "atlas/Executor/CompletionChannel.h"
 #include "atlas/Executor/CpuExecutor.h"
-#include "atlas/Executor/GpuExecutor.h"
+#include "atlas/Executor/VulkanDispatchExecutor.h"
 #include "atlas/Scheduler/SchedulingPolicy.h"
 #include "atlas/Tasking/TaskGraph.h"
 
@@ -34,26 +34,12 @@ namespace Atlas
     {
       public:
         /**
-         * @brief Borrows one CPU executor for CPU-only graph execution.
-         * @param taskGraph Finalised graph to execute.
-         * @param executor CPU backend used for callable tasks.
-         */
-        explicit KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor);
-        /**
-         * @brief Borrows one CPU executor and clones a scheduling policy.
-         * @param taskGraph Finalised graph to execute.
-         * @param executor CPU backend used for callable tasks.
-         * @param policy Backend-neutral selection policy to clone for CPU work.
-         * @throws std::invalid_argument When the policy clone is null.
-         */
-        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor, const SchedulingPolicy& policy);
-        /**
-         * @brief Borrows independent CPU and GPU executors for mixed graph execution.
+         * @brief Borrows independent CPU and Vulkan executors for graph execution.
          * @param taskGraph Finalised graph to execute.
          * @param cpuExecutor CPU backend used for callable tasks.
          * @param gpuExecutor GPU backend used for declarative dispatches.
          */
-        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, GpuExecutor& gpuExecutor);
+        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, VulkanDispatchExecutor& gpuExecutor);
         /**
          * @brief Borrows independent executors and clones one policy per backend.
          * @param taskGraph Finalised graph to execute.
@@ -62,7 +48,8 @@ namespace Atlas
          * @param policy Backend-neutral selection policy cloned independently for CPU and GPU work.
          * @throws std::invalid_argument When either policy clone is null.
          */
-        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, GpuExecutor& gpuExecutor, const SchedulingPolicy& policy);
+        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, VulkanDispatchExecutor& gpuExecutor,
+                      const SchedulingPolicy& policy);
 
         /// @brief Executes the finalised graph until all accepted work drains.
         SchedulerResult execute() override;
@@ -140,10 +127,6 @@ namespace Atlas
 
         /// @brief Parses graph dependencies and seeds resource-specific ready queues.
         bool parseDependencies();
-        /// @brief Runs the compatibility CPU-only completion loop.
-        void runCpuOnlyExecutorLoop(ExecutionState& state);
-        /// @brief Fills CPU capacity through the standalone executor API.
-        void submitCpuOnlyReadyTasks(ExecutionState& state);
         /// @brief Runs the heterogeneous completion-channel loop.
         void runExecutorLoop(ExecutionState& state, CompletionChannel& channel);
         /// @brief Fills each backend's available capacity from its ready queue.
@@ -224,11 +207,11 @@ namespace Atlas
         std::size_t gpuTaskCount{ 0U };
         /// @brief Borrowed CPU executor used for this execution.
         CpuExecutor& cpuExecutor;
-        /// @brief Optional borrowed GPU executor for mixed execution.
-        GpuExecutor* gpuExecutor{ nullptr };
+        /// @brief Borrowed Vulkan dispatch executor.
+        VulkanDispatchExecutor& gpuExecutor;
         /// @brief Independently stateful CPU ready-task policy.
         std::unique_ptr<SchedulingPolicy> cpuSchedulingPolicy;
-        /// @brief Independently stateful GPU ready-task policy, absent for CPU-only schedulers.
+        /// @brief Independently stateful GPU ready-task policy.
         std::unique_ptr<SchedulingPolicy> gpuSchedulingPolicy;
         /// @brief Scheduler-internal ready-residency and selection-bypass accounting.
         std::unique_ptr<Detail::ReadyTaskAccounting> readyTaskAccounting;

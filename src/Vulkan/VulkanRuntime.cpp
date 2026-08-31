@@ -21,12 +21,14 @@ namespace Atlas
         constexpr const char* validationLayerName{ "VK_LAYER_KHRONOS_validation" };
 
         /// @brief Forwards validation-layer errors to the runtime callback.
-        VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback(VkDebugUtilsMessageSeverityFlagBitsEXT, VkDebugUtilsMessageTypeFlagsEXT,
+        VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback(VkDebugUtilsMessageSeverityFlagBitsEXT,
+                                                          const VkDebugUtilsMessageTypeFlagsEXT messageType,
                                                           const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
                                                           void* userData) noexcept
         {
             auto* const context{ static_cast<Detail::VulkanContext*>(userData) };
-            if (context != nullptr && context->validationCallback && callbackData != nullptr && callbackData->pMessage != nullptr)
+            if ((messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) != 0U && context != nullptr &&
+                context->validationCallback && callbackData != nullptr && callbackData->pMessage != nullptr)
             {
                 try
                 {

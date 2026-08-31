@@ -12,11 +12,6 @@
 
 namespace Atlas
 {
-    std::optional<TaskHandle> TaskGraph::addTask(TaskFunction taskFunction, TaskOptions taskOptions)
-    {
-        return addCpuTask(std::move(taskFunction), std::move(taskOptions));
-    }
-
     std::optional<TaskHandle> TaskGraph::addCpuTask(TaskFunction taskFunction, TaskOptions taskOptions)
     {
         if (taskOptions.executionResource != ExecutionResource::CPU)

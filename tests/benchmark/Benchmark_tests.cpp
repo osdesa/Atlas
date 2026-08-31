@@ -2,10 +2,8 @@
 #include "BaselineConfig.h"
 #include "BaselineRunner.h"
 #include "BaselineWriter.h"
-#include "BenchmarkConfig.h"
 #include "BenchmarkMetrics.h"
-#include "BenchmarkRunner.h"
-#include "ResultWriter.h"
+#include "BenchmarkTypes.h"
 #include "WorkloadGenerator.h"
 
 #include <catch2/catch_approx.hpp>
@@ -21,54 +19,6 @@
 #include <vector>
 
 /** @file Benchmark_tests.cpp @brief Tests benchmark schemas, generation, and metric formulas. */
-
-TEST_CASE("Benchmark manifest parser accepts the checked CPU smoke experiment", "[BENCHMARK]")
-{
-    const Atlas::Benchmark::ExperimentManifest manifest{ Atlas::Benchmark::loadManifest(
-        std::filesystem::path{ ATLAS_CPU_BENCHMARK_MANIFEST_PATH }) };
-
-    REQUIRE(manifest.schemaVersion == 1U);
-    REQUIRE(manifest.experimentId == "cpu-smoke");
-    REQUIRE(manifest.cpu.taskCount == 8U);
-    REQUIRE(manifest.gpu.taskCount == 0U);
-    REQUIRE(manifest.bursts.count == 2U);
-    REQUIRE(manifest.policy.kind == Atlas::Benchmark::PolicyKind::StaticPriority);
-}
-
-TEST_CASE("Benchmark manifest parser rejects unknown fields", "[BENCHMARK]")
-{
-    const std::filesystem::path path{ std::filesystem::temp_directory_path() / "atlas-invalid-benchmark-manifest.json" };
-    {
-        std::ofstream output{ path };
-        output << R"({"schema_version":1,"unexpected":true})";
-    }
-    REQUIRE_THROWS_AS(Atlas::Benchmark::loadManifest(path), std::runtime_error);
-    std::filesystem::remove(path);
-}
-
-TEST_CASE("Version-one benchmark writer emits schema-compatible scalars and task arrays", "[BENCHMARK]")
-{
-    const Atlas::Benchmark::ExperimentManifest manifest{ Atlas::Benchmark::loadManifest(
-        std::filesystem::path{ ATLAS_CPU_BENCHMARK_MANIFEST_PATH }) };
-    Atlas::Benchmark::BenchmarkRunner runner{ manifest };
-    const Atlas::Benchmark::RunRecord record{ runner.runSingle(manifest.seeds.front(), 0U) };
-    const std::filesystem::path outputDirectory{ std::filesystem::temp_directory_path() / "atlas-version-one-writer-contract" };
-    std::filesystem::remove_all(outputDirectory);
-    {
-        Atlas::Benchmark::ResultWriter writer{ outputDirectory, manifest, false };
-        writer.append(record);
-    }
-
-    std::ifstream runs{ outputDirectory / "runs.jsonl" };
-    nlohmann::json output;
-    runs >> output;
-    REQUIRE(output.at("environment").is_object());
-    REQUIRE(output.at("metrics").at("cpu_busy_fraction").is_number());
-    REQUIRE(output.at("metrics").at("gpu_host_busy_fraction").is_null());
-    REQUIRE(output.at("tasks").is_array());
-    REQUIRE(output.at("tasks").front().is_object());
-    std::filesystem::remove_all(outputDirectory);
-}
 
 TEST_CASE("Generated workloads are deterministic, acyclic, and dependency-bursted", "[BENCHMARK]")
 {
@@ -133,8 +83,8 @@ TEST_CASE("Baseline suite parser accepts checked smoke and canonical matrices", 
     const Atlas::Benchmark::BaselineSuite canonical{ Atlas::Benchmark::loadBaselineSuite(
         std::filesystem::path{ ATLAS_BASELINE_CANONICAL_SUITE_PATH }) };
 
-    REQUIRE(smoke.suiteId == "baseline-cpu-smoke");
-    REQUIRE(smoke.cases.size() == 1U);
+    REQUIRE(smoke.suiteId == "smoke");
+    REQUIRE(smoke.cases.size() == 2U);
     REQUIRE(smoke.cases.front().variants.size() == 3U);
     REQUIRE(smoke.cases.front().variants.front().executionMode == Atlas::Benchmark::ExecutionMode::Direct);
     REQUIRE(canonical.cases.size() == 6U);
@@ -157,7 +107,7 @@ TEST_CASE("Checked benchmark schemas are syntactically valid JSON", "[BENCHMARK]
         REQUIRE(schema.is_object());
         ++count;
     }
-    REQUIRE(count == 6U);
+    REQUIRE(count == 4U);
 }
 
 TEST_CASE("Baseline environment metadata is strict and optional fields remain optional", "[BENCHMARK]")
@@ -184,8 +134,9 @@ TEST_CASE("Baseline environment metadata is strict and optional fields remain op
 
 TEST_CASE("Every baseline variant materializes identical generated logical work", "[BENCHMARK]")
 {
-    const Atlas::Benchmark::BaselineSuite suite{ Atlas::Benchmark::loadBaselineSuite(
+    Atlas::Benchmark::BaselineSuite suite{ Atlas::Benchmark::loadBaselineSuite(
         std::filesystem::path{ ATLAS_BASELINE_CPU_SUITE_PATH }) };
+    suite.cases.resize(1U);
     const Atlas::Benchmark::BaselineCase& comparisonCase{ suite.cases.front() };
     const Atlas::Benchmark::ExperimentManifest direct{ Atlas::Benchmark::makeExperimentManifest(suite, comparisonCase,
                                                                                                 comparisonCase.variants.at(0U)) };
@@ -205,8 +156,9 @@ TEST_CASE("Every baseline variant materializes identical generated logical work"
 
 TEST_CASE("Direct and scheduled CPU suite variants complete paired trials", "[BENCHMARK]")
 {
-    const Atlas::Benchmark::BaselineSuite suite{ Atlas::Benchmark::loadBaselineSuite(
+    Atlas::Benchmark::BaselineSuite suite{ Atlas::Benchmark::loadBaselineSuite(
         std::filesystem::path{ ATLAS_BASELINE_CPU_SUITE_PATH }) };
+    suite.cases.resize(1U);
     Atlas::Benchmark::BaselineSuiteRunner runner{ suite };
     const Atlas::Benchmark::BaselineBatch batch{ runner.run() };
 

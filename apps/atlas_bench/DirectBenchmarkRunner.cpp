@@ -31,10 +31,6 @@
  * @brief Implements direct dependency coordination over Atlas executors.
  */
 
-#ifndef ATLAS_BENCHMARK_VULKAN_ENABLED
-#define ATLAS_BENCHMARK_VULKAN_ENABLED 0
-#endif
-
 namespace Atlas::Benchmark
 {
     namespace
@@ -53,7 +49,6 @@ namespace Atlas::Benchmark
             return value;
         }
 
-#if ATLAS_BENCHMARK_VULKAN_ENABLED
         std::size_t checkedElementCount(const DispatchDimensions dimensions)
         {
             const std::size_t x{ dimensions.x };
@@ -85,15 +80,14 @@ namespace Atlas::Benchmark
 
         struct GpuResources final
         {
-            explicit GpuResources(const GpuWorkloadConfig& config)
-                : elementCount{ checkedElementCount(config.workgroups) }, runtime{},
+            GpuResources(VulkanRuntime& runtimeContext, const GpuWorkloadConfig& config)
+                : elementCount{ checkedElementCount(config.workgroups) }, runtime{ runtimeContext },
                   dimensionsBuffer{ runtime.createBuffer(4U * sizeof(std::uint32_t)) },
                   outputBuffer{ runtime.createBuffer(elementCount * sizeof(std::uint32_t)) },
                   pipeline{ runtime.createComputePipeline(ComputeShader{ readShader(), "main", { 0U, 1U } }) },
                   dispatch{ pipeline,
                             { { 0U, dimensionsBuffer, BufferAccess::ReadOnly }, { 1U, outputBuffer, BufferAccess::ReadWrite } },
-                            config.workgroups },
-                  executor{ runtime }
+                            config.workgroups }
             {
                 const std::vector<std::uint32_t> dimensions{ config.workgroups.x, config.workgroups.y, config.workgroups.z, 0U };
                 runtime.upload(dimensionsBuffer, std::as_bytes(std::span{ dimensions }));
@@ -128,15 +122,13 @@ namespace Atlas::Benchmark
             }
 
             std::size_t elementCount{ 0U };
-            VulkanRuntime runtime;
+            VulkanRuntime& runtime;
             VulkanBuffer dimensionsBuffer;
             VulkanBuffer outputBuffer;
             VulkanComputePipeline pipeline;
             VulkanDispatch dispatch;
-            VulkanExecutor executor;
             std::vector<std::uint32_t> initialValues;
         };
-#endif
 
         struct DirectTaskState final
         {
@@ -160,27 +152,21 @@ namespace Atlas::Benchmark
     struct DirectBenchmarkRunner::Impl final
     {
         explicit Impl(ExperimentManifest experimentConfig)
-            : manifest{ std::move(experimentConfig) }, cpuExecutor{ manifest.workerCount }
+            : manifest{ std::move(experimentConfig) }, cpuExecutor{ manifest.workerCount }, runtime{}, gpuExecutor{ runtime }
         {
             if (manifest.gpu.taskCount != 0U)
             {
-#if ATLAS_BENCHMARK_VULKAN_ENABLED
-                gpuResources = std::make_unique<GpuResources>(manifest.gpu);
-#else
-                throw std::runtime_error{ "This atlas_bench build does not include Vulkan benchmark support" };
-#endif
+                gpuResources = std::make_unique<GpuResources>(runtime, manifest.gpu);
             }
         }
 
         RunRecord runSingle(const std::uint64_t seed, const std::size_t repetition)
         {
             const std::vector<TaskDescriptor> descriptors{ generateWorkload(manifest, seed) };
-#if ATLAS_BENCHMARK_VULKAN_ENABLED
             if (gpuResources != nullptr)
             {
                 gpuResources->reset(seed);
             }
-#endif
             auto cpuResults{ std::make_shared<std::vector<std::uint64_t>>(descriptors.size(), 0U) };
             const GraphId graphId{ GraphId::create() };
             if (!graphId.isValid() || descriptors.size() > std::numeric_limits<std::uint32_t>::max())
@@ -266,9 +252,7 @@ namespace Atlas::Benchmark
                     }
                     else
                     {
-#if ATLAS_BENCHMARK_VULKAN_ENABLED
-                        accepted = gpuResources->executor.submit(handles.at(index), gpuResources->dispatch, channel);
-#endif
+                        accepted = gpuResources != nullptr && gpuExecutor.submit(handles.at(index), gpuResources->dispatch, channel);
                     }
                 }
                 catch (...)
@@ -303,13 +287,11 @@ namespace Atlas::Benchmark
                     {
                         submitOne(cpuReady, ExecutionResource::CPU);
                     }
-#if ATLAS_BENCHMARK_VULKAN_ENABLED
-                    while (gpuResources != nullptr && gpuInFlight < gpuResources->executor.maxConcurrency() && !gpuReady.empty() &&
+                    while (gpuResources != nullptr && gpuInFlight < gpuExecutor.maxConcurrency() && !gpuReady.empty() &&
                            status == SchedulerStatus::Success)
                     {
                         submitOne(gpuReady, ExecutionResource::GPU);
                     }
-#endif
                 }
 
                 if (totalInFlight == 0U)
@@ -458,12 +440,10 @@ namespace Atlas::Benchmark
                         throw std::runtime_error{ "Direct CPU benchmark output validation failed" };
                     }
                 }
-#if ATLAS_BENCHMARK_VULKAN_ENABLED
                 if (gpuResources != nullptr)
                 {
                     gpuResources->verify(manifest.gpu.taskCount);
                 }
-#endif
             }
 
             std::vector<TaskMeasurement> tasks;
@@ -479,23 +459,21 @@ namespace Atlas::Benchmark
             SchedulerResult result{ status, completedTasks, firstException, executionTime, controlActive, {}, 0U };
             RunRecord record{ manifest.experimentId, seed,         repetition,  result, std::move(tasks), {},
                               std::nullopt,          std::nullopt, std::nullopt };
-#if ATLAS_BENCHMARK_VULKAN_ENABLED
             if (gpuResources != nullptr)
             {
                 record.gpuDeviceName = gpuResources->runtime.deviceInfo().name;
                 record.gpuApiVersion = gpuResources->runtime.deviceInfo().apiVersion;
                 record.gpuDeviceType = static_cast<std::uint32_t>(gpuResources->runtime.deviceInfo().type);
             }
-#endif
             record.metrics = calculateMetrics(record.schedulerResult, record.tasks, manifest.workerCount);
             return record;
         }
 
         ExperimentManifest manifest;
         WorkerpoolExecutor cpuExecutor;
-#if ATLAS_BENCHMARK_VULKAN_ENABLED
+        VulkanRuntime runtime;
+        VulkanExecutor gpuExecutor;
         std::unique_ptr<GpuResources> gpuResources;
-#endif
     };
 
     DirectBenchmarkRunner::DirectBenchmarkRunner(ExperimentManifest experiment)

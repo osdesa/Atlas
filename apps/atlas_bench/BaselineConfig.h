@@ -1,7 +1,7 @@
 #ifndef ATLAS_BASELINE_CONFIG
 #define ATLAS_BASELINE_CONFIG
 
-#include "BenchmarkConfig.h"
+#include "BenchmarkTypes.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -12,7 +12,7 @@
 
 /**
  * @file BaselineConfig.h
- * @brief Declares additive Milestone 11 comparison-suite configuration.
+ * @brief Declares the current comparison-suite configuration.
  */
 
 namespace Atlas::Benchmark

@@ -1,7 +1,8 @@
+#include "../../support/UnusedVulkanDispatchExecutor.h"
 #include "../../support/VulkanTestFactory.h"
 #include "atlas/Executor/CpuExecutor.h"
-#include "atlas/Executor/GpuExecutor.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
+#include "atlas/Executor/VulkanDispatchExecutor.h"
 #include "atlas/Scheduler/KahnScheduler.h"
 #include "atlas/Tasking/TaskGraph.h"
 
@@ -44,7 +45,7 @@ namespace
       public:
         ControlledCpuExecutor() : CpuExecutor{ 1U } {}
 
-        bool submit(const Atlas::TaskHandle handle, Atlas::TaskFunction) override
+        bool submit(const Atlas::TaskHandle handle, Atlas::TaskFunction)
         {
             submittedHandle = handle;
             submissionCount.fetch_add(1U);
@@ -61,7 +62,7 @@ namespace
             return true;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             if (standaloneCompletionReturned)
             {
@@ -106,12 +107,12 @@ namespace
         bool standaloneCompletionReturned{ false };
     };
 
-    class ControlledGpuExecutor final : public Atlas::GpuExecutor
+    class ControlledVulkanDispatchExecutor final : public Atlas::VulkanDispatchExecutor
     {
       public:
-        ControlledGpuExecutor() : GpuExecutor{ 1U } {}
+        ControlledVulkanDispatchExecutor() : VulkanDispatchExecutor{ 1U } {}
 
-        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch) override
+        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch)
         {
             return false;
         }
@@ -127,7 +128,7 @@ namespace
             return true;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::nullopt;
         }
@@ -175,7 +176,7 @@ TEST_CASE("KahnScheduler validates cancellation requests", "[UNIT]")
     graph.findTask(terminal).value()->executionInfo.state = Atlas::TaskState::Success;
 
     Atlas::SynchronousCpuExecutor executor;
-    Atlas::KahnScheduler scheduler{ graph, executor };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
 
     REQUIRE_FALSE(scheduler.requestCancellation(crossGraph));
     REQUIRE_FALSE(scheduler.requestCancellation(unknown));
@@ -201,7 +202,7 @@ TEST_CASE("KahnScheduler cancels ready and blocked work before submission", "[UN
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ControlledGpuExecutor gpuExecutor;
+    ControlledVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     REQUIRE(scheduler.requestCancellation(blocked));
     REQUIRE(scheduler.requestCancellation(sliced));
@@ -227,7 +228,7 @@ TEST_CASE("KahnScheduler lets running CPU completion win cancellation", "[UNIT][
     REQUIRE(graph.finishTaskGraph());
 
     ControlledCpuExecutor executor;
-    Atlas::KahnScheduler scheduler{ graph, executor };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
     auto execution{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
     executor.waitUntilSubmitted();
@@ -247,7 +248,7 @@ TEST_CASE("KahnScheduler lets running ordinary GPU completion win cancellation",
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ControlledGpuExecutor gpuExecutor;
+    ControlledVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     auto execution{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
@@ -270,7 +271,7 @@ TEST_CASE("KahnScheduler cancels running sliced GPU work at a completed boundary
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ControlledGpuExecutor gpuExecutor;
+    ControlledVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     auto execution{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
@@ -297,7 +298,7 @@ TEST_CASE("KahnScheduler lets a final sliced GPU work unit win cancellation", "[
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    ControlledGpuExecutor gpuExecutor;
+    ControlledVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     auto execution{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
@@ -322,7 +323,7 @@ TEST_CASE("KahnScheduler drains accepted work after sliced cancellation", "[UNIT
     REQUIRE(graph.finishTaskGraph());
 
     ControlledCpuExecutor cpuExecutor;
-    ControlledGpuExecutor gpuExecutor;
+    ControlledVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     auto execution{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
@@ -349,7 +350,7 @@ TEST_CASE("KahnScheduler applies task failure before cancellation", "[UNIT][CONC
     const std::exception_ptr taskFailure{ std::make_exception_ptr(std::runtime_error{ "CPU failed while draining" }) };
 
     ControlledCpuExecutor cpuExecutor;
-    ControlledGpuExecutor gpuExecutor;
+    ControlledVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     auto execution{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
@@ -375,7 +376,7 @@ TEST_CASE("KahnScheduler applies executor failure before task failure and cancel
     const std::exception_ptr taskFailure{ std::make_exception_ptr(std::runtime_error{ "CPU failed while draining" }) };
 
     ControlledCpuExecutor cpuExecutor;
-    ControlledGpuExecutor gpuExecutor;
+    ControlledVulkanDispatchExecutor gpuExecutor;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
     auto execution{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 

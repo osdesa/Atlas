@@ -1,7 +1,7 @@
 #ifndef ATLAS_VULKAN_EXECUTOR
 #define ATLAS_VULKAN_EXECUTOR
 
-#include "GpuExecutor.h"
+#include "VulkanDispatchExecutor.h"
 #include "atlas/Vulkan/VulkanRuntime.h"
 
 #include <memory>
@@ -15,7 +15,7 @@ namespace Atlas
      * @brief Asynchronously executes one Vulkan compute dispatch at a time.
      * @plantumlfile vulkan_executor.puml
      */
-    class VulkanExecutor final : public GpuExecutor
+    class VulkanExecutor final : public VulkanDispatchExecutor
     {
       public:
         /// @brief Retains @p runtime's shared context and starts one dispatch worker.
@@ -23,13 +23,9 @@ namespace Atlas
         /// @brief Drains accepted dispatches and joins the worker.
         ~VulkanExecutor() override;
 
-        /// @copydoc GpuExecutor::submit(TaskHandle,VulkanDispatch)
-        bool submit(TaskHandle taskHandle, VulkanDispatch dispatch) override;
-        /// @copydoc GpuExecutor::submit(TaskHandle,VulkanDispatch,CompletionChannel&)
+        /// @copydoc VulkanDispatchExecutor::submit(TaskHandle,VulkanDispatch,CompletionChannel&)
         bool submit(TaskHandle taskHandle, VulkanDispatch dispatch, CompletionChannel& completionChannel) override;
-        /// @copydoc GpuExecutor::waitForCompletion()
-        std::optional<TaskCompletion> waitForCompletion() override;
-        /// @copydoc GpuExecutor::shutdown()
+        /// @copydoc VulkanDispatchExecutor::shutdown()
         void shutdown() noexcept override;
 
       private:

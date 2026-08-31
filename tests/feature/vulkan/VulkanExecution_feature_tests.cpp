@@ -1,5 +1,6 @@
 #if defined(ATLAS_VECTOR_ADD_SPIRV_PATH)
 
+#include "../../support/StandaloneExecutorHarness.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Executor/VulkanExecutor.h"
 #include "atlas/Scheduler/FifoSchedulingPolicy.h"
@@ -25,6 +26,7 @@
 
 namespace
 {
+    using VulkanExecutorHarness = Atlas::Test::StandaloneExecutorHarness<Atlas::VulkanExecutor>;
     std::vector<std::uint32_t> readShader()
     {
         std::ifstream stream{ ATLAS_VECTOR_ADD_SPIRV_PATH, std::ios::binary };
@@ -74,29 +76,18 @@ namespace
         }
     };
 
-    class RecordingGpuExecutor final : public Atlas::GpuExecutor
+    class RecordingVulkanDispatchExecutor final : public Atlas::VulkanDispatchExecutor
     {
       public:
-        explicit RecordingGpuExecutor(Atlas::VulkanExecutor& executor)
-            : GpuExecutor{ executor.maxConcurrency() }, vulkanExecutor{ executor }
+        explicit RecordingVulkanDispatchExecutor(Atlas::VulkanExecutor& executor)
+            : VulkanDispatchExecutor{ executor.maxConcurrency() }, vulkanExecutor{ executor }
         {
-        }
-
-        bool submit(const Atlas::TaskHandle handle, Atlas::VulkanDispatch dispatch) override
-        {
-            submittedWorkUnits.emplace_back(handle, dispatch.workUnitIndex());
-            return vulkanExecutor.submit(handle, std::move(dispatch));
         }
 
         bool submit(const Atlas::TaskHandle handle, Atlas::VulkanDispatch dispatch, Atlas::CompletionChannel& channel) override
         {
             submittedWorkUnits.emplace_back(handle, dispatch.workUnitIndex());
             return vulkanExecutor.submit(handle, std::move(dispatch), channel);
-        }
-
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
-        {
-            return vulkanExecutor.waitForCompletion();
         }
 
         void shutdown() noexcept override
@@ -125,7 +116,7 @@ TEST_CASE("VulkanExecutor executes and reuses persistent compute resources", "[F
     fixture.runtime.upload(fixture.left, bytesOf(left));
     fixture.runtime.upload(fixture.right, bytesOf(right));
 
-    Atlas::VulkanExecutor executor{ fixture.runtime };
+    VulkanExecutorHarness executor{ fixture.runtime };
     const Atlas::GraphId graphId{ Atlas::GraphId::create() };
     const Atlas::TaskHandle first{ Atlas::TaskId{ 1U }, graphId };
     const Atlas::TaskHandle second{ Atlas::TaskId{ 2U }, graphId };
@@ -287,7 +278,7 @@ TEST_CASE("KahnScheduler applies real Vulkan priority intervention at slice boun
 
     Atlas::SynchronousCpuExecutor cpuExecutor;
     Atlas::VulkanExecutor vulkanExecutor{ fixture.runtime };
-    RecordingGpuExecutor gpuExecutor{ vulkanExecutor };
+    RecordingVulkanDispatchExecutor gpuExecutor{ vulkanExecutor };
     Atlas::StaticPrioritySchedulingPolicy policy;
     Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
     const Atlas::SchedulerResult result{ scheduler.execute() };
@@ -312,7 +303,7 @@ TEST_CASE("VulkanExecutor isolates a rejected-runtime dispatch and continues", "
 {
     ComputeFixture fixture;
     ComputeFixture foreignFixture;
-    Atlas::VulkanExecutor executor{ fixture.runtime };
+    VulkanExecutorHarness executor{ fixture.runtime };
     const Atlas::GraphId graphId{ Atlas::GraphId::create() };
     const Atlas::TaskHandle invalid{ Atlas::TaskId{ 1U }, graphId };
     const Atlas::TaskHandle valid{ Atlas::TaskId{ 2U }, graphId };

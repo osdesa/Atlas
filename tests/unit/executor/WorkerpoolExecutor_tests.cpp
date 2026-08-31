@@ -1,3 +1,4 @@
+#include "../../support/StandaloneExecutorHarness.h"
 #include "atlas/Executor/WorkerpoolExecutor.h"
 
 #include <atomic>
@@ -14,6 +15,7 @@
 
 namespace
 {
+    using ExecutorHarness = Atlas::Test::StandaloneExecutorHarness<Atlas::WorkerpoolExecutor>;
     const Atlas::GraphId TEST_GRAPH_ID{ Atlas::GraphId::create() };
     const Atlas::TaskHandle INVALID_TASK_HANDLE{ Atlas::TaskId{}, TEST_GRAPH_ID };
     const Atlas::TaskHandle FIRST_TASK_HANDLE{ Atlas::TaskId{ 1U }, TEST_GRAPH_ID };
@@ -29,13 +31,13 @@ TEST_CASE("WorkerpoolExecutor validates and reports its fixed worker count", "[U
 
     REQUIRE_THROWS_AS(Atlas::WorkerpoolExecutor{ 0U }, std::invalid_argument);
 
-    Atlas::WorkerpoolExecutor executor{ 3U };
+    ExecutorHarness executor{ 3U };
     REQUIRE(executor.maxConcurrency() == 3U);
 }
 
 TEST_CASE("WorkerpoolExecutor rejects invalid task handles", "[UNIT][CONCURRENCY]")
 {
-    Atlas::WorkerpoolExecutor executor{ 1U };
+    ExecutorHarness executor{ 1U };
     bool executed{ false };
 
     REQUIRE_THROWS_AS(executor.submit(INVALID_TASK_HANDLE, [&executed] { executed = true; }), std::invalid_argument);
@@ -45,7 +47,7 @@ TEST_CASE("WorkerpoolExecutor rejects invalid task handles", "[UNIT][CONCURRENCY
 
 TEST_CASE("WorkerpoolExecutor executes accepted and empty callables", "[UNIT][CONCURRENCY]")
 {
-    Atlas::WorkerpoolExecutor executor{ 1U };
+    ExecutorHarness executor{ 1U };
     bool executed{ false };
 
     REQUIRE(executor.submit(FIRST_TASK_HANDLE, [&executed] { executed = true; }));
@@ -67,7 +69,7 @@ TEST_CASE("WorkerpoolExecutor executes accepted and empty callables", "[UNIT][CO
 
 TEST_CASE("WorkerpoolExecutor isolates callable failures and continues working", "[UNIT][CONCURRENCY]")
 {
-    Atlas::WorkerpoolExecutor executor{ 1U };
+    ExecutorHarness executor{ 1U };
 
     REQUIRE(executor.submit(FIRST_TASK_HANDLE, [] { throw std::runtime_error{ "worker failed" }; }));
     REQUIRE(executor.submit(SECOND_TASK_HANDLE, [] { throw 7; }));
@@ -103,7 +105,7 @@ TEST_CASE("WorkerpoolExecutor isolates callable failures and continues working",
 TEST_CASE("WorkerpoolExecutor produces exactly one attributed completion per accepted item", "[UNIT][CONCURRENCY]")
 {
     constexpr std::uint32_t taskCount{ 64U };
-    Atlas::WorkerpoolExecutor executor{ 4U };
+    ExecutorHarness executor{ 4U };
     std::vector<Atlas::TaskHandle> submittedHandles;
     submittedHandles.reserve(taskCount);
 
@@ -141,7 +143,7 @@ TEST_CASE("WorkerpoolExecutor survives repeated high-volume lifecycle rounds", "
     {
         const Atlas::GraphId graphId{ Atlas::GraphId::create() };
         std::atomic_uint32_t executedTaskCount{ 0U };
-        Atlas::WorkerpoolExecutor executor{ 4U };
+        ExecutorHarness executor{ 4U };
 
         for (std::uint32_t taskIndex{ 1U }; taskIndex <= taskCount; ++taskIndex)
         {
@@ -166,7 +168,7 @@ TEST_CASE("WorkerpoolExecutor survives repeated high-volume lifecycle rounds", "
 
 TEST_CASE("WorkerpoolExecutor runs at least two tasks concurrently", "[UNIT][CONCURRENCY]")
 {
-    Atlas::WorkerpoolExecutor executor{ 2U };
+    ExecutorHarness executor{ 2U };
     std::latch bothStarted{ 2 };
     std::latch releaseWorkers{ 1 };
 
@@ -188,7 +190,7 @@ TEST_CASE("WorkerpoolExecutor runs at least two tasks concurrently", "[UNIT][CON
 
 TEST_CASE("WorkerpoolExecutor returns completions in completion rather than submission order", "[UNIT][CONCURRENCY]")
 {
-    Atlas::WorkerpoolExecutor executor{ 2U };
+    ExecutorHarness executor{ 2U };
     std::latch firstTaskStarted{ 1 };
     std::latch releaseFirstTask{ 1 };
 
@@ -213,7 +215,7 @@ TEST_CASE("WorkerpoolExecutor returns completions in completion rather than subm
 
 TEST_CASE("WorkerpoolExecutor completion retrieval waits for accepted work", "[UNIT][CONCURRENCY]")
 {
-    Atlas::WorkerpoolExecutor executor{ 1U };
+    ExecutorHarness executor{ 1U };
     std::latch taskStarted{ 1 };
     std::latch releaseTask{ 1 };
 
@@ -237,7 +239,7 @@ TEST_CASE("WorkerpoolExecutor completion retrieval waits for accepted work", "[U
 
 TEST_CASE("WorkerpoolExecutor shutdown drains work and rejects later submissions", "[UNIT][CONCURRENCY]")
 {
-    Atlas::WorkerpoolExecutor executor{ 1U };
+    ExecutorHarness executor{ 1U };
     std::latch firstTaskStarted{ 1 };
     std::latch releaseFirstTask{ 1 };
     std::atomic_bool secondTaskExecuted{ false };
@@ -267,7 +269,7 @@ TEST_CASE("WorkerpoolExecutor destruction waits for accepted work", "[UNIT][CONC
 {
     std::atomic_bool executed{ false };
     {
-        Atlas::WorkerpoolExecutor executor{ 1U };
+        ExecutorHarness executor{ 1U };
         REQUIRE(executor.submit(FIRST_TASK_HANDLE, [&executed] { executed = true; }));
     }
 

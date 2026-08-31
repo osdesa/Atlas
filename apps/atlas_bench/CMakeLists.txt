@@ -8,16 +8,14 @@ set(
     BaselineRunner.h
     BaselineWriter.cpp
     BaselineWriter.h
-    BenchmarkConfig.cpp
-    BenchmarkConfig.h
+    BenchmarkTypes.cpp
+    BenchmarkTypes.h
     BenchmarkMetrics.cpp
     BenchmarkMetrics.h
     BenchmarkRunner.cpp
     BenchmarkRunner.h
     DirectBenchmarkRunner.cpp
     DirectBenchmarkRunner.h
-    ResultWriter.cpp
-    ResultWriter.h
     WorkloadGenerator.cpp
     WorkloadGenerator.h
 )
@@ -49,19 +47,10 @@ target_compile_definitions(
         ATLAS_BENCHMARK_CMAKE_VERSION="${CMAKE_VERSION}"
         ATLAS_BENCHMARK_SYSTEM="${CMAKE_SYSTEM_NAME}"
         ATLAS_BENCHMARK_SYSTEM_PROCESSOR="${CMAKE_SYSTEM_PROCESSOR}"
+        ATLAS_BENCHMARK_SPIRV_PATH="${ATLAS_BENCHMARK_SPIRV}"
 )
 
-if(ATLAS_BENCHMARK_ENABLE_VULKAN)
-    target_compile_definitions(
-        atlas_benchmark_support
-        PRIVATE
-            ATLAS_BENCHMARK_VULKAN_ENABLED=1
-            ATLAS_BENCHMARK_SPIRV_PATH="${ATLAS_BENCHMARK_SPIRV}"
-    )
-    add_dependencies(atlas_benchmark_support atlas_benchmark_shader)
-else()
-    target_compile_definitions(atlas_benchmark_support PRIVATE ATLAS_BENCHMARK_VULKAN_ENABLED=0)
-endif()
+add_dependencies(atlas_benchmark_support atlas_benchmark_shader)
 
 atlas_set_project_warnings(atlas_benchmark_support)
 atlas_enable_sanitizers(atlas_benchmark_support)

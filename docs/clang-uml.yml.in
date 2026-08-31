@@ -137,7 +137,7 @@ diagrams:
         - '  FontColor #0F172A'
         - '}'
 
-  gpu_executor:
+  vulkan_dispatch_executor:
     type: class
     glob:
       - src/Executor/*.cpp
@@ -145,7 +145,7 @@ diagrams:
       context:
         - match:
             radius: 1
-            pattern: Atlas::GpuExecutor
+            pattern: Atlas::VulkanDispatchExecutor
     exclude:
       namespaces:
         - std

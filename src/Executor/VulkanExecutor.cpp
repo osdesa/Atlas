@@ -36,7 +36,7 @@ namespace Atlas
             VulkanDispatch dispatch;
             /// @brief Task-attributed outcome populated by the worker.
             TaskCompletion completion;
-            /// @brief Optional scheduler channel for the outcome.
+            /// @brief Scheduler channel for the outcome.
             CompletionChannel* completionChannel{ nullptr };
         };
 
@@ -53,7 +53,7 @@ namespace Atlas
         }
 
         /// @brief Queues one dispatch unless shutdown has begun.
-        bool submit(TaskHandle taskHandle, VulkanDispatch&& dispatch, CompletionChannel* completionChannel)
+        bool submit(TaskHandle taskHandle, VulkanDispatch&& dispatch, CompletionChannel& completionChannel)
         {
             if (!taskHandle.isValid())
             {
@@ -69,25 +69,11 @@ namespace Atlas
                 pending.emplace_back(WorkItem{ dispatch,
                                                TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 },
                                                                ExecutionResource::GPU, dispatch.workUnitIndex() },
-                                               completionChannel });
+                                               &completionChannel });
                 ++unfinished;
             }
             workAvailable.notify_one();
             return true;
-        }
-
-        /// @brief Waits for the next standalone completion, if any remain.
-        std::optional<TaskCompletion> waitForCompletion()
-        {
-            std::unique_lock lock{ stateMutex };
-            workCompleted.wait(lock, [this] { return !completed.empty() || unfinished == 0U; });
-            if (completed.empty())
-            {
-                return std::nullopt;
-            }
-            TaskCompletion completion{ std::move(completed.front().completion) };
-            completed.pop_front();
-            return completion;
         }
 
         /// @brief Stops acceptance, drains pending work, and joins the worker.
@@ -110,7 +96,6 @@ namespace Atlas
                 std::lock_guard lock{ stateMutex };
                 lifecycle = Lifecycle::Stopped;
             }
-            workCompleted.notify_all();
         }
 
         /// @brief Executes queued dispatches and publishes their outcomes.
@@ -142,19 +127,9 @@ namespace Atlas
                 item.completion.executionDuration =
                     std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
 
-                if (item.completionChannel != nullptr)
-                {
-                    item.completionChannel->publish(std::move(item.completion));
-                    std::lock_guard lock{ stateMutex };
-                    --unfinished;
-                }
-                else
-                {
-                    std::lock_guard lock{ stateMutex };
-                    completed.splice(completed.end(), executing, executing.begin());
-                    --unfinished;
-                }
-                workCompleted.notify_one();
+                item.completionChannel->publish(std::move(item.completion));
+                std::lock_guard lock{ stateMutex };
+                --unfinished;
             }
         }
 
@@ -337,12 +312,8 @@ namespace Atlas
         std::mutex stateMutex;
         /// @brief Wakes the worker when dispatches arrive or shutdown begins.
         std::condition_variable workAvailable;
-        /// @brief Wakes standalone completion consumers after execution.
-        std::condition_variable workCompleted;
         /// @brief FIFO dispatches not yet claimed by the worker.
         std::list<WorkItem> pending;
-        /// @brief Standalone completions retained in execution order.
-        std::list<WorkItem> completed;
         /// @brief Accepted dispatches not yet fully published or retained.
         std::size_t unfinished{ 0U };
         /// @brief Current executor lifecycle state.
@@ -352,7 +323,7 @@ namespace Atlas
     };
     /// @endcond
 
-    VulkanExecutor::VulkanExecutor(VulkanRuntime& runtime) : GpuExecutor{ 1U }
+    VulkanExecutor::VulkanExecutor(VulkanRuntime& runtime) : VulkanDispatchExecutor{ 1U }
     {
         if (runtime.implementation == nullptr || runtime.implementation->context == nullptr)
         {
@@ -363,19 +334,9 @@ namespace Atlas
 
     VulkanExecutor::~VulkanExecutor() = default;
 
-    bool VulkanExecutor::submit(TaskHandle taskHandle, VulkanDispatch dispatch)
-    {
-        return implementation->submit(taskHandle, std::move(dispatch), nullptr);
-    }
-
     bool VulkanExecutor::submit(TaskHandle taskHandle, VulkanDispatch dispatch, CompletionChannel& completionChannel)
     {
-        return implementation->submit(taskHandle, std::move(dispatch), &completionChannel);
-    }
-
-    std::optional<TaskCompletion> VulkanExecutor::waitForCompletion()
-    {
-        return implementation->waitForCompletion();
+        return implementation->submit(taskHandle, std::move(dispatch), completionChannel);
     }
 
     void VulkanExecutor::shutdown() noexcept

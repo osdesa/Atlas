@@ -2,9 +2,7 @@
 #include "BaselineConfig.h"
 #include "BaselineRunner.h"
 #include "BaselineWriter.h"
-#include "BenchmarkConfig.h"
-#include "BenchmarkRunner.h"
-#include "ResultWriter.h"
+#include "atlas/Vulkan/VulkanRuntime.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -20,7 +18,6 @@ namespace
 {
     struct CommandLine
     {
-        std::filesystem::path manifest;
         std::filesystem::path suite;
         std::optional<std::filesystem::path> outputDirectory;
         std::optional<std::filesystem::path> environmentFile;
@@ -30,7 +27,7 @@ namespace
 
     void printUsage(std::ostream& stream)
     {
-        stream << "Usage: atlas_bench (--manifest <file> | --suite <file>) [--output-dir <directory>] "
+        stream << "Usage: atlas_bench --suite <file> [--output-dir <directory>] "
                   "[--environment-file <file>] [--validate-only] [--overwrite]\n";
     }
 
@@ -55,22 +52,14 @@ namespace
                 result.overwrite = true;
                 continue;
             }
-            if (argument == "--manifest" || argument == "--suite" || argument == "--output-dir" || argument == "--environment-file")
+            if (argument == "--suite" || argument == "--output-dir" || argument == "--environment-file")
             {
                 if (index + 1 >= argumentCount)
                 {
                     throw std::runtime_error{ std::string{ argument } + " requires a value" };
                 }
                 const std::filesystem::path value{ arguments[++index] };
-                if (argument == "--manifest")
-                {
-                    if (!result.manifest.empty())
-                    {
-                        throw std::runtime_error{ "--manifest may be supplied only once" };
-                    }
-                    result.manifest = value;
-                }
-                else if (argument == "--suite")
+                if (argument == "--suite")
                 {
                     if (!result.suite.empty())
                     {
@@ -98,9 +87,9 @@ namespace
             }
             throw std::runtime_error{ "Unknown argument: " + std::string{ argument } };
         }
-        if (result.manifest.empty() == result.suite.empty())
+        if (result.suite.empty())
         {
-            throw std::runtime_error{ "exactly one of --manifest or --suite is required" };
+            throw std::runtime_error{ "--suite is required" };
         }
         if (!result.validateOnly && !result.outputDirectory.has_value())
         {
@@ -109,10 +98,6 @@ namespace
         if (result.validateOnly && result.outputDirectory.has_value())
         {
             throw std::runtime_error{ "--output-dir is not used with --validate-only" };
-        }
-        if (!result.manifest.empty() && result.environmentFile.has_value())
-        {
-            throw std::runtime_error{ "--environment-file is valid only with --suite" };
         }
         return result;
     }
@@ -123,26 +108,8 @@ int main(const int argumentCount, char** arguments)
     try
     {
         const CommandLine commandLine{ parseCommandLine(argumentCount, arguments) };
-        if (!commandLine.manifest.empty())
-        {
-            const Atlas::Benchmark::ExperimentManifest manifest{ Atlas::Benchmark::loadManifest(commandLine.manifest) };
-            if (commandLine.validateOnly)
-            {
-                std::cout << "Valid Atlas benchmark manifest: " << manifest.experimentId << '\n';
-                return EXIT_SUCCESS;
-            }
-
-            Atlas::Benchmark::ResultWriter writer{ commandLine.outputDirectory.value(), manifest, commandLine.overwrite };
-            Atlas::Benchmark::BenchmarkRunner runner{ manifest };
-            const Atlas::Benchmark::BenchmarkBatch batch{ runner.run() };
-            for (const Atlas::Benchmark::RunRecord& record : batch.records)
-            {
-                writer.append(record);
-            }
-            std::cout << "Wrote " << batch.records.size() << " measured run(s) to " << commandLine.outputDirectory->string() << '\n';
-            return batch.succeeded ? EXIT_SUCCESS : EXIT_FAILURE;
-        }
-
+        const Atlas::VulkanRuntime requiredVulkanRuntime;
+        static_cast<void>(requiredVulkanRuntime);
         const Atlas::Benchmark::BaselineSuite suite{ Atlas::Benchmark::loadBaselineSuite(commandLine.suite) };
         const std::optional<Atlas::Benchmark::EnvironmentMetadata> environment{
             commandLine.environmentFile.has_value()

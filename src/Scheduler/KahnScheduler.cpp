@@ -33,34 +33,15 @@ namespace Atlas
         }
     } // namespace
 
-    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor)
-        : KahnScheduler{ taskGraph, executor, FifoSchedulingPolicy{} }
-    {
-    }
-
-    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor, const SchedulingPolicy& policy)
-        : BaseScheduler{ taskGraph }, cpuExecutor{ executor }, cpuSchedulingPolicy{ clonePolicy(policy) },
-          readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) },
-          schedulerTimingAccounting{ std::make_unique<Detail::SchedulerTimingAccounting>() }
-    {
-        cancellationOrder = startingGraph.getTaskHandles();
-        cancellationStates.reserve(cancellationOrder.size());
-        for (const TaskHandle handle : cancellationOrder)
-        {
-            cancellationStates.emplace(handle, CancellationState::None);
-        }
-    }
-
-    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuBackend, GpuExecutor& gpuBackend)
+    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuBackend, VulkanDispatchExecutor& gpuBackend)
         : KahnScheduler{ taskGraph, cpuBackend, gpuBackend, FifoSchedulingPolicy{} }
     {
     }
 
-    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuBackend, GpuExecutor& gpuBackend,
+    KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuBackend, VulkanDispatchExecutor& gpuBackend,
                                  const SchedulingPolicy& policy)
-        : BaseScheduler{ taskGraph }, cpuExecutor{ cpuBackend }, gpuExecutor{ &gpuBackend },
-          cpuSchedulingPolicy{ clonePolicy(policy) }, gpuSchedulingPolicy{ clonePolicy(policy) },
-          readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) },
+        : BaseScheduler{ taskGraph }, cpuExecutor{ cpuBackend }, gpuExecutor{ gpuBackend }, cpuSchedulingPolicy{ clonePolicy(policy) },
+          gpuSchedulingPolicy{ clonePolicy(policy) }, readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) },
           schedulerTimingAccounting{ std::make_unique<Detail::SchedulerTimingAccounting>() }
     {
         cancellationOrder = startingGraph.getTaskHandles();
@@ -120,19 +101,12 @@ namespace Atlas
         else
         {
             state.cpuCapacity = std::min(cpuTaskCount, static_cast<std::size_t>(cpuExecutor.maxConcurrency()));
-            state.gpuCapacity =
-                gpuExecutor == nullptr ? 0U : std::min(gpuTaskCount, static_cast<std::size_t>(gpuExecutor->maxConcurrency()));
+            state.gpuCapacity = std::min(gpuTaskCount, static_cast<std::size_t>(gpuExecutor.maxConcurrency()));
             inFlightTasks.reserve(state.cpuCapacity + state.gpuCapacity);
 
-            if ((cpuTaskCount != 0U && state.cpuCapacity == 0U) ||
-                (gpuTaskCount != 0U && (gpuExecutor == nullptr || state.gpuCapacity == 0U)))
+            if ((cpuTaskCount != 0U && state.cpuCapacity == 0U) || (gpuTaskCount != 0U && state.gpuCapacity == 0U))
             {
                 forcedStatus = SchedulerStatus::ExecutorUnavailable;
-            }
-            else if (gpuTaskCount == 0U)
-            {
-                applyPendingCancellations(state);
-                runCpuOnlyExecutorLoop(state);
             }
             else
             {
@@ -153,79 +127,6 @@ namespace Atlas
         result.immediateSliceSwitchDuration = schedulerTimingAccounting->immediateSliceSwitchDuration();
         result.immediateSliceSwitchCount = schedulerTimingAccounting->immediateSliceSwitchCount();
         return result;
-    }
-
-    void KahnScheduler::runCpuOnlyExecutorLoop(ExecutionState& state)
-    {
-        while (true)
-        {
-            applyPendingCancellations(state);
-            submitCpuOnlyReadyTasks(state);
-            if (inFlightTasks.empty())
-            {
-                break;
-            }
-
-            schedulerTimingAccounting->pause();
-            const std::optional<TaskCompletion> completion{ cpuExecutor.waitForCompletion() };
-            schedulerTimingAccounting->resume();
-            if (!completion.has_value())
-            {
-                state.executorFailure = true;
-                state.completionStreamEndedEarly = true;
-                state.submissionsEnabled = false;
-                failAllInFlight(state);
-                break;
-            }
-            TaskCompletion attributedCompletion{ completion.value() };
-            attributedCompletion.resource = ExecutionResource::CPU;
-            processCompletion(attributedCompletion, state);
-            applyPendingCancellations(state);
-        }
-
-        schedulerTimingAccounting->pause();
-        const bool hasExtraCompletion{ !state.completionStreamEndedEarly && cpuExecutor.waitForCompletion().has_value() };
-        schedulerTimingAccounting->resume();
-        if (hasExtraCompletion)
-        {
-            state.executorFailure = true;
-            state.submissionsEnabled = false;
-        }
-    }
-
-    void KahnScheduler::submitCpuOnlyReadyTasks(ExecutionState& state)
-    {
-        while (state.submissionsEnabled && state.cpuInFlight < state.cpuCapacity)
-        {
-            const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask(ExecutionResource::CPU, state) };
-            if (!task.has_value())
-            {
-                return;
-            }
-
-            const TaskFunction* const function{ task.value()->cpuFunction() };
-            bool accepted{ false };
-            schedulerTimingAccounting->pause();
-            try
-            {
-                accepted = function != nullptr && cpuExecutor.submit(task.value()->handle, *function);
-            }
-            catch (...)
-            {
-                accepted = false;
-            }
-            schedulerTimingAccounting->resume();
-
-            if (!accepted)
-            {
-                restoreRejectedTask(task.value());
-                state.executorFailure = true;
-                state.submissionsEnabled = false;
-                return;
-            }
-            inFlightTasks.emplace(task.value()->handle, InFlightWork{ ExecutionResource::CPU, 0U });
-            ++state.cpuInFlight;
-        }
     }
 
     void KahnScheduler::runExecutorLoop(ExecutionState& state, CompletionChannel& channel)
@@ -274,15 +175,6 @@ namespace Atlas
     {
         std::size_t& inFlight{ resource == ExecutionResource::CPU ? state.cpuInFlight : state.gpuInFlight };
         const std::size_t capacity{ resource == ExecutionResource::CPU ? state.cpuCapacity : state.gpuCapacity };
-        const std::vector<SchedulingCandidate>& readyQueue{ readyTasksForResource(resource) };
-
-        if (resource == ExecutionResource::GPU && !readyQueue.empty() && gpuExecutor == nullptr)
-        {
-            state.executorFailure = true;
-            state.submissionsEnabled = false;
-            return;
-        }
-
         while (state.submissionsEnabled && inFlight < capacity)
         {
             const std::optional<std::shared_ptr<const Task>> task{ takeNextReadyTask(resource, state) };
@@ -307,21 +199,17 @@ namespace Atlas
                 }
                 else
                 {
-                    if (gpuExecutor == nullptr)
-                    {
-                        throw std::logic_error{ "GPU task has no GPU payload or executor" };
-                    }
                     if (const VulkanDispatch* const dispatch{ task.value()->gpuDispatch() }; dispatch != nullptr)
                     {
                         workUnitIndex = dispatch->workUnitIndex();
-                        accepted = gpuExecutor->submit(task.value()->handle, *dispatch, channel);
+                        accepted = gpuExecutor.submit(task.value()->handle, *dispatch, channel);
                     }
                     else if (const SlicedVulkanDispatch* const slicedDispatch{ task.value()->slicedGpuDispatch() };
                              slicedDispatch != nullptr)
                     {
                         VulkanDispatch workUnit{ slicedDispatch->slice(task.value()->executionInfo.completedWorkUnitCount) };
                         workUnitIndex = workUnit.workUnitIndex();
-                        accepted = gpuExecutor->submit(task.value()->handle, std::move(workUnit), channel);
+                        accepted = gpuExecutor.submit(task.value()->handle, std::move(workUnit), channel);
                     }
                     else
                     {

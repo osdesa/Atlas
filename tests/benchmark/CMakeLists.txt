@@ -15,7 +15,6 @@ target_compile_definitions(
     atlas_benchmark_tests
     PRIVATE
         ATLAS_BASELINE_CANONICAL_SUITE_PATH="${PROJECT_SOURCE_DIR}/benchmarks/manifests/baseline-canonical-v1.json"
-        ATLAS_BASELINE_CPU_SUITE_PATH="${PROJECT_SOURCE_DIR}/benchmarks/manifests/baseline-cpu-smoke-v1.json"
+        ATLAS_BASELINE_CPU_SUITE_PATH="${PROJECT_SOURCE_DIR}/benchmarks/manifests/smoke-v1.json"
         ATLAS_BENCHMARK_SCHEMA_DIRECTORY="${PROJECT_SOURCE_DIR}/benchmarks/schema"
-        ATLAS_CPU_BENCHMARK_MANIFEST_PATH="${PROJECT_SOURCE_DIR}/benchmarks/manifests/cpu-smoke-v1.json"
 )

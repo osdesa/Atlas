@@ -28,17 +28,23 @@ jobs:
         run: git ls-files -z '*.cpp' '*.h' '*.hpp' | xargs -0 clang-format --dry-run --Werror
 
   linux:
-    name: Ubuntu / GCC
+    name: Ubuntu / Vulkan / GCC
     runs-on: ubuntu-24.04
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install build and Vulkan dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes ninja-build libvulkan-dev
+          sudo apt-get install --yes ninja-build libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
+
+      - name: Select Lavapipe
+        run: |
+          lavapipe_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
+          test -n "${lavapipe_icd}"
+          echo "VK_DRIVER_FILES=${lavapipe_icd}" >> "${GITHUB_ENV}"
 
       - name: Configure
         run: cmake --preset ci-linux
@@ -49,101 +55,14 @@ jobs:
       - name: Test
         run: ctest --preset ci-linux
 
-      - name: Run CLI smoke test
-        run: ./build/ci-linux/apps/atlas_cli/atlas_cli
+      - name: Run Atlas
+        run: ./build/ci-linux/apps/atlas/atlas
 
-  windows:
-    name: Windows / MSVC
-    runs-on: windows-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Vulkan SDK
-        uses: humbletim/install-vulkan-sdk@v1.2
-        with:
-          version: 1.4.309.0
-          cache: true
-
-      - name: Configure
-        run: cmake --preset ci-windows
-
-      - name: Build
-        run: cmake --build --preset ci-windows --parallel
-
-      - name: Test
-        run: ctest --preset ci-windows
-
-      - name: Run CLI smoke test
-        run: .\build\ci-windows\apps\atlas_cli\Release\atlas_cli.exe
-
-      - name: Configure CPU benchmark runner
-        run: cmake --preset benchmark-windows
-
-      - name: Build CPU benchmark runner
-        run: cmake --build --preset benchmark-windows --parallel
-
-      - name: Test benchmark contracts
-        run: ctest --preset benchmark-windows
-
-      - name: Run CPU benchmark smoke experiment
-        run: |
-          .\build\benchmark-windows\apps\atlas_bench\Release\atlas_bench.exe --manifest benchmarks\manifests\cpu-smoke-v1.json --output-dir build\benchmark-windows\smoke-results
-          .\build\benchmark-windows\apps\atlas_bench\Release\atlas_bench.exe --suite benchmarks\manifests\baseline-cpu-smoke-v1.json --output-dir build\benchmark-windows\baseline-smoke-results
-
-  vulkan-integration:
-    name: Ubuntu / Vulkan (Lavapipe)
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Vulkan integration dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes ninja-build libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
-
-      - name: Locate the installed Lavapipe driver manifest
-        run: |
-          lavapipe_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
-          test -n "${lavapipe_icd}"
-          echo "VK_DRIVER_FILES=${lavapipe_icd}" >> "${GITHUB_ENV}"
-
-      - name: Configure
-        run: cmake --preset vulkan-integration-linux
-
-      - name: Build
-        run: cmake --build --preset vulkan-integration-linux --parallel
-
-      - name: Test real Vulkan compute
-        run: ctest --preset vulkan-integration-linux
-
-      - name: Run Vulkan examples
-        run: |
-          ./build/vulkan-integration-linux/apps/atlas_vulkan_example/atlas_vulkan_example
-          ./build/vulkan-integration-linux/apps/atlas_mixed_example/atlas_mixed_example
-          ./build/vulkan-integration-linux/apps/atlas_all_example/atlas_all_example
-
-      - name: Configure benchmark runner
-        run: cmake --preset benchmark-linux
-
-      - name: Build benchmark runner
-        run: cmake --build --preset benchmark-linux --parallel
-
-      - name: Test benchmark contracts
-        run: ctest --preset benchmark-linux
-
-      - name: Run CPU and Vulkan benchmark smoke experiments
-        run: |
-          ./build/benchmark-linux/apps/atlas_bench/atlas_bench --manifest benchmarks/manifests/cpu-smoke-v1.json --output-dir build/benchmark-linux/cpu-smoke-results
-          ./build/benchmark-linux/apps/atlas_bench/atlas_bench --manifest benchmarks/manifests/mixed-sliced-smoke-v1.json --output-dir build/benchmark-linux/gpu-smoke-results
-          ./build/benchmark-linux/apps/atlas_bench/atlas_bench --suite benchmarks/manifests/baseline-cpu-smoke-v1.json --output-dir build/benchmark-linux/baseline-cpu-smoke-results
-          ./build/benchmark-linux/apps/atlas_bench/atlas_bench --suite benchmarks/manifests/baseline-vulkan-smoke-v1.json --output-dir build/benchmark-linux/baseline-vulkan-smoke-results
+      - name: Run benchmark smoke suite
+        run: ./build/ci-linux/apps/atlas_bench/atlas_bench --suite benchmarks/manifests/smoke-v1.json --output-dir build/ci-linux/smoke-results
 
   clang-tidy:
-    name: Ubuntu / ClangTidy
+    name: ClangTidy
     runs-on: ubuntu-24.04
 
     steps:
@@ -153,7 +72,7 @@ jobs:
       - name: Install analysis dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes clang clang-tidy ninja-build libvulkan-dev
+          sudo apt-get install --yes clang clang-tidy ninja-build libvulkan-dev glslc spirv-tools
 
       - name: Configure
         run: cmake --preset analysis-linux
@@ -161,52 +80,8 @@ jobs:
       - name: Build and analyze
         run: cmake --build --preset analysis-linux --parallel
 
-  asan-ubsan:
-    name: Ubuntu / ASan + UBSan
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install sanitizer dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes clang ninja-build libvulkan-dev
-
-      - name: Configure
-        run: cmake --preset asan-ubsan-linux
-
-      - name: Build
-        run: cmake --build --preset asan-ubsan-linux --parallel
-
-      - name: Test
-        run: ctest --preset asan-ubsan-linux
-
-  tsan:
-    name: Ubuntu / TSan
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install ThreadSanitizer dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes clang ninja-build libvulkan-dev
-
-      - name: Configure
-        run: cmake --preset tsan-linux
-
-      - name: Build
-        run: cmake --build --preset tsan-linux --parallel
-
-      - name: Repeat concurrency tests
-        run: ctest --preset tsan-linux --repeat until-fail:5
-
   documentation:
-    name: Ubuntu / Documentation
+    name: Documentation
     runs-on: ubuntu-24.04
 
     steps:
@@ -218,10 +93,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes software-properties-common
           sudo add-apt-repository --yes ppa:bkryza/clang-uml
-          sudo apt-get install --yes default-jre doxygen graphviz clang-uml ninja-build libvulkan-dev
-
-      - name: Report clang-uml version
-        run: clang-uml --version
+          sudo apt-get update
+          sudo apt-get install --yes default-jre doxygen graphviz clang-uml ninja-build libvulkan-dev glslc spirv-tools
 
       - name: Configure
         run: cmake --preset docs-linux

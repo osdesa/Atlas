@@ -1,3 +1,4 @@
+#include "../../support/UnusedVulkanDispatchExecutor.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Executor/WorkerpoolExecutor.h"
 #include "atlas/Scheduler/KahnScheduler.h"
@@ -14,6 +15,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -23,48 +25,72 @@ namespace
     {
       public:
         explicit FailureObservingExecutor(std::promise<void>& failureReturned)
-            : CpuExecutor{ 2U }, failureCompletionReturned{ failureReturned }, workerpool{ 2U }
+            : CpuExecutor{ 2U }, failureCompletionReturned{ failureReturned }
         {
         }
 
-        bool submit(Atlas::TaskHandle handle, Atlas::TaskFunction function) override
+        ~FailureObservingExecutor() override
         {
-            return workerpool.submit(handle, std::move(function));
+            shutdown();
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        bool submit(Atlas::TaskHandle handle, Atlas::TaskFunction function, Atlas::CompletionChannel& channel) override
         {
-            std::optional<Atlas::TaskCompletion> completion{ workerpool.waitForCompletion() };
-            if (completion.has_value() && !completion->succeeded() && !failureObserved)
-            {
-                failureObserved = true;
-                failureCompletionReturned.set_value();
-            }
-            return completion;
+            workers.emplace_back(
+                [this, handle, function = std::move(function), &channel]
+                {
+                    std::exception_ptr failure;
+                    const auto start{ std::chrono::steady_clock::now() };
+                    try
+                    {
+                        if (function)
+                        {
+                            function();
+                        }
+                    }
+                    catch (...)
+                    {
+                        failure = std::current_exception();
+                    }
+                    const auto duration{ std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() -
+                                                                                               start) };
+                    channel.publish(Atlas::TaskCompletion{ handle, failure, duration, Atlas::ExecutionResource::CPU });
+                    if (failure != nullptr && !failureObserved.exchange(true))
+                    {
+                        failureCompletionReturned.set_value();
+                    }
+                });
+            return true;
         }
 
         void shutdown() noexcept override
         {
-            workerpool.shutdown();
+            for (std::thread& worker : workers)
+            {
+                if (worker.joinable())
+                {
+                    worker.join();
+                }
+            }
         }
 
       private:
         std::promise<void>& failureCompletionReturned;
-        Atlas::WorkerpoolExecutor workerpool;
-        bool failureObserved{ false };
+        std::vector<std::thread> workers;
+        std::atomic_bool failureObserved{ false };
     };
 
     Atlas::TaskHandle addTask(Atlas::TaskGraph& graph, Atlas::TaskFunction function, const char* name)
     {
-        const std::optional<Atlas::TaskHandle> handle{ graph.addTask(std::move(function), Atlas::TaskOptions{ name }) };
+        const std::optional<Atlas::TaskHandle> handle{ graph.addCpuTask(std::move(function), Atlas::TaskOptions{ name }) };
         REQUIRE(handle.has_value());
         return handle.value();
     }
 
     Atlas::TaskHandle addRecordingTask(Atlas::TaskGraph& graph, std::vector<std::string>& executionOrder, const char* name)
     {
-        const std::optional<Atlas::TaskHandle> handle{ graph.addTask([&executionOrder, name] { executionOrder.emplace_back(name); },
-                                                                     Atlas::TaskOptions{ name }) };
+        const std::optional<Atlas::TaskHandle> handle{ graph.addCpuTask([&executionOrder, name] { executionOrder.emplace_back(name); },
+                                                                        Atlas::TaskOptions{ name }) };
         REQUIRE(handle.has_value());
         return handle.value();
     }
@@ -105,7 +131,7 @@ SCENARIO("KahnScheduler executes a dependency chain", "[FEATURE]")
         WHEN("the graph is executed by the Kahn scheduler")
         {
             Atlas::SynchronousCpuExecutor executor;
-            Atlas::KahnScheduler scheduler{ graph, executor };
+            Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
             const Atlas::SchedulerResult result{ scheduler.execute() };
 
             THEN("all tasks complete in dependency order")
@@ -142,7 +168,7 @@ SCENARIO("KahnScheduler executes a fan-out and fan-in graph", "[FEATURE]")
         WHEN("the graph is executed by the Kahn scheduler")
         {
             Atlas::SynchronousCpuExecutor executor;
-            Atlas::KahnScheduler scheduler{ graph, executor };
+            Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
             const Atlas::SchedulerResult result{ scheduler.execute() };
 
             THEN("the root precedes both branches and both branches precede the leaf")
@@ -195,7 +221,7 @@ TEST_CASE("KahnScheduler keeps independent worker-pool tasks in flight", "[FEATU
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::WorkerpoolExecutor executor{ 2U };
-    Atlas::KahnScheduler scheduler{ graph, executor };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
     std::future<Atlas::SchedulerResult> resultFuture{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
     bothStarted.wait();
@@ -230,7 +256,7 @@ TEST_CASE("KahnScheduler waits for worker-pool prerequisites before submitting d
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::WorkerpoolExecutor executor{ 2U };
-    Atlas::KahnScheduler scheduler{ graph, executor };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
     std::future<Atlas::SchedulerResult> resultFuture{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
     prerequisiteStarted.wait();
@@ -284,7 +310,7 @@ TEST_CASE("KahnScheduler overlaps fan-out work and waits at fan-in", "[FEATURE][
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::WorkerpoolExecutor executor{ 2U };
-    Atlas::KahnScheduler scheduler{ graph, executor };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
     std::future<Atlas::SchedulerResult> resultFuture{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
     bothBranchesStarted.wait();
@@ -333,7 +359,7 @@ TEST_CASE("KahnScheduler drains worker-pool work after the first task failure", 
     std::promise<void> failureCompletionReturned;
     std::future<void> failureReturnedFuture{ failureCompletionReturned.get_future() };
     FailureObservingExecutor executor{ failureCompletionReturned };
-    Atlas::KahnScheduler scheduler{ graph, executor };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
     std::future<Atlas::SchedulerResult> resultFuture{ std::async(std::launch::async, [&scheduler] { return scheduler.execute(); }) };
 
     failureReturnedFuture.wait();
@@ -365,7 +391,7 @@ TEST_CASE("KahnScheduler completes a large independent graph through the worker 
     REQUIRE(graph.finishTaskGraph());
 
     Atlas::WorkerpoolExecutor executor{ 4U };
-    Atlas::KahnScheduler scheduler{ graph, executor };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
 
     const Atlas::SchedulerResult result{ scheduler.execute() };
 

@@ -1,8 +1,8 @@
 #ifndef ATLAS_BENCHMARK_RUNNER
 #define ATLAS_BENCHMARK_RUNNER
 
-#include "BenchmarkConfig.h"
 #include "BenchmarkMetrics.h"
+#include "BenchmarkTypes.h"
 
 #include <memory>
 #include <vector>

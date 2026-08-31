@@ -1,6 +1,6 @@
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 
-/** @file main.cpp @brief Runs and verifies a CPU-to-Vulkan-to-CPU task graph. */
+/** @file main.cpp @brief Runs and verifies Atlas's current CPU-to-Vulkan-to-CPU workflow. */
 #include "atlas/Executor/VulkanExecutor.h"
 #include "atlas/Scheduler/FifoSchedulingPolicy.h"
 #include "atlas/Scheduler/KahnScheduler.h"

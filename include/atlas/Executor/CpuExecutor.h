@@ -2,13 +2,10 @@
 #define ATLAS_CPU_EXECUTOR
 
 #include "atlas/Executor/CompletionChannel.h"
-#include "atlas/Executor/TaskCompletion.h"
 #include "atlas/Tasking/TaskFunction.h"
 #include "atlas/Tasking/TaskHandle.h"
 
 #include <cstdint>
-#include <optional>
-#include <utility>
 
 /**
  * @file CpuExecutor.h
@@ -49,54 +46,13 @@ namespace Atlas
     {
       public:
         /**
-         * @brief Submits one task callable for CPU execution.
-         * @param taskHandle The identity to attach to the resulting completion.
-         * @param taskFunction Callable work transferred into the executor.
-         * @return True when the work was accepted; false after shutdown begins.
-         * @throws std::invalid_argument If @p taskHandle is invalid.
-         *
-         * A rejected submission does not produce a completion. Exceptions raised
-         * while copying, moving, or storing the callable are not task failures and
-         * may propagate to the caller.
-         */
-        virtual bool submit(TaskHandle taskHandle, TaskFunction taskFunction) = 0;
-
-        /**
          * @brief Submits CPU work whose outcome is published to a shared channel.
          * @param taskHandle The identity attached to the completion.
          * @param taskFunction Callable work transferred into the executor.
          * @param completionChannel Channel that outlives the accepted work.
          * @return True when the work was accepted; false after shutdown begins.
          */
-        virtual bool submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel)
-        {
-            if (!submit(taskHandle, std::move(taskFunction)))
-            {
-                return false;
-            }
-
-            std::optional<TaskCompletion> completion{ waitForCompletion() };
-            if (!completion.has_value())
-            {
-                completionChannel.signalProducerFailure(ExecutionResource::CPU);
-            }
-            else
-            {
-                completion->resource = ExecutionResource::CPU;
-                completionChannel.publish(std::move(completion.value()));
-            }
-            return true;
-        }
-
-        /**
-         * @brief Retrieves the next completion for previously accepted work.
-         * @return The next available completion, or an empty optional when no
-         * accepted or completed work remains.
-         *
-         * An implementation may block while accepted work is still executing.
-         * Completions already produced remain retrievable after shutdown.
-         */
-        virtual std::optional<TaskCompletion> waitForCompletion() = 0;
+        virtual bool submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel) = 0;
 
         /**
          * @brief Reports the backend's maximum useful callable concurrency.

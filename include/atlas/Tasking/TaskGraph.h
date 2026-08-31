@@ -42,15 +42,6 @@ namespace Atlas
         TaskGraph() noexcept : graphID{ GraphId::create() }, taskIdGenerator{ graphID }, isFinalised{ false } {}
 
         /**
-         * @brief Adds a new task to the graph with the given work and metadata.
-         * @param taskFunction The function to execute for this task. Empty functions are valid, but will not perform
-         * any work.
-         * @param taskOptions The metadata associated with this task.
-         * @return The handle assigned to the new task.
-         */
-        std::optional<TaskHandle> addTask(TaskFunction taskFunction, TaskOptions taskOptions);
-
-        /**
          * @brief Adds explicit CPU callable work to the graph.
          * @param taskFunction The callable to execute on the CPU backend.
          * @param taskOptions CPU task metadata; its resource must remain CPU.

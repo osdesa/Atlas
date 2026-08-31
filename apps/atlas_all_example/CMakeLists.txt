@@ -1,7 +1,0 @@
-add_executable(atlas_all_example main.cpp)
-target_link_libraries(atlas_all_example PRIVATE Atlas::Atlas)
-target_compile_features(atlas_all_example PRIVATE cxx_std_20)
-add_dependencies(atlas_all_example atlas_cli atlas_vulkan_example atlas_mixed_example)
-atlas_set_project_warnings(atlas_all_example)
-atlas_enable_sanitizers(atlas_all_example)
-atlas_enable_clang_tidy(atlas_all_example)

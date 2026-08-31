@@ -1,11 +1,27 @@
 {
   "schema_version": 1,
-  "suite_id": "baseline-vulkan-smoke",
-  "seeds": [2026],
+  "suite_id": "smoke",
+  "seeds": [42],
   "warmup_runs": 1,
   "repetitions": 2,
   "worker_count": 2,
   "cases": [
+    {
+      "case_id": "cpu-layered",
+      "workload": {
+        "cpu": { "task_count": 8, "iterations": 10000 },
+        "gpu": { "task_count": 0, "workgroups": { "x": 1, "y": 1, "z": 1 } },
+        "dependencies": { "shape": "layered", "layers": 2 },
+        "priorities": { "assignment": "cycle", "values": [0, 10, 20] },
+        "bursts": { "count": 2 }
+      },
+      "reference_variant": "direct",
+      "variants": [
+        { "variant_id": "direct", "execution": "direct" },
+        { "variant_id": "fifo-unsliced", "execution": "scheduled", "policy": { "type": "fifo" }, "slice_workgroups": null },
+        { "variant_id": "priority-unsliced", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": null }
+      ]
+    },
     {
       "case_id": "mixed-sliced",
       "workload": {

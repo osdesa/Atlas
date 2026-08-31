@@ -1,82 +1,17 @@
 # Atlas
 
-Atlas is a C++20 heterogeneous CPU/Vulkan task-graph prototype.
+Atlas is a C++20 CPU/Vulkan task-graph prototype with mandatory Vulkan compute,
+resource-aware scheduling, cooperative dispatch slicing, cancellation,
+measurement, and comparison-suite benchmarking.
 
-The current API builds directed acyclic graphs of graph-scoped task handles,
-validates dependencies, and executes finalised graphs with a capacity-aware
-Kahn scheduler. Tasks carry optional names, static priorities, and
-backend-neutral CPU/GPU resource intent. Vulkan work may be one ordinary
-dispatch or a logical dispatch divided into deterministic work units. Execution
-records lifecycle state, exceptions, accumulated payload and ready-wait
-durations, first-ready response duration, same-resource selection bypasses,
-work-unit progress, scheduler-active and immediate slice-switch durations,
-logical completed-task count, and total elapsed time.
+- [User Guide](user-guide.md): requirements, build/run commands, CLI,
+  benchmark JSON, output, failures, and current limitations.
+- [Development](development.md): ownership, implementation boundaries, and
+  contributor validation.
+- [Task lifecycle](task-lifecycle.md): scheduler state transitions, completion,
+  cancellation, and failure rules.
+- [Remaining milestones](remaining-milestone.md): scoped steps for Milestones
+  12–15; this is planning material, not current functionality documentation.
 
-The scheduler uses interchangeable FIFO, configurable work-unit round-robin,
-and stable static-priority selection with a single control thread. Explicit CPU
-and Vulkan tasks are dispatched through independently capacity-bounded
-executors, and one shared completion channel returns whichever backend finishes
-first. The scheduler alone applies task state, exceptions, durations, progress,
-cancellation, and dependency release. Cancellation can become effective before
-submission or at a sliced GPU boundary; accepted work is always drained.
-Repeated graph execution remains unsupported.
-
-Atlas provides Vulkan 1.1 compute initialization, persistent storage buffers and
-dispatch-base pipelines, staging transfers, ordinary and sliced declarative
-dispatch, standalone execution, and mixed CPU/GPU graphs. Sliced tasks return
-to the GPU ready-set tail after each incomplete work unit, enabling cooperative
-interleaving without claiming to interrupt an active Vulkan dispatch.
-
-Graphics, multiple queues, public pause/resume, dynamic priorities, starvation
-mitigation, runtime graph submission, repeated execution, and true Vulkan
-dispatch preemption remain deferred. Strict-priority starvation exposure is
-measured without changing the policy. An opt-in benchmark runner now executes
-versioned generated workloads and exports JSON Lines plus normalized CSV. An
-additive suite format now compares identical workloads through direct and
-scheduled variants with paired confidence intervals. Event tracing and Vulkan
-timestamp utilization remain later milestones.
-
-The Vulkan backend and mixed CPU/GPU scheduling design is recorded in the
-[Milestones 4 and 5 Vulkan roadmap](milestone-4-5-vulkan-roadmap.md).
-Cooperative work units and fail-stop cancellation are specified in the
-[Milestone 6 design](milestone-6-cooperative-gpu-slicing.md).
-Interchangeable selection and failure semantics are specified in the
-[Milestone 7 design](milestone-7-scheduling-policies.md).
-Cooperative priority intervention and ready-set observability are specified in
-the [Milestone 9 design](milestone-9-preemptive-style-priority-scheduling.md).
-The reproducible manifest, measurement, and result contracts are specified in
-the [Milestone 10 design](milestone-10-benchmarking-framework.md).
-Direct comparison, uncertainty, environment, and suite-output contracts are
-specified in [Milestone 11: baseline comparisons](milestone-11-baseline-comparisons.md).
-
-## API documentation
-
-Generate the HTML API documentation with:
-
-```powershell
-cmake --preset docs-windows
-cmake --build --preset docs-windows
-```
-
-On Linux, use the equivalent presets:
-
-```bash
-cmake --preset docs-linux
-cmake --build --preset docs-linux
-```
-
-Select the **Windows documentation** configure preset in VS Code's CMake Tools
-panel. The **docs** target then appears under the **Documentation** folder.
-
-The generated entry point is
-`build/<docs-preset>/docs/html/index.html`.
-
-The site uses the [Doxygen Awesome](https://github.com/jothepro/doxygen-awesome-css)
-theme, pinned to version 2.4.2.
-
-Tasking, executor, Vulkan resource, and scheduling class pages use PlantUML
-class diagrams, pinned to version 1.2026.3.
-`atlas_docs` first runs `clang-uml` against a generated compilation database,
-so the diagrams follow the current C++ declarations without any diagram or
-styling code in public headers. This requires `clang-uml` and Ninja in addition
-to Doxygen, Graphviz, and Java.
+The generated API reference is organized into Tasking, Executor, Scheduling,
+and Vulkan modules. Documentation describes the current implementation only.

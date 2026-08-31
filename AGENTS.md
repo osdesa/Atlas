@@ -1,336 +1,145 @@
 # Atlas agent guide
 
-This file applies to the entire repository. It is the starting point for an
-agent continuing Atlas development.
+This file applies to the entire repository. Read `README.md`,
+`docs/user-guide.md`, `docs/development.md`, and `docs/task-lifecycle.md` before
+changing public behavior or architecture.
 
-## Project overview
+## Current project
 
-Atlas is a C++20 heterogeneous CPU/Vulkan task-graph prototype. It builds and
-finalises directed acyclic task graphs, executes CPU work through synchronous or
-worker-pool executors, executes declarative Vulkan compute dispatches, and can
-schedule mixed CPU/GPU graphs with independent backend capacities.
+Atlas is a C++20 heterogeneous CPU/Vulkan task-graph prototype. Vulkan is a
+mandatory, first-class dependency. Atlas builds directed acyclic task graphs,
+executes CPU callables with synchronous or worker-pool executors, executes
+declarative Vulkan compute dispatches, and schedules mixed graphs with FIFO,
+work-unit round-robin, or stable static-priority policies. `atlas_bench` runs
+version-one comparison suites and writes JSON Lines/CSV measurements and paired
+confidence summaries.
 
-Milestones 4 through 11 introduced the Vulkan backend, mixed scheduling,
-cooperative dispatch slicing, task cancellation, interchangeable scheduling
-policies, ready-set starvation measurements, and reproducible benchmarking.
-The current implementation includes:
+The supported executables are:
 
-- graph-scoped task identities and immutable, variant-backed CPU/Vulkan work;
-- `TaskGraph::addCpuTask()` and `addGpuTask()`, with `addTask()` retained as the
-  CPU compatibility API;
-- synchronous and fixed-size worker-pool CPU executors;
-- a compute-only Vulkan runtime, persistent buffers and pipelines, staging
-  transfers, Vulkan 1.1 dispatch-base execution, and a capacity-one Vulkan
-  executor;
-- a preallocated shared completion channel for CPU and GPU producers;
-- a resource-aware Kahn scheduler that processes whichever backend completes
-  first, supports FIFO, work-unit round-robin, and stable static priority,
-  interleaves sliced GPU work at safe boundaries, and applies fail-stop
-  cancellation;
-- per-task ready-wait duration and same-resource selection-bypass accounting;
-- first-ready response, scheduler-active, and uncontested slice-switch timing;
-- an opt-in versioned manifest benchmark runner with deterministic generated
-  workloads and JSON Lines/CSV output;
-- additive direct-versus-scheduled comparison suites with normalized output,
-  environment metadata, and paired confidence intervals; and
-- standalone CPU, Vulkan, mixed, and combined examples.
+- `atlas`: a verified CPU -> sliced Vulkan -> CPU example;
+- `atlas_bench`: the suite-based benchmark harness.
 
-Read these documents before making architectural changes:
+## Compatibility and scope
 
-- `README.md` for supported behavior, prerequisites, and primary commands;
-- `docs/development.md` for ownership, lifecycle, build, and coding details;
-- `docs/task-lifecycle.md` for scheduler state transitions and failure rules;
-- `docs/milestone-4-5-vulkan-roadmap.md` for the implemented design boundaries;
-- `docs/milestone-6-cooperative-gpu-slicing.md` for slicing, progress, and
-  cancellation contracts;
-- `docs/milestone-7-scheduling-policies.md` for policy selection, priority,
-  quantum, and failure contracts;
-- `docs/milestone-9-preemptive-style-priority-scheduling.md` for cooperative
-  intervention and ready-set measurement contracts;
-- `docs/milestone-10-benchmarking-framework.md` for manifest, metric, and result
-  contracts;
-- `docs/milestone-11-baseline-comparisons.md` for direct-driver, suite,
-  uncertainty, and comparison-output contracts;
-- `docs/index.md` for the public documentation overview.
+Atlas is under active development and provides no backwards-compatibility
+guarantees. Do not preserve deprecated APIs, configuration formats, command-line
+arguments, benchmark formats, build flags, or internal abstractions solely for
+compatibility with earlier revisions. When architecture changes, update current
+callers and delete obsolete behavior instead of adding aliases, wrappers,
+fallback paths, migration shims, or transitional overloads.
 
-## First actions in a new session
+Prefer deleting obsolete functionality over retaining code that may be useful
+later. Do not add speculative abstractions for future backends or features
+unless the current milestone requires them.
 
-1. Run `git status --short` and inspect relevant diffs before editing. The
-   worktree may contain uncommitted milestone changes belonging to the
-   user. Never reset, overwrite, or reformat unrelated changes.
-2. Use `rg` and `rg --files` for repository searches.
-3. Read the nearest implementation, public header, and tests together before
+Vulkan is mandatory. Do not add optional Vulkan builds, CPU-only application
+modes, backend selection flags, or silent runtime fallbacks. Configuration must
+fail when Vulkan development dependencies are absent. Executables must fail
+early with a useful error when the loader, device, queue, feature, extension, or
+device creation required by Atlas is unavailable.
+
+The following remain outside the current scope unless requirements explicitly
+change: repeated/runtime graph submission, graphics or presentation, multiple
+Vulkan queues, true dispatch preemption, adaptive backend selection, general
+event tracing, Vulkan timestamp queries, and allocator/pipeline-cache tuning.
+
+## First actions
+
+1. Run `git status --short` and inspect relevant diffs. Preserve unrelated user
+   changes and never reset the worktree.
+2. Use `rg` and `rg --files` for searches.
+3. Read the public header, implementation, callers, and tests together before
    changing a contract.
-4. Build and test with the narrowest preset that covers the change, then widen
-   validation in proportion to risk.
+4. Do not edit generated files below `build/`.
 
-Do not edit or commit generated content below `build/`.
+## Build and validation
 
-## Repository layout
-
-- `include/atlas/Tasking/`: task identities, metadata, work, and graph APIs.
-- `include/atlas/Executor/`: CPU/GPU executor contracts and completion types.
-- `include/atlas/Scheduler/`: graph scheduling APIs.
-- `include/atlas/Vulkan/`: public opaque Vulkan resources and runtime APIs.
-- `src/`: implementations matching the public module structure.
-- `apps/atlas_cli/`: 17-task CPU pipeline run through both CPU executors.
-- `apps/atlas_vulkan_example/`: standalone Vulkan vector addition.
-- `apps/atlas_mixed_example/`: CPU to Vulkan to CPU dependency graph.
-- `apps/atlas_all_example/`: runs all three executables in sequence.
-- `apps/atlas_bench/`: opt-in reproducible CPU/Vulkan benchmark runner.
-- `benchmarks/`: checked version-one schemas and smoke manifests.
-- `tests/unit/`: device-independent Catch2 tests.
-- `tests/feature/`: end-to-end scheduler and real Vulkan tests.
-- `tests/shaders/`: checked-in GLSL compiled to SPIR-V during integration builds.
-- `tests/support/`: shared test doubles and Vulkan test helpers.
-- `cmake/`: warnings, sanitizers, documentation, analysis, and shader helpers.
-- `docs/`: Doxygen input, development guides, lifecycle documentation, and UML
-  configuration.
-- `.github/workflows/ci.yml`: the authoritative CI quality matrix.
-
-## Build prerequisites
-
-Atlas requires CMake 3.24+, a C++20 compiler, Ninja for Linux presets, Threads,
-Vulkan development headers, and a Vulkan 1.1 loader/device. Real Vulkan
-integration also requires `glslc`, `spirv-val`, Mesa Lavapipe, and Vulkan
-validation layers.
-
-On Ubuntu the expected packages are:
+Atlas requires CMake 3.24+, C++20, Vulkan 1.1 development files and a usable
+compute device, `glslc`, `spirv-val`, Threads, and Ninja for Linux presets. The
+normal workflow is:
 
 ```bash
-sudo apt-get install build-essential cmake ninja-build libvulkan-dev \
-  mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
+cmake -S . -B build
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
-The first test-enabled configure may download Catch2 through CMake
-`FetchContent`.
-
-## Primary build and test commands
-
-Normal Linux development:
+Linux development and CI presets are also supported:
 
 ```bash
 cmake --preset dev-linux
 cmake --build --preset dev-linux --parallel
 ctest --preset dev-linux
-```
 
-Warnings-as-errors GCC build matching ordinary Linux CI:
-
-```bash
 cmake --preset ci-linux
 cmake --build --preset ci-linux --parallel
 ctest --preset ci-linux
 ```
 
-Real Vulkan compute through the integration configuration:
+Use a real Vulkan implementation. CI pins Mesa Lavapipe with
+`VK_DRIVER_FILES`; never hard-code a local ICD path in source or CMake.
 
-```bash
-cmake --preset vulkan-integration-linux
-cmake --build --preset vulkan-integration-linux --parallel
-ctest --preset vulkan-integration-linux
-./build/vulkan-integration-linux/apps/atlas_all_example/atlas_all_example
-```
+Validation must match risk:
 
-Reproducible CPU/Vulkan benchmarking:
+- task, executor, scheduler, or concurrency changes: normal suite plus relevant
+  ASan/UBSan and repeated TSan tests;
+- Vulkan changes: normal suite against a real Vulkan implementation and the
+  `atlas` executable;
+- benchmark changes: benchmark contract tests and
+  `benchmarks/manifests/smoke-v1.json`;
+- CMake/preset changes: clean configure and build for every affected path;
+- documentation-only changes: build `docs-linux` and run `git diff --check`.
 
-```bash
-cmake --preset benchmark-linux
-cmake --build --preset benchmark-linux --parallel
-ctest --preset benchmark-linux
-./build/benchmark-linux/apps/atlas_bench/atlas_bench \
-  --manifest benchmarks/manifests/mixed-sliced-smoke-v1.json \
-  --output-dir build/benchmark-linux/results
-```
+Before handoff, run formatting, `git diff --check`, and searches for removed
+APIs/options and for `legacy|deprecated|compat|fallback`.
 
-The combined runner executes the CPU pipeline, standalone Vulkan compute, and
-mixed graph in that order, stopping at the first failure. It is created only
-when `ATLAS_BUILD_VULKAN_INTEGRATION_TESTS=ON`.
+## Architecture invariants
 
-The Vulkan loader normally discovers the installed driver. CI pins Lavapipe
-with `VK_DRIVER_FILES`. Do not hard-code a local ICD path into source or CMake;
-installed filenames differ across distributions and architectures.
+- Task handles are graph-scoped. Cross-graph handles are never valid graph
+  members or dependency endpoints.
+- Each task contains exactly one CPU callable, `VulkanDispatch`, or
+  `SlicedVulkanDispatch`, matching its execution resource.
+- Graph structure is mutable only before successful finalisation and each graph
+  is intended for one scheduler execution.
+- Scheduler control is single-threaded. Executors publish exactly one
+  task-attributed completion for every accepted submission; only the scheduler
+  applies graph state and releases dependencies.
+- CPU and Vulkan capacities are independent. Busy work on one resource must not
+  block ready work on the other.
+- Incomplete sliced dispatches retain progress, enter `Paused`, and return to
+  the Vulkan ready-set tail. Atlas does not claim to preempt an active dispatch.
+- Cancellation stops new submissions and drains accepted work. Failure is
+  fail-stop: preserve the first task exception and map infrastructure and policy
+  failures to their explicit scheduler statuses.
+- `CompletionChannel` storage is preallocated; producer publication is
+  thread-safe, allocation-free, and non-throwing.
+- Executor shutdown rejects new work, drains accepted work, joins workers, and
+  is idempotent.
+- Raw Vulkan ownership handles remain private. Buffers and pipelines belong to
+  one retained runtime context and cross-runtime use is rejected.
+- Queue wait time is not task execution duration.
 
-Other quality presets:
+## Code and tests
 
-```bash
-cmake --preset analysis-linux
-cmake --build --preset analysis-linux --parallel
+Use C++20, repository formatting, target-scoped CMake, explicit standard-library
+ownership, and the narrowest correct dependency visibility. Public declarations
+belong under `include/atlas/<Module>/`; implementations belong under matching
+`src/<Module>/` paths. Tests use Catch2: deterministic device-independent tests
+go in `tests/unit/`, real Vulkan behavior in `tests/feature/`, and benchmark
+contracts in `tests/benchmark/`. Prefer synchronization primitives over sleeps.
 
-cmake --preset asan-ubsan-linux
-cmake --build --preset asan-ubsan-linux --parallel
-ctest --preset asan-ubsan-linux
+Public and private interfaces require concise Doxygen coverage, including
+ownership, lifetime, validation, exception, and concurrency contracts. Keep the
+Tasking, Executor, Scheduling, and Vulkan topic groups and UML inputs aligned.
 
-cmake --preset tsan-linux
-cmake --build --preset tsan-linux --parallel
-ctest --preset tsan-linux --repeat until-fail:5
+## Documentation rule
 
-cmake --preset docs-linux
-cmake --build --preset docs-linux --parallel
-```
+User-facing documentation is part of every behavior change. Update
+`docs/user-guide.md` whenever build instructions, dependencies, executables,
+CLI arguments, benchmark parameters, policies, workloads, output, limitations,
+or runtime behavior changes.
 
-LeakSanitizer may be unable to run under `ptrace`. Use
-`LSAN_OPTIONS=detect_leaks=0` only for that local limitation; do not weaken CI.
-
-## Validation expectations
-
-- Documentation-only changes: build `docs-linux` and run `git diff --check`.
-- Localized C++ changes: build and run the relevant unit/feature tests.
-- Task, executor, scheduler, or concurrency changes: run the complete normal
-  suite plus ASan/UBSan and the repeated TSan concurrency subset.
-- Vulkan runtime, resources, executor, shader, or mixed graph changes: run the
-  normal suite and `vulkan-integration-linux` using a real Vulkan implementation
-  such as Lavapipe.
-- CMake or preset changes: configure every affected preset and build at least
-  one representative target.
-- Benchmark changes: run benchmark contract tests, the CPU smoke manifest, and
-  the real Vulkan smoke manifest when GPU behavior changes. Do not gate CI on
-  elapsed-time thresholds before variance is characterized.
-- Public API changes: update tests, README/development documentation, Doxygen,
-  and UML configuration where applicable.
-
-Before handing off, run:
-
-```bash
-rg --files -g '*.cpp' -g '*.h' -g '*.hpp' -0 | \
-  xargs -0 clang-format --dry-run --Werror
-git diff --check
-```
-
-## Architectural invariants
-
-- A task handle is valid only within its graph identity. Cross-graph handles
-  must never be accepted as graph members or dependency endpoints.
-- Each `Task` contains exactly one `TaskFunction`, `VulkanDispatch`, or
-  `SlicedVulkanDispatch`. The variant alternative must agree with
-  `TaskOptions::executionResource`.
-- `addTask()` remains a CPU compatibility alias. Do not silently reinterpret a
-  CPU callable as GPU work or infer a backend from runtime types.
-- A graph is structurally mutable only before successful finalisation and is
-  intended for one scheduler execution.
-- Scheduler control is single-threaded. Executors may run payloads concurrently,
-  but only the scheduler applies graph task state and releases dependencies.
-- CPU and GPU capacities and in-flight counts are independent. A busy backend
-  must not prevent ready work from being submitted to the other backend.
-- Every accepted submission must produce exactly one task-attributed completion.
-  Invalid, missing, duplicate, unknown, extra, resource-mismatched, or
-  work-unit-mismatched completions must never release dependants.
-- Incomplete sliced GPU tasks retain accumulated progress and duration, enter
-  `Paused`, and return to the GPU ready-set tail. Only logical success increments
-  `executedTaskCount` or releases dependants.
-- Scheduling policies receive only stable handle/priority candidates and are
-  cloned independently per backend. They never own task state, dependencies,
-  executors, or Vulkan payloads.
-- Cancellation requests synchronize with scheduler task claiming. Effective
-  cancellation stops submissions and drains accepted work; running CPU and
-  ordinary GPU payloads complete normally, while sliced work can stop only at a
-  completed unit boundary.
-- After the first task or infrastructure failure, stop new submissions and drain
-  all accepted work. Preserve the first task exception. Infrastructure failures
-  map to `SchedulerStatus::ExecutorUnavailable`.
-- Policy exceptions and invalid selections stop submissions, drain accepted
-  work, and map to `SchedulerStatus::PolicyError` without displacing a captured
-  task exception.
-- `CompletionChannel` storage is allocated before producers publish. Producer
-  publication must remain thread-safe, allocation-free, and non-throwing.
-- Executor shutdown rejects new work, drains accepted work, retains required
-  completions, joins workers, and is idempotent.
-- `VulkanExecutor` reports capacity one. Atlas does not claim to preempt an
-  active Vulkan dispatch.
-- Public Vulkan contracts expose no raw ownership handles. Raw handles and
-  destruction order remain private behind RAII/PIMPL-style implementations.
-- Buffers and pipelines belong to one runtime context. Reject cross-runtime
-  resources and invalid dispatch limits before queue submission.
-- Persistent resources keep the shared Vulkan context alive. `VulkanExecutor`
-  requires a valid `VulkanRuntime` at construction and then retains that shared
-  context while it exists.
-- Queue waiting is not part of `TaskCompletion::executionDuration`; duration
-  measures payload execution after the worker selects the item.
-
-## C++ and CMake conventions
-
-- Use C++20 and the repository `.clang-format` and `.clang-tidy` configurations.
-- Treat warnings as errors on the Linux CI path. Avoid suppressions unless the
-  reason is narrow and documented.
-- Keep public declarations under `include/atlas/<Module>/` and implementations
-  under the matching `src/<Module>/` directory.
-- Prefer standard-library ownership and synchronization types. Make ownership
-  explicit and preserve existing non-copyable/move-only contracts.
-- Use `Atlas` as the public namespace. Keep implementation helpers private or
-  under the established `Detail` namespace.
-- Source and test files are discovered recursively with
-  `file(GLOB_RECURSE ... CONFIGURE_DEPENDS)`. Put files in the correct tree; do
-  not list them manually as well.
-- New executables own their sources in their nearest `CMakeLists.txt` and must
-  apply `atlas_set_project_warnings`, `atlas_enable_sanitizers`, and
-  `atlas_enable_clang_tidy`.
-- Use target-scoped CMake commands and the narrowest correct visibility. Do not
-  add global include paths, compiler flags, definitions, or link settings.
-- Integration-only shaders must be compiled with `atlas_compile_shader`, which
-  invokes both `glslc` and `spirv-val`.
-
-## VS Code workflow
-
-Install the Microsoft CMake Tools extension in addition to the recommended
-clangd extension. Select `vulkan-integration-linux` with **CMake: Select
-Configure Preset**, configure, and build. Select `atlas_all_example` as the
-launch target or run it from the integrated terminal using the path shown in
-the primary commands above.
-
-## Documentation conventions
-
-Documentation coverage is part of the implementation, including private code.
-Follow the style in `include/atlas/Tasking/` and the existing implementation
-files:
-
-- Give every file an `@file` and `@brief` comment.
-- Document public and private classes, structs, enums, aliases, functions,
-  constructors, fields, constants, and important local helper types/variables.
-- Use `@param`, `@return`, `@throws`, ownership/lifetime notes, and concurrency
-  constraints where applicable.
-- Prefer concise comments that explain contract, ownership, validation, or
-  synchronization intent rather than restating syntax.
-- Keep Doxygen topic groups parallel to the public modules: `Tasking`,
-  `Executor`, `Scheduling`, and `Vulkan`. A group needs one `@defgroup` and its
-  public members need the corresponding `@ingroup` tag.
-- Keep `@plantumlfile` references and `docs/clang-uml.yml.in` aligned with
-  public architecture changes.
-- Build the documentation and inspect generated warnings, not just whether the
-  command exits successfully.
-
-The generated Topics page includes a dedicated `@defgroup vulkan Vulkan` with
-matching `@ingroup vulkan` annotations beside Executor, Scheduling, and Tasking.
-Preserve that organization when touching Vulkan docs.
-
-## Testing conventions
-
-- Tests use Catch2 and are registered with CTest through
-  `catch_discover_tests`.
-- Put deterministic, device-independent behavior in `tests/unit/`.
-- Put real Vulkan execution in `tests/feature/vulkan/` and label it consistently
-  with the existing integration tests.
-- Prefer synchronization primitives, latches, channels, or controlled test
-  doubles over arbitrary sleeps in concurrency tests.
-- Cover success, rejection, exception attribution, completion ordering,
-  draining shutdown, and contract violations when extending executors or the
-  scheduler.
-- Windows builds device-independent Vulkan contracts; Linux Lavapipe CI proves
-  real compute output.
-
-## Scope boundaries
-
-The following are intentionally deferred unless the user explicitly changes
-the project scope:
-
-- runtime graph submission and repeated graph execution;
-- public pause/resume and general cancellation tokens;
-- dynamic priorities and starvation mitigation;
-- multiple Vulkan queues or concurrent Vulkan dispatch execution;
-- graphics/presentation support;
-- true CPU or Vulkan dispatch preemption;
-- adaptive backend selection, checked final evaluation results, general event
-  tracing, Vulkan timestamp-query utilization, and allocator/pipeline-cache
-  optimization.
-
-When a requested change approaches one of these boundaries, explain the scope
-impact before expanding the architecture.
+Review and update the User Guide after every milestone. It must describe only
+the current milestone and must not accumulate historical or compatibility
+documentation. Update `README.md`, development documentation, Doxygen, and UML
+configuration where the same change affects them.

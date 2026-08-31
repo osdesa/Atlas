@@ -1,7 +1,7 @@
 #ifndef ATLAS_BENCHMARK_METRICS
 #define ATLAS_BENCHMARK_METRICS
 
-#include "BenchmarkConfig.h"
+#include "BenchmarkTypes.h"
 #include "WorkloadGenerator.h"
 #include "atlas/Scheduler/SchedulerResult.h"
 #include "atlas/Tasking/TaskState.h"

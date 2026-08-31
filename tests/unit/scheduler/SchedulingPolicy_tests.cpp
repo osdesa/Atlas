@@ -1,3 +1,4 @@
+#include "../../support/UnusedVulkanDispatchExecutor.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Scheduler/FifoSchedulingPolicy.h"
 #include "atlas/Scheduler/KahnScheduler.h"
@@ -103,7 +104,7 @@ namespace
       public:
         ImmediateCpuExecutor() : CpuExecutor{ 2U } {}
 
-        bool submit(const Atlas::TaskHandle handle, Atlas::TaskFunction function) override
+        bool submit(const Atlas::TaskHandle handle, Atlas::TaskFunction function, Atlas::CompletionChannel& channel) override
         {
             std::exception_ptr exception;
             try
@@ -117,25 +118,11 @@ namespace
             {
                 exception = std::current_exception();
             }
-            completions.emplace_back(Atlas::TaskCompletion{ handle, exception });
+            channel.publish(Atlas::TaskCompletion{ handle, exception });
             return true;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
-        {
-            if (completions.empty())
-            {
-                return std::nullopt;
-            }
-            Atlas::TaskCompletion completion{ std::move(completions.front()) };
-            completions.pop_front();
-            return completion;
-        }
-
         void shutdown() noexcept override {}
-
-      private:
-        std::deque<Atlas::TaskCompletion> completions;
     };
 
     class MissingCompletionCpuExecutor final : public Atlas::CpuExecutor
@@ -143,12 +130,13 @@ namespace
       public:
         MissingCompletionCpuExecutor() : CpuExecutor{ 2U } {}
 
-        bool submit(Atlas::TaskHandle, Atlas::TaskFunction) override
+        bool submit(Atlas::TaskHandle, Atlas::TaskFunction, Atlas::CompletionChannel& channel) override
         {
+            channel.signalProducerFailure(Atlas::ExecutionResource::CPU);
             return true;
         }
 
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
+        std::optional<Atlas::TaskCompletion> waitForCompletion()
         {
             return std::nullopt;
         }
@@ -183,23 +171,6 @@ namespace
         std::shared_ptr<std::size_t> cloneCounter;
     };
 
-    class UnusedGpuExecutor final : public Atlas::GpuExecutor
-    {
-      public:
-        UnusedGpuExecutor() : GpuExecutor{ 1U } {}
-
-        bool submit(Atlas::TaskHandle, Atlas::VulkanDispatch) override
-        {
-            return false;
-        }
-
-        std::optional<Atlas::TaskCompletion> waitForCompletion() override
-        {
-            return std::nullopt;
-        }
-
-        void shutdown() noexcept override {}
-    };
 } // namespace
 
 TEST_CASE("FIFO scheduling selects stable enqueue order", "[UNIT]")
@@ -253,7 +224,7 @@ TEST_CASE("KahnScheduler reports a thrown policy failure", "[UNIT]")
     const std::exception_ptr failure{ std::make_exception_ptr(std::runtime_error{ "policy failed" }) };
     ThrowingPolicy policy{ failure };
     Atlas::SynchronousCpuExecutor executor;
-    Atlas::KahnScheduler scheduler{ graph, executor, policy };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor, policy };
 
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -279,7 +250,7 @@ TEST_CASE("KahnScheduler applies stable static priority to CPU-only work", "[UNI
     REQUIRE(graph.finishTaskGraph());
     Atlas::StaticPrioritySchedulingPolicy policy;
     Atlas::SynchronousCpuExecutor executor;
-    Atlas::KahnScheduler scheduler{ graph, executor, policy };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor, policy };
 
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -295,7 +266,7 @@ TEST_CASE("KahnScheduler rejects an invalid policy index", "[UNIT]")
     REQUIRE(graph.finishTaskGraph());
     InvalidIndexPolicy policy;
     Atlas::SynchronousCpuExecutor executor;
-    Atlas::KahnScheduler scheduler{ graph, executor, policy };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor, policy };
 
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -313,7 +284,7 @@ TEST_CASE("KahnScheduler rejects a null policy clone before execution", "[UNIT]"
     NullClonePolicy policy;
     Atlas::SynchronousCpuExecutor executor;
 
-    REQUIRE_THROWS_AS(Atlas::KahnScheduler(graph, executor, policy), std::invalid_argument);
+    REQUIRE_THROWS_AS(Atlas::KahnScheduler(graph, executor, Atlas::Test::unusedVulkanDispatchExecutor, policy), std::invalid_argument);
 }
 
 TEST_CASE("KahnScheduler clones independent policy state for CPU and GPU", "[UNIT]")
@@ -323,9 +294,7 @@ TEST_CASE("KahnScheduler clones independent policy state for CPU and GPU", "[UNI
     REQUIRE(graph.finishTaskGraph());
     CloneCountingPolicy policy;
     Atlas::SynchronousCpuExecutor cpuExecutor;
-    UnusedGpuExecutor gpuExecutor;
-
-    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, Atlas::Test::unusedVulkanDispatchExecutor, policy };
 
     REQUIRE(policy.cloneCount() == 2U);
 }
@@ -344,7 +313,7 @@ TEST_CASE("KahnScheduler drains accepted work after a later policy failure", "[U
     const std::exception_ptr policyFailure{ std::make_exception_ptr(std::runtime_error{ "second selection failed" }) };
     FailAfterFirstSelectionPolicy policy{ policyFailure };
     ImmediateCpuExecutor executor;
-    Atlas::KahnScheduler scheduler{ graph, executor, policy };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor, policy };
 
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -370,7 +339,7 @@ TEST_CASE("KahnScheduler preserves a task exception while reporting a policy err
     const std::exception_ptr policyFailure{ std::make_exception_ptr(std::runtime_error{ "second selection failed" }) };
     FailAfterFirstSelectionPolicy policy{ policyFailure };
     ImmediateCpuExecutor executor;
-    Atlas::KahnScheduler scheduler{ graph, executor, policy };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor, policy };
 
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
@@ -388,7 +357,7 @@ TEST_CASE("KahnScheduler gives executor failure precedence over policy error", "
     const std::exception_ptr policyFailure{ std::make_exception_ptr(std::runtime_error{ "second selection failed" }) };
     FailAfterFirstSelectionPolicy policy{ policyFailure };
     MissingCompletionCpuExecutor executor;
-    Atlas::KahnScheduler scheduler{ graph, executor, policy };
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor, policy };
 
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
