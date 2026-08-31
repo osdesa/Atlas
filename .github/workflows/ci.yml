@@ -78,6 +78,18 @@ jobs:
       - name: Run CLI smoke test
         run: .\build\ci-windows\apps\atlas_cli\Release\atlas_cli.exe
 
+      - name: Configure CPU benchmark runner
+        run: cmake --preset benchmark-windows
+
+      - name: Build CPU benchmark runner
+        run: cmake --build --preset benchmark-windows --parallel
+
+      - name: Test benchmark contracts
+        run: ctest --preset benchmark-windows
+
+      - name: Run CPU benchmark smoke experiment
+        run: .\build\benchmark-windows\apps\atlas_bench\Release\atlas_bench.exe --manifest benchmarks\manifests\cpu-smoke-v1.json --output-dir build\benchmark-windows\smoke-results
+
   vulkan-integration:
     name: Ubuntu / Vulkan (Lavapipe)
     runs-on: ubuntu-24.04
@@ -111,6 +123,20 @@ jobs:
           ./build/vulkan-integration-linux/apps/atlas_vulkan_example/atlas_vulkan_example
           ./build/vulkan-integration-linux/apps/atlas_mixed_example/atlas_mixed_example
           ./build/vulkan-integration-linux/apps/atlas_all_example/atlas_all_example
+
+      - name: Configure benchmark runner
+        run: cmake --preset benchmark-linux
+
+      - name: Build benchmark runner
+        run: cmake --build --preset benchmark-linux --parallel
+
+      - name: Test benchmark contracts
+        run: ctest --preset benchmark-linux
+
+      - name: Run CPU and Vulkan benchmark smoke experiments
+        run: |
+          ./build/benchmark-linux/apps/atlas_bench/atlas_bench --manifest benchmarks/manifests/cpu-smoke-v1.json --output-dir build/benchmark-linux/cpu-smoke-results
+          ./build/benchmark-linux/apps/atlas_bench/atlas_bench --manifest benchmarks/manifests/mixed-sliced-smoke-v1.json --output-dir build/benchmark-linux/gpu-smoke-results
 
   clang-tidy:
     name: Ubuntu / ClangTidy

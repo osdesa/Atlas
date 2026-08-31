@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "experiment_id": "mixed-sliced-smoke",
+  "seeds": [2026],
+  "warmup_runs": 1,
+  "repetitions": 1,
+  "worker_count": 2,
+  "policy": { "type": "round_robin", "quantum": 1 },
+  "workload": {
+    "cpu": { "task_count": 4, "iterations": 10000 },
+    "gpu": {
+      "task_count": 3,
+      "workgroups": { "x": 8, "y": 2, "z": 1 },
+      "slice_workgroups": { "x": 3, "y": 1, "z": 1 }
+    },
+    "dependencies": { "shape": "independent" },
+    "priorities": { "assignment": "cycle", "values": [0, 5] },
+    "bursts": { "count": 2 }
+  }
+}

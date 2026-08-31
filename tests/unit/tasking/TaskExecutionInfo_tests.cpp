@@ -17,6 +17,7 @@ TEST_CASE("TaskExecutionInfo has safe defaults", "[UNIT]")
     REQUIRE(executionInfo.totalWorkUnitCount == 1U);
     REQUIRE(executionInfo.readyWaitDuration == std::chrono::microseconds{ 0 });
     REQUIRE(executionInfo.selectionBypassCount == 0U);
+    REQUIRE_FALSE(executionInfo.responseDuration.has_value());
 }
 
 TEST_CASE("TaskState appends cooperative slicing and cancellation states", "[UNIT]")
@@ -41,7 +42,8 @@ TEST_CASE("TaskExecutionInfo stores failure details", "[UNIT]")
 
     const Atlas::TaskExecutionInfo executionInfo{ .state = Atlas::TaskState::Failure,
                                                   .exception = exception,
-                                                  .executionDuration = std::chrono::microseconds{ 12 } };
+                                                  .executionDuration = std::chrono::microseconds{ 12 },
+                                                  .responseDuration = std::nullopt };
 
     REQUIRE(executionInfo.state == Atlas::TaskState::Failure);
     REQUIRE(executionInfo.executionDuration == std::chrono::microseconds{ 12 });
@@ -62,8 +64,11 @@ TEST_CASE("TaskExecutionInfo stores failure details", "[UNIT]")
 
 TEST_CASE("TaskExecutionInfo stores accumulated ready-wait and bypass measurements", "[UNIT]")
 {
-    const Atlas::TaskExecutionInfo executionInfo{ .readyWaitDuration = std::chrono::microseconds{ 37 }, .selectionBypassCount = 4U };
+    const Atlas::TaskExecutionInfo executionInfo{ .readyWaitDuration = std::chrono::microseconds{ 37 },
+                                                  .selectionBypassCount = 4U,
+                                                  .responseDuration = std::chrono::microseconds{ 61 } };
 
     REQUIRE(executionInfo.readyWaitDuration == std::chrono::microseconds{ 37 });
     REQUIRE(executionInfo.selectionBypassCount == 4U);
+    REQUIRE(executionInfo.responseDuration == std::chrono::microseconds{ 61 });
 }

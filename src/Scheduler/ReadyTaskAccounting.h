@@ -55,6 +55,12 @@ namespace Atlas::Detail
          */
         void closeReadyInterval(const std::shared_ptr<const Task>& task) noexcept;
 
+        /**
+         * @brief Records a terminal response interval for a previously ready task.
+         * @param task Task that reached Success, Failure, or Cancelled.
+         */
+        void recordTerminal(const std::shared_ptr<const Task>& task) noexcept;
+
         /// @brief Closes all intervals still active at scheduler termination.
         void finalize() noexcept;
 
@@ -73,6 +79,8 @@ namespace Atlas::Detail
         const TaskGraph& graph;
         /// @brief Start time for each task currently resident in a ready set.
         std::unordered_map<TaskHandle, Clock::time_point, TaskHandle::Hash> readySince;
+        /// @brief First scheduler-observed readiness for response-time accounting.
+        std::unordered_map<TaskHandle, Clock::time_point, TaskHandle::Hash> firstReadySince;
     };
 } // namespace Atlas::Detail
 

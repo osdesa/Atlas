@@ -326,6 +326,9 @@ TEST_CASE("KahnScheduler submits sliced GPU work in order and releases dependant
     REQUIRE(progress.completedWorkUnitCount == 3U);
     REQUIRE(progress.totalWorkUnitCount == 3U);
     REQUIRE(progress.executionDuration == std::chrono::microseconds{ 10 });
+    REQUIRE(progress.responseDuration.has_value());
+    REQUIRE(result.immediateSliceSwitchCount == 2U);
+    REQUIRE(result.immediateSliceSwitchDuration <= result.schedulerActiveDuration);
 }
 
 TEST_CASE("KahnScheduler interleaves sliced GPU tasks at work-unit boundaries", "[UNIT]")
@@ -352,6 +355,9 @@ TEST_CASE("KahnScheduler interleaves sliced GPU tasks at work-unit boundaries", 
     REQUIRE(secondInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
     REQUIRE(firstInfo.readyWaitDuration <= result.executionTime);
     REQUIRE(secondInfo.readyWaitDuration <= result.executionTime);
+    REQUIRE(firstInfo.responseDuration.has_value());
+    REQUIRE(secondInfo.responseDuration.has_value());
+    REQUIRE(result.immediateSliceSwitchCount == 0U);
 }
 
 TEST_CASE("KahnScheduler applies a round-robin work-unit quantum", "[UNIT]")

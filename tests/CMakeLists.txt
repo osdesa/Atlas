@@ -37,3 +37,6 @@ include(Catch)
 
 add_subdirectory(unit)
 add_subdirectory(feature)
+if(ATLAS_BUILD_BENCHMARKS)
+    add_subdirectory(benchmark)
+endif()

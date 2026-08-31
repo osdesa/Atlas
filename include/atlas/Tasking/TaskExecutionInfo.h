@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstddef>
 #include <exception>
+#include <optional>
 
 /**
  * @file TaskExecutionInfo.h
@@ -51,6 +52,16 @@ namespace Atlas
          * candidate while this task remains Ready or Paused in the same ready set.
          */
         std::size_t selectionBypassCount{ 0U };
+
+        /**
+         * @brief Time from first scheduler-observed readiness to a terminal outcome.
+         *
+         * The interval includes ready waiting, executor queueing, payload execution,
+         * and sliced-task resumptions. It excludes dependency-blocked time before
+         * the task first becomes ready and remains empty when the task never reaches
+         * a terminal state after becoming ready.
+         */
+        std::optional<std::chrono::microseconds> responseDuration;
     };
 } // namespace Atlas
 

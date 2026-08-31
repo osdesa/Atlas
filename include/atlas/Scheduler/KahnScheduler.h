@@ -22,7 +22,8 @@ namespace Atlas
     namespace Detail
     {
         class ReadyTaskAccounting;
-    }
+        class SchedulerTimingAccounting;
+    } // namespace Detail
 
     /**
      * @ingroup scheduling
@@ -231,6 +232,8 @@ namespace Atlas
         std::unique_ptr<SchedulingPolicy> gpuSchedulingPolicy;
         /// @brief Scheduler-internal ready-residency and selection-bypass accounting.
         std::unique_ptr<Detail::ReadyTaskAccounting> readyTaskAccounting;
+        /// @brief Scheduler-internal scalar control and slice-switch timing.
+        std::unique_ptr<Detail::SchedulerTimingAccounting> schedulerTimingAccounting;
     };
 } // namespace Atlas
 

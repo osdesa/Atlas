@@ -1,6 +1,7 @@
 #include "atlas/Scheduler/KahnScheduler.h"
 
 #include "ReadyTaskAccounting.h"
+#include "SchedulerTimingAccounting.h"
 #include "atlas/Scheduler/FifoSchedulingPolicy.h"
 
 #include <algorithm>
@@ -39,7 +40,8 @@ namespace Atlas
 
     KahnScheduler::KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& executor, const SchedulingPolicy& policy)
         : BaseScheduler{ taskGraph }, cpuExecutor{ executor }, cpuSchedulingPolicy{ clonePolicy(policy) },
-          readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) }
+          readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) },
+          schedulerTimingAccounting{ std::make_unique<Detail::SchedulerTimingAccounting>() }
     {
         cancellationOrder = startingGraph.getTaskHandles();
         cancellationStates.reserve(cancellationOrder.size());
@@ -58,7 +60,8 @@ namespace Atlas
                                  const SchedulingPolicy& policy)
         : BaseScheduler{ taskGraph }, cpuExecutor{ cpuBackend }, gpuExecutor{ &gpuBackend },
           cpuSchedulingPolicy{ clonePolicy(policy) }, gpuSchedulingPolicy{ clonePolicy(policy) },
-          readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) }
+          readyTaskAccounting{ std::make_unique<Detail::ReadyTaskAccounting>(taskGraph) },
+          schedulerTimingAccounting{ std::make_unique<Detail::SchedulerTimingAccounting>() }
     {
         cancellationOrder = startingGraph.getTaskHandles();
         cancellationStates.reserve(cancellationOrder.size());
@@ -99,6 +102,7 @@ namespace Atlas
                                 .exception = nullptr,
                                 .executionTime = std::chrono::microseconds{ 0 } };
         const auto startTime{ std::chrono::steady_clock::now() };
+        schedulerTimingAccounting->reset();
 
         ExecutionState state;
         inFlightTasks.clear();
@@ -140,10 +144,14 @@ namespace Atlas
         }
 
         finishExecution(state);
+        schedulerTimingAccounting->pause();
         result.status = forcedStatus.value_or(determineStatus(state));
         result.executedTaskCount = state.successfulTaskCount;
         result.exception = state.firstTaskException != nullptr ? state.firstTaskException : state.firstPolicyException;
         result.executionTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
+        result.schedulerActiveDuration = schedulerTimingAccounting->activeDuration();
+        result.immediateSliceSwitchDuration = schedulerTimingAccounting->immediateSliceSwitchDuration();
+        result.immediateSliceSwitchCount = schedulerTimingAccounting->immediateSliceSwitchCount();
         return result;
     }
 
@@ -158,7 +166,9 @@ namespace Atlas
                 break;
             }
 
+            schedulerTimingAccounting->pause();
             const std::optional<TaskCompletion> completion{ cpuExecutor.waitForCompletion() };
+            schedulerTimingAccounting->resume();
             if (!completion.has_value())
             {
                 state.executorFailure = true;
@@ -173,7 +183,10 @@ namespace Atlas
             applyPendingCancellations(state);
         }
 
-        if (!state.completionStreamEndedEarly && cpuExecutor.waitForCompletion().has_value())
+        schedulerTimingAccounting->pause();
+        const bool hasExtraCompletion{ !state.completionStreamEndedEarly && cpuExecutor.waitForCompletion().has_value() };
+        schedulerTimingAccounting->resume();
+        if (hasExtraCompletion)
         {
             state.executorFailure = true;
             state.submissionsEnabled = false;
@@ -192,6 +205,7 @@ namespace Atlas
 
             const TaskFunction* const function{ task.value()->cpuFunction() };
             bool accepted{ false };
+            schedulerTimingAccounting->pause();
             try
             {
                 accepted = function != nullptr && cpuExecutor.submit(task.value()->handle, *function);
@@ -200,6 +214,7 @@ namespace Atlas
             {
                 accepted = false;
             }
+            schedulerTimingAccounting->resume();
 
             if (!accepted)
             {
@@ -278,6 +293,7 @@ namespace Atlas
 
             bool accepted{ false };
             std::size_t workUnitIndex{ 0U };
+            schedulerTimingAccounting->pause();
             try
             {
                 if (resource == ExecutionResource::CPU)
@@ -315,11 +331,13 @@ namespace Atlas
             }
             catch (...)
             {
+                schedulerTimingAccounting->resume();
                 restoreRejectedTask(task.value());
                 state.executorFailure = true;
                 state.submissionsEnabled = false;
                 return;
             }
+            schedulerTimingAccounting->resume();
 
             if (!accepted)
             {
@@ -331,12 +349,18 @@ namespace Atlas
 
             inFlightTasks.emplace(task.value()->handle, InFlightWork{ resource, workUnitIndex });
             ++inFlight;
+            if (resource == ExecutionResource::GPU)
+            {
+                schedulerTimingAccounting->recordGpuSelection(task.value()->handle);
+            }
         }
     }
 
     bool KahnScheduler::processNextEvent(ExecutionState& state, CompletionChannel& channel)
     {
+        schedulerTimingAccounting->pause();
         const CompletionEvent event{ channel.wait() };
+        schedulerTimingAccounting->resume();
         processEvent(event, state);
         return event.kind != CompletionEventKind::Closed;
     }
@@ -424,6 +448,7 @@ namespace Atlas
                 if (cancellationRequested(completion.handle))
                 {
                     task.value()->executionInfo.state = TaskState::Cancelled;
+                    readyTaskAccounting->recordTerminal(task.value());
                     state.cancellationObserved = true;
                     state.submissionsEnabled = false;
                     markCancellationTerminal(completion.handle);
@@ -431,11 +456,13 @@ namespace Atlas
                 else
                 {
                     appendReadyTask(task.value());
+                    schedulerTimingAccounting->recordIncompleteSlice(completion.handle);
                 }
                 return;
             }
 
             markCancellationTerminal(completion.handle);
+            readyTaskAccounting->recordTerminal(task.value());
             ++state.successfulTaskCount;
             if (state.submissionsEnabled)
             {
@@ -445,6 +472,7 @@ namespace Atlas
         else
         {
             markCancellationTerminal(completion.handle);
+            readyTaskAccounting->recordTerminal(task.value());
             state.taskFailureObserved = true;
             state.submissionsEnabled = false;
             if (state.firstTaskException == nullptr)
@@ -468,6 +496,7 @@ namespace Atlas
         {
             task.value()->executionInfo.state = TaskState::Failure;
             task.value()->executionInfo.exception = nullptr;
+            readyTaskAccounting->recordTerminal(task.value());
             markCancellationTerminal(handle);
         }
     }
@@ -543,7 +572,7 @@ namespace Atlas
 
             task.value()->executionInfo.state = TaskState::Cancelled;
             task.value()->executionInfo.exception = nullptr;
-            readyTaskAccounting->closeReadyInterval(task.value());
+            readyTaskAccounting->recordTerminal(task.value());
             cancellation->second = CancellationState::Terminal;
             state.cancellationObserved = true;
             state.submissionsEnabled = false;
@@ -718,6 +747,7 @@ namespace Atlas
                     readyTaskAccounting->closeReadyInterval(task.value());
                     task.value()->executionInfo.state = TaskState::Cancelled;
                     task.value()->executionInfo.exception = nullptr;
+                    readyTaskAccounting->recordTerminal(task.value());
                     state.cancellationObserved = true;
                     state.submissionsEnabled = false;
                     return std::nullopt;

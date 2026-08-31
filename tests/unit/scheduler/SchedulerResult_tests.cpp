@@ -51,6 +51,9 @@ TEST_CASE("SchedulerResult has safe default values", "[UNIT]")
     REQUIRE(result.executedTaskCount == 0U);
     REQUIRE(result.exception == nullptr);
     REQUIRE(result.executionTime == std::chrono::milliseconds{ 0 });
+    REQUIRE(result.schedulerActiveDuration == std::chrono::microseconds{ 0 });
+    REQUIRE(result.immediateSliceSwitchDuration == std::chrono::microseconds{ 0 });
+    REQUIRE(result.immediateSliceSwitchCount == 0U);
 }
 
 TEST_CASE("SchedulerResult prints a non-standard exception safely", "[UNIT]")

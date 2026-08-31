@@ -208,6 +208,43 @@
         "lhs": "${hostSystemName}",
         "rhs": "Linux"
       }
+    },
+    {
+      "name": "benchmark-windows",
+      "displayName": "Windows benchmark runner",
+      "description": "Release CPU benchmark runner and benchmark contract tests",
+      "inherits": "base",
+      "architecture": "x64",
+      "cacheVariables": {
+        "ATLAS_BUILD_BENCHMARKS": "ON",
+        "ATLAS_BENCHMARK_ENABLE_VULKAN": "OFF",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "benchmark-linux",
+      "displayName": "Linux benchmark runner",
+      "description": "Release CPU/Vulkan benchmark runner and benchmark contract tests",
+      "inherits": "base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ATLAS_BUILD_BENCHMARKS": "ON",
+        "ATLAS_BENCHMARK_ENABLE_VULKAN": "ON",
+        "ATLAS_ENABLE_SANITIZERS": "OFF",
+        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "buildPresets": [
@@ -271,6 +308,16 @@
       "name": "vulkan-integration-linux",
       "configurePreset": "vulkan-integration-linux",
       "configuration": "Debug"
+    },
+    {
+      "name": "benchmark-windows",
+      "configurePreset": "benchmark-windows",
+      "configuration": "Release"
+    },
+    {
+      "name": "benchmark-linux",
+      "configurePreset": "benchmark-linux",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -370,6 +417,38 @@
       "filter": {
         "include": {
           "label": "VULKAN_INTEGRATION"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "benchmark-windows",
+      "configurePreset": "benchmark-windows",
+      "configuration": "Release",
+      "filter": {
+        "include": {
+          "label": "benchmark"
+        }
+      },
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "benchmark-linux",
+      "configurePreset": "benchmark-linux",
+      "configuration": "Release",
+      "filter": {
+        "include": {
+          "label": "benchmark"
         }
       },
       "output": {

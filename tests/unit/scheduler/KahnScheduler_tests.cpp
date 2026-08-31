@@ -123,6 +123,9 @@ TEST_CASE("KahnScheduler executes a single task successfully", "[UNIT]")
     REQUIRE(task.value()->executionInfo.exception == nullptr);
     REQUIRE(task.value()->executionInfo.executionDuration >= std::chrono::microseconds{ 0 });
     REQUIRE(task.value()->executionInfo.executionDuration <= result.executionTime);
+    REQUIRE(task.value()->executionInfo.responseDuration.has_value());
+    REQUIRE(task.value()->executionInfo.responseDuration.value() <= result.executionTime);
+    REQUIRE(result.schedulerActiveDuration <= result.executionTime);
 }
 
 TEST_CASE("KahnScheduler treats an empty task function as successful work", "[UNIT]")

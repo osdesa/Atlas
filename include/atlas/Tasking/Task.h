@@ -69,7 +69,8 @@ namespace Atlas
                                                                                       0U,
                                                                                       dispatch.sliceCount(),
                                                                                       std::chrono::microseconds{ 0 },
-                                                                                      0U },
+                                                                                      0U,
+                                                                                      std::nullopt },
               work{ std::move(dispatch) }
         {
         }

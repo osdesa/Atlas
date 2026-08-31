@@ -19,6 +19,7 @@ highlights = [
   "Built a compute-only Vulkan runtime with persistent buffers, pipelines, staging transfers, and declarative dispatches.",
   "Scheduled explicit CPU and GPU tasks through independent capacities and one shared attributed completion channel.",
   "Verified standalone and mixed compute through Mesa Lavapipe with checked GLSL-to-SPIR-V builds.",
+  "Built a versioned reproducible benchmark runner with deterministic CPU/Vulkan DAGs and JSON Lines/CSV metrics.",
 ]
 
 show_repository = true

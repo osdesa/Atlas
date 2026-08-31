@@ -10,10 +10,10 @@ finalises directed acyclic task graphs, executes CPU work through synchronous or
 worker-pool executors, executes declarative Vulkan compute dispatches, and can
 schedule mixed CPU/GPU graphs with independent backend capacities.
 
-Milestones 4 through 9 introduced the Vulkan backend, mixed scheduling,
+Milestones 4 through 10 introduced the Vulkan backend, mixed scheduling,
 cooperative dispatch slicing, task cancellation, interchangeable scheduling
-policies, and ready-set starvation measurements. The current implementation
-includes:
+policies, ready-set starvation measurements, and reproducible benchmarking.
+The current implementation includes:
 
 - graph-scoped task identities and immutable, variant-backed CPU/Vulkan work;
 - `TaskGraph::addCpuTask()` and `addGpuTask()`, with `addTask()` retained as the
@@ -28,7 +28,9 @@ includes:
   interleaves sliced GPU work at safe boundaries, and applies fail-stop
   cancellation;
 - per-task ready-wait duration and same-resource selection-bypass accounting;
-  and
+- first-ready response, scheduler-active, and uncontested slice-switch timing;
+- an opt-in versioned manifest benchmark runner with deterministic generated
+  workloads and JSON Lines/CSV output; and
 - standalone CPU, Vulkan, mixed, and combined examples.
 
 Read these documents before making architectural changes:
@@ -43,6 +45,8 @@ Read these documents before making architectural changes:
   quantum, and failure contracts;
 - `docs/milestone-9-preemptive-style-priority-scheduling.md` for cooperative
   intervention and ready-set measurement contracts;
+- `docs/milestone-10-benchmarking-framework.md` for manifest, metric, and result
+  contracts;
 - `docs/index.md` for the public documentation overview.
 
 ## First actions in a new session
@@ -69,6 +73,8 @@ Do not edit or commit generated content below `build/`.
 - `apps/atlas_vulkan_example/`: standalone Vulkan vector addition.
 - `apps/atlas_mixed_example/`: CPU to Vulkan to CPU dependency graph.
 - `apps/atlas_all_example/`: runs all three executables in sequence.
+- `apps/atlas_bench/`: opt-in reproducible CPU/Vulkan benchmark runner.
+- `benchmarks/`: checked version-one schemas and smoke manifests.
 - `tests/unit/`: device-independent Catch2 tests.
 - `tests/feature/`: end-to-end scheduler and real Vulkan tests.
 - `tests/shaders/`: checked-in GLSL compiled to SPIR-V during integration builds.
@@ -122,6 +128,17 @@ ctest --preset vulkan-integration-linux
 ./build/vulkan-integration-linux/apps/atlas_all_example/atlas_all_example
 ```
 
+Reproducible CPU/Vulkan benchmarking:
+
+```bash
+cmake --preset benchmark-linux
+cmake --build --preset benchmark-linux --parallel
+ctest --preset benchmark-linux
+./build/benchmark-linux/apps/atlas_bench/atlas_bench \
+  --manifest benchmarks/manifests/mixed-sliced-smoke-v1.json \
+  --output-dir build/benchmark-linux/results
+```
+
 The combined runner executes the CPU pipeline, standalone Vulkan compute, and
 mixed graph in that order, stopping at the first failure. It is created only
 when `ATLAS_BUILD_VULKAN_INTEGRATION_TESTS=ON`.
@@ -162,6 +179,9 @@ LeakSanitizer may be unable to run under `ptrace`. Use
   such as Lavapipe.
 - CMake or preset changes: configure every affected preset and build at least
   one representative target.
+- Benchmark changes: run benchmark contract tests, the CPU smoke manifest, and
+  the real Vulkan smoke manifest when GPU behavior changes. Do not gate CI on
+  elapsed-time thresholds before variance is characterized.
 - Public API changes: update tests, README/development documentation, Doxygen,
   and UML configuration where applicable.
 
@@ -304,7 +324,8 @@ the project scope:
 - multiple Vulkan queues or concurrent Vulkan dispatch execution;
 - graphics/presentation support;
 - true CPU or Vulkan dispatch preemption;
-- adaptive backend selection, benchmarking, and allocator/pipeline-cache
+- adaptive backend selection, direct baseline evaluation, general event
+  tracing, Vulkan timestamp-query utilization, and allocator/pipeline-cache
   optimization.
 
 When a requested change approaches one of these boundaries, explain the scope

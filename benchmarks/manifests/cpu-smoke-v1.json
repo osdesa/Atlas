@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "experiment_id": "cpu-smoke",
+  "seeds": [42],
+  "warmup_runs": 1,
+  "repetitions": 2,
+  "worker_count": 2,
+  "policy": { "type": "static_priority" },
+  "workload": {
+    "cpu": { "task_count": 8, "iterations": 10000 },
+    "gpu": {
+      "task_count": 0,
+      "workgroups": { "x": 1, "y": 1, "z": 1 },
+      "slice_workgroups": null
+    },
+    "dependencies": { "shape": "layered", "layers": 2 },
+    "priorities": { "assignment": "cycle", "values": [0, 10, 20] },
+    "bursts": { "count": 2 }
+  }
+}

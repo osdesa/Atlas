@@ -25,9 +25,12 @@ The current implementation can:
   work-unit boundaries while draining work already accepted;
 - select ready work through interchangeable FIFO, configurable work-unit
   round-robin, or stable static-priority policies;
-- measure per-task ready-set wait and same-resource selection bypasses; and
-- record lifecycle state, exceptions, payload duration, and work-unit progress
-  alongside graph-level logical completion count and elapsed time.
+- measure per-task ready-set wait, response duration, and same-resource
+  selection bypasses;
+- record scheduler-active and uncontested slice-switch durations alongside
+  graph-level logical completion count and elapsed time; and
+- run versioned deterministic CPU/Vulkan benchmark manifests with warmups,
+  repetitions, generated DAGs, and JSON Lines/CSV export.
 
 The CPU CLI runs the same 17-task sensor pipeline through the synchronous and
 four-thread worker-pool executors and compares their output. Opt-in Vulkan
@@ -36,8 +39,9 @@ graph that reports logical work-unit progress.
 
 Atlas does **not** yet provide runtime task submission, repeated graph
 execution, dynamic priority or starvation mitigation, multiple Vulkan queues,
-true active-dispatch preemption, or a benchmarking framework. Static-priority
-starvation exposure is measurable, but Atlas does not claim to prevent it.
+true active-dispatch preemption, direct baseline comparisons, full event
+tracing, or Vulkan timestamp-query utilization. Static-priority starvation
+exposure is measurable, but Atlas does not claim to prevent it.
 
 ## Task model and lifecycle
 
@@ -66,6 +70,12 @@ again after every incomplete sliced work unit. It excludes dependency-blocked
 time, executor queueing, and payload execution. `selectionBypassCount` records
 each selection of another valid candidate while the task remains ready or
 paused in that same resource set.
+
+`responseDuration` measures from first scheduler-observed readiness through a
+terminal outcome. `SchedulerResult` also records control-thread active time and
+uncontested immediate sliced-GPU turnaround samples. See the
+[Milestone 10 design](docs/milestone-10-benchmarking-framework.md) for the
+benchmark schemas, metric formulas, and availability rules.
 
 Schedulers own state changes; `Task` does not validate a universal transition
 matrix. `KahnScheduler::execute()` is a single control-thread operation even
@@ -102,7 +112,8 @@ for cooperative intervention and starvation-exposure measurements.
 - Mesa Lavapipe and Vulkan validation layers for Linux integration execution
 
 The first test-enabled configure downloads Catch2 v3.8.1 through CMake
-`FetchContent`.
+`FetchContent`. Benchmark-enabled configurations similarly download the pinned
+nlohmann/json parser release.
 
 ## Build and test
 
@@ -147,6 +158,13 @@ ctest --preset dev-linux
 cmake --preset vulkan-integration-linux
 cmake --build --preset vulkan-integration-linux
 ctest --preset vulkan-integration-linux
+
+cmake --preset benchmark-linux
+cmake --build --preset benchmark-linux
+ctest --preset benchmark-linux
+./build/benchmark-linux/apps/atlas_bench/atlas_bench \
+  --manifest benchmarks/manifests/mixed-sliced-smoke-v1.json \
+  --output-dir build/benchmark-linux/results
 ```
 
 The generic `dev` preset uses the same Ninja-based development settings and is
@@ -159,8 +177,10 @@ also suitable on Linux.
 - `atlas_vulkan_example`: opt-in standalone Vulkan vector addition
 - `atlas_mixed_example`: opt-in CPU/Vulkan dependency graph
 - `atlas_all_example`: opt-in runner that executes all three examples in sequence
+- `atlas_bench`: opt-in versioned manifest benchmark runner
 - `atlas_unit_tests`: Catch2 unit-test executable discovered by CTest
 - `atlas_feature_tests`: Catch2 feature-test executable discovered by CTest
+- `atlas_benchmark_tests`: opt-in benchmark schema, generation, and metric tests
 
 ## CMake options
 
@@ -168,6 +188,8 @@ also suitable on Linux.
 | --- | --- | --- |
 | `ATLAS_BUILD_TESTS` | `ON` | Build and register the unit and feature tests |
 | `ATLAS_BUILD_VULKAN_INTEGRATION_TESTS` | `OFF` | Build shaders, examples, and real Vulkan integration tests |
+| `ATLAS_BUILD_BENCHMARKS` | `OFF` | Build `atlas_bench` and its benchmark contract tests |
+| `ATLAS_BENCHMARK_ENABLE_VULKAN` | `OFF` | Compile the benchmark shader and enable real GPU workloads; requires benchmark builds |
 | `ATLAS_WARNINGS_AS_ERRORS` | `OFF` | Promote warnings on Atlas-owned targets to errors with non-MSVC toolchains |
 | `ATLAS_ENABLE_SANITIZERS` | `OFF` | Enable AddressSanitizer and UndefinedBehaviorSanitizer on compatible non-Windows GCC/Clang builds |
 | `ATLAS_ENABLE_THREAD_SANITIZER` | `OFF` | Enable ThreadSanitizer on compatible non-Windows GCC/Clang builds; mutually exclusive with ASan/UBSan |

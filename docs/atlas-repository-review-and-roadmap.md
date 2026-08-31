@@ -4,7 +4,7 @@
 
 Atlas is a healthy, well-tested heterogeneous scheduling prototype. The latest
 fully completed milestone, using the numbering in the review brief, is
-**Milestone 9: Preemptive-style priority scheduling**.
+**Milestone 10: Reproducible benchmarking framework**.
 
 Milestones 1–9 are implemented, connected to executable paths, and meaningfully
 tested. Atlas currently provides:
@@ -23,9 +23,9 @@ dependency completion. Deterministic and real-Vulkan tests prove
 unit progress, and exact finite-backlog bypass counts. Runtime graph admission
 and starvation mitigation remain intentionally deferred.
 
-The foundation is sound. No critical correctness defect was found. The
-next objective should be **Milestone 10: a reproducible benchmarking framework**
-built on the ready-set measurements completed here. General runtime graph
+The foundation is sound. No critical correctness defect was found. The next
+objective should be **Milestone 11: baseline comparisons** using the versioned
+manifests and machine-readable results now implemented. General runtime graph
 mutation should remain deferred.
 
 No source files were modified during the initial review. This document was
@@ -85,7 +85,8 @@ It was not modified.
   all validation checks without hard-coding an ICD path in Atlas.
 - Remote GitHub Actions results were not queried; the workflow itself was
   inspected.
-- No benchmark target exists, so no benchmark suite could be run.
+- The later Milestone 10 implementation added CPU and real-Vulkan smoke
+  experiments; the original review validation predates those targets.
 
 ## 3. Milestone status
 
@@ -100,7 +101,7 @@ It was not modified.
 | 7. Unified CPU/GPU scheduling | **Complete and well tested** | Independent CPU/GPU capacities, shared attributed completion channel, backend-neutral policies, mixed dependency graph and real CPU-to-Vulkan-to-CPU test. | Multiple GPU queues are intentionally absent. |
 | 8. Multiple scheduling policies | **Complete and well tested** | FIFO, configurable work-unit round-robin, static priority, independent per-backend clones, stable ties, error handling, and real sliced execution with every policy. | Weighted fair, SJF, and EDF remain future policies. |
 | 9. Preemptive-style priority scheduling | **Complete and well tested** | Ready-wait and same-resource bypass measurements, controlled dependency-driven intervention, exact finite-backlog accounting, and real-Vulkan low/high/low order. | Priority aging, runtime graph admission, and active-dispatch interruption remain explicitly deferred. |
-| 10. Benchmarking framework | **Not started** | No benchmark target, experiment schema, metric collector, or reproducible workload runner. | All listed metrics and configurable workload categories. |
+| 10. Benchmarking framework | **Complete and well tested** | Opt-in cross-platform runner, strict version-one manifests, deterministic generated DAGs, warmups/repetitions, fresh graphs, scalar timing, JSONL/CSV export, CPU CI, and real Lavapipe smoke execution. | Vulkan timestamp utilization and general events remain Milestone 12 work and are explicitly unavailable in the result schema. |
 | 11. Baseline comparisons | **Scaffolding only** | Direct Vulkan and scheduled examples plus all three policies provide paths that could become baselines. | Common workload generation, repeated trials, normalization, result export, and comparison analysis. |
 | 12. Profiling and visualisation | **Scaffolding only** | Per-task execution duration, ready wait, selection bypasses, and work-unit progress exist. | Machine-readable events, executor queue timestamps, worker activity, GPU timestamps, traces, and timeline tooling. |
 | 13. Adaptive scheduling | **Not started** | No adaptive policy or feedback path. | Queue/latency/utilization feedback, bounded adaptation, evaluation, and stability controls. |
@@ -298,9 +299,23 @@ priority, and cancellation semantics remain unchanged.
 7. Updated README, lifecycle, scheduling-policy, development, index, UML/Doxygen
    inputs, and current-status metadata.
 
-### Roadmap after Milestone 9
+### Milestone 10 implementation completed
 
-1. **Milestone 10 — Benchmarking framework**
+1. Added opt-in Windows CPU and Linux CPU/Vulkan benchmark presets plus the
+   separate `atlas_bench` target.
+2. Added strict version-one manifests, pinned nlohmann/json parsing, checked
+   schemas, deterministic DAG/resource/priority/burst generation, and fresh
+   graphs for every warmup and repetition.
+3. Added task response, scheduler-active, and uncontested slice-switch scalar
+   measurements without introducing the event stream reserved for Milestone 12.
+4. Added JSON Lines, graph CSV, task CSV, resolved-manifest output, correctness
+   checks, and explicit unavailable GPU timestamp fields.
+5. Added benchmark contract tests and CPU/real-Lavapipe smoke experiments with
+   no performance thresholds.
+
+### Roadmap after Milestone 10
+
+1. **Milestone 10 — Benchmarking framework (implemented)**
    - Add a separate `atlas_bench` target.
    - Use versioned JSON experiment manifests with a pinned parser dependency.
    - Configure seeds, warmups, repetitions, CPU/GPU task counts, dependency
@@ -387,15 +402,15 @@ cooperative execution slices.”
 | Implemented multiple scheduling policies. | **Supported** | FIFO, round-robin, static priority, custom policy interface, stable behavior, failure handling, and tests with every built-in policy. |
 | Implemented preemptive-style GPU scheduling through cooperative slices. | **Supported** | Sliced dispatches pause and resume between independent Vulkan submissions, including priority intervention. The wording must retain “preemptive-style” and “cooperative”; claiming hardware or active-dispatch preemption would be misleading. |
 | Built a Vulkan compute backend. | **Supported** | RAII runtime/resources, pipelines, buffers, transfers, synchronization, dispatch-base slicing, validation layers, and real Lavapipe output. |
-| Built an automated benchmarking framework. | **Not yet supported** | Requires the Milestone 10 configurable runner, metric schema, repetitions, and machine-readable results. The current CLI timer is not sufficient. |
-| Evaluated latency, throughput, fairness, and scheduling overhead. | **Not yet supported** | Requires Milestones 10–11, reproducible workloads, instrumentation, baseline comparisons, stored data, and analysis. |
+| Built an automated benchmarking framework. | **Supported** | `atlas_bench` provides strict manifests, deterministic workloads, warmups, repetitions, scalar metrics, and versioned JSONL/CSV output. |
+| Evaluated latency, throughput, fairness, and scheduling overhead. | **Not yet supported as a research conclusion** | The framework records these scalar metrics, but comparable stored experiments, uncertainty, and analysis still require Milestones 11 and 15. |
 
 ## 10. Final recommendation
 
-- **Single next technical objective:** build Milestone 10's reproducible
-  benchmarking framework on the completed ready-set measurements.
-- **First implementation task:** define the versioned experiment manifest and
-  per-run machine-readable result schema before selecting a parser dependency.
+- **Single next technical objective:** run Milestone 11 baseline comparisons
+  through identical versioned workloads and retain raw results with uncertainty.
+- **First implementation task:** define the baseline experiment matrix without
+  changing the completed manifest and result schema casually.
 - **Main design mistake to avoid:** making finalised graphs dynamically mutable
   merely to simulate arrival. For this milestone, use dependency-driven
   `Blocked -> Ready` transitions and preserve the one-execution graph contract.

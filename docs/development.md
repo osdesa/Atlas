@@ -19,8 +19,12 @@ The repository separates tasking, scheduling, CPU execution, and Vulkan compute:
   integration preset and verify standalone and graph-integrated compute.
 - `atlas_all_example` runs `atlas_cli`, `atlas_vulkan_example`, and
   `atlas_mixed_example` in sequence, stopping when one fails.
+- `atlas_bench` is an opt-in manifest-driven benchmark runner. Its private
+  support library owns JSON parsing, workload generation, metrics, and export.
 - `atlas_unit_tests` and `atlas_feature_tests` link to `Atlas::Atlas` and Catch2.
   `catch_discover_tests` registers their test cases with CTest.
+- `atlas_benchmark_tests` is created only with benchmark builds and validates
+  schema, generator, and metric contracts.
 
 The Vulkan SDK is discovered with `find_package(Vulkan REQUIRED)` and is a
 public link dependency because `VulkanError` exposes `VkResult`. Integration
@@ -76,8 +80,9 @@ executor.
 Identity, variant-backed CPU/ordinary Vulkan/sliced Vulkan work, and options are
 immutable. `TaskExecutionInfo` groups the logically mutable lifecycle state,
 captured exception, accumulated payload and ready-wait durations, selection
-bypass count, and completed/total work-unit counts so the scheduler control
-thread can update them through that otherwise read-only view. Retaining a
+bypass count, first-ready response duration, and completed/total work-unit
+counts so the scheduler control thread can update them through that otherwise
+read-only view. Retaining a
 returned `shared_ptr` extends the task object's lifetime beyond the graph, so
 callers must not infer a strict non-owning lifetime from the graph-owned
 description.
@@ -101,6 +106,13 @@ Cancellation closes the affected interval, and scheduler termination closes all
 intervals left open by fail-stop behavior. Ready-wait excludes blocked time,
 executor queueing, and payload execution. Bypass counts expose strict-priority
 starvation without changing immutable priorities or adding aging.
+
+The same helper records response duration from first readiness to a terminal
+outcome. A separate scalar timing helper measures scheduler control work while
+excluding executor calls and blocking waits, and samples slice turnaround only
+when the same incomplete GPU task is immediately selected again. These fields
+support benchmarking without introducing the general event stream deferred to
+Milestone 12.
 
 Tasks are `Unknown` during graph construction. Successful finalisation assigns
 `Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns
@@ -160,6 +172,8 @@ independent configurations.
 | `asan-ubsan-linux` | Ninja/Clang | Debug | Full ASan/UBSan suite |
 | `tsan-linux` | Ninja/Clang | Debug | Labelled concurrency suite under TSan |
 | `vulkan-integration-linux` | Ninja/GCC | Debug | GLSL/SPIR-V build and real compute through Lavapipe |
+| `benchmark-windows` | Visual Studio/MSVC | Release | CPU benchmark runner and contract tests |
+| `benchmark-linux` | Ninja/GCC | Release | CPU/Vulkan benchmark runner, shader, and contract tests |
 
 Each configure preset has a build and test preset with the same name:
 
@@ -171,6 +185,25 @@ ctest --preset dev-linux
 
 Use `cmake --list-presets=all` to inspect presets available on the current
 platform.
+
+## Benchmark development
+
+`ATLAS_BUILD_BENCHMARKS` adds `atlas_bench` and pins nlohmann/json only for the
+benchmark targets. `ATLAS_BENCHMARK_ENABLE_VULKAN` adds the checked benchmark
+shader through `atlas_compile_shader`; it is enabled by `benchmark-linux` and
+disabled by `benchmark-windows`.
+
+Manifest parsing is strict: unknown fields, unsupported versions, invalid
+policy-specific fields, dimensions, and overflow are errors. Workloads use
+deterministic observable CPU integer work and a reusable 3D Vulkan buffer
+transform. Setup and correctness verification are outside scheduler timing.
+Each repetition reconstructs a graph but reuses drained executors and warmed
+Vulkan resources.
+
+Results consist of a resolved manifest, one JSON object per measured run, a
+graph-level CSV table, and a task-level CSV table. Existing files are preserved
+unless the caller passes `--overwrite`. Do not add performance thresholds to CI
+until later evaluation has characterized variance.
 
 ## Sanitizers
 

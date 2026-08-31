@@ -8,8 +8,9 @@ Kahn scheduler. Tasks carry optional names, static priorities, and
 backend-neutral CPU/GPU resource intent. Vulkan work may be one ordinary
 dispatch or a logical dispatch divided into deterministic work units. Execution
 records lifecycle state, exceptions, accumulated payload and ready-wait
-durations, same-resource selection bypasses, work-unit progress, logical
-completed-task count, and total elapsed time.
+durations, first-ready response duration, same-resource selection bypasses,
+work-unit progress, scheduler-active and immediate slice-switch durations,
+logical completed-task count, and total elapsed time.
 
 The scheduler uses interchangeable FIFO, configurable work-unit round-robin,
 and stable static-priority selection with a single control thread. Explicit CPU
@@ -29,7 +30,10 @@ interleaving without claiming to interrupt an active Vulkan dispatch.
 Graphics, multiple queues, public pause/resume, dynamic priorities, starvation
 mitigation, runtime graph submission, repeated execution, and true Vulkan
 dispatch preemption remain deferred. Strict-priority starvation exposure is
-measured without changing the policy.
+measured without changing the policy. An opt-in benchmark runner now executes
+versioned generated workloads and exports JSON Lines plus normalized CSV;
+direct baselines, event tracing, and Vulkan timestamp utilization remain later
+milestones.
 
 The Vulkan backend and mixed CPU/GPU scheduling design is recorded in the
 [Milestones 4 and 5 Vulkan roadmap](milestone-4-5-vulkan-roadmap.md).
@@ -39,6 +43,8 @@ Interchangeable selection and failure semantics are specified in the
 [Milestone 7 design](milestone-7-scheduling-policies.md).
 Cooperative priority intervention and ready-set observability are specified in
 the [Milestone 9 design](milestone-9-preemptive-style-priority-scheduling.md).
+The reproducible manifest, measurement, and result contracts are specified in
+the [Milestone 10 design](milestone-10-benchmarking-framework.md).
 
 ## API documentation
 

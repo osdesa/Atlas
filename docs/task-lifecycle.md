@@ -81,6 +81,26 @@ These statistics expose finite and unbounded starvation pressure; they do not
 alter selection. Priorities remain immutable and strict, with no aging or
 starvation mitigation.
 
+## Response and scheduler timing
+
+`TaskExecutionInfo::responseDuration` starts with the first scheduler-observed
+ready interval and closes when that task reaches `Success`, `Failure`, or
+`Cancelled`. It includes all later ready intervals, executor submission and
+queueing, payload execution, and sliced-task resumptions. It excludes time spent
+`Blocked` before first readiness. A task that never becomes ready or never
+reaches a terminal outcome retains an empty response duration.
+
+`SchedulerResult::schedulerActiveDuration` accumulates graph parsing, policy
+selection, completion validation, dependency release, cancellation, and
+lifecycle bookkeeping. Timing pauses around executor submission calls and
+blocking completion waits, so the value is a scheduler-control measurement
+rather than graph elapsed time and may overlap backend execution.
+
+`immediateSliceSwitchDuration` and `immediateSliceSwitchCount` cover only an
+incomplete GPU task that is the next GPU task accepted for execution. Selecting
+another GPU task invalidates that transition's sample. This keeps isolated
+slice-turnaround measurements separate from intentional policy intervention.
+
 ## Work-unit progress and attribution
 
 Ordinary CPU and GPU tasks have one work unit. A `SlicedVulkanDispatch` reports
@@ -161,3 +181,5 @@ writer of `TaskExecutionInfo`.
   preempted.
 - Graphics, multiple queues, adaptive backend selection, and general
   cancellation tokens remain unavailable.
+- Full event tracing and Vulkan timestamp-query utilization remain unavailable;
+  benchmark GPU busy time is host observed.

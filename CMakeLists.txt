@@ -17,6 +17,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(ATLAS_BUILD_TESTS "Build Atlas tests" ON)
 option(ATLAS_BUILD_DOCUMENTATION "Build Atlas API documentation with Doxygen" OFF)
 option(ATLAS_BUILD_VULKAN_INTEGRATION_TESTS "Build tests that execute Vulkan compute work" OFF)
+option(ATLAS_BUILD_BENCHMARKS "Build the reproducible Atlas benchmark runner" OFF)
+option(ATLAS_BENCHMARK_ENABLE_VULKAN "Enable real Vulkan workloads in atlas_bench" OFF)
 option(ATLAS_WARNINGS_AS_ERRORS "Treat compiler warnings in Atlas targets as errors on non-MSVC toolchains" OFF)
 option(ATLAS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer for Atlas targets" OFF)
 option(ATLAS_ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer for Atlas targets" OFF)
@@ -32,6 +34,30 @@ include(StaticAnalysis)
 
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
+
+if(ATLAS_BENCHMARK_ENABLE_VULKAN AND NOT ATLAS_BUILD_BENCHMARKS)
+    message(FATAL_ERROR "ATLAS_BENCHMARK_ENABLE_VULKAN requires ATLAS_BUILD_BENCHMARKS")
+endif()
+
+if(ATLAS_BUILD_BENCHMARKS)
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+        URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+
+    if(ATLAS_BENCHMARK_ENABLE_VULKAN)
+        include(VulkanShaders)
+        atlas_compile_shader(
+            atlas_benchmark_shader
+            "${CMAKE_CURRENT_SOURCE_DIR}/apps/atlas_bench/shaders/benchmark.comp"
+            ATLAS_BENCHMARK_SPIRV
+        )
+    endif()
+endif()
 
 file(
     GLOB_RECURSE ATLAS_SOURCES
@@ -89,6 +115,9 @@ if(ATLAS_BUILD_VULKAN_INTEGRATION_TESTS)
 endif()
 
 add_subdirectory(apps/atlas_cli)
+if(ATLAS_BUILD_BENCHMARKS)
+    add_subdirectory(apps/atlas_bench)
+endif()
 if(ATLAS_BUILD_VULKAN_INTEGRATION_TESTS)
     add_subdirectory(apps/atlas_vulkan_example)
     add_subdirectory(apps/atlas_mixed_example)
