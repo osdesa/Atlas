@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "suite_id": "baseline-canonical",
+  "seeds": [11, 23, 37, 53, 71, 89, 107, 131, 157, 191],
+  "warmup_runs": 2,
+  "repetitions": 10,
+  "worker_count": 4,
+  "cases": [
+    {
+      "case_id": "cpu-short-independent",
+      "workload": {
+        "cpu": { "task_count": 64, "iterations": 100000 },
+        "gpu": { "task_count": 0, "workgroups": { "x": 1, "y": 1, "z": 1 } },
+        "dependencies": { "shape": "independent" },
+        "priorities": { "assignment": "cycle", "values": [0] },
+        "bursts": { "count": 1 }
+      },
+      "reference_variant": "direct",
+      "variants": [
+        { "variant_id": "direct", "execution": "direct" },
+        { "variant_id": "fifo-unsliced", "execution": "scheduled", "policy": { "type": "fifo" }, "slice_workgroups": null }
+      ]
+    },
+    {
+      "case_id": "cpu-long-priority-bursty",
+      "workload": {
+        "cpu": { "task_count": 32, "iterations": 5000000 },
+        "gpu": { "task_count": 0, "workgroups": { "x": 1, "y": 1, "z": 1 } },
+        "dependencies": { "shape": "layered", "layers": 4 },
+        "priorities": { "assignment": "random", "values": [0, 10, 100] },
+        "bursts": { "count": 4 }
+      },
+      "reference_variant": "direct",
+      "variants": [
+        { "variant_id": "direct", "execution": "direct" },
+        { "variant_id": "fifo-unsliced", "execution": "scheduled", "policy": { "type": "fifo" }, "slice_workgroups": null },
+        { "variant_id": "priority-unsliced", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": null }
+      ]
+    },
+    {
+      "case_id": "gpu-short-independent",
+      "workload": {
+        "cpu": { "task_count": 0, "iterations": 0 },
+        "gpu": { "task_count": 16, "workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        "dependencies": { "shape": "independent" },
+        "priorities": { "assignment": "cycle", "values": [0] },
+        "bursts": { "count": 1 }
+      },
+      "reference_variant": "direct",
+      "variants": [
+        { "variant_id": "direct", "execution": "direct" },
+        { "variant_id": "fifo-unsliced", "execution": "scheduled", "policy": { "type": "fifo" }, "slice_workgroups": null },
+        { "variant_id": "rr-s1024-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s1024-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s1024-q4", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 4 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s256-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 256, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s256-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 256, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s256-q4", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 4 }, "slice_workgroups": { "x": 256, "y": 1, "z": 1 } }
+      ]
+    },
+    {
+      "case_id": "gpu-long-contention",
+      "workload": {
+        "cpu": { "task_count": 0, "iterations": 0 },
+        "gpu": { "task_count": 12, "workgroups": { "x": 65535, "y": 16, "z": 1 } },
+        "dependencies": { "shape": "independent" },
+        "priorities": { "assignment": "random", "values": [0, 10, 100] },
+        "bursts": { "count": 4 }
+      },
+      "reference_variant": "direct",
+      "variants": [
+        { "variant_id": "direct", "execution": "direct" },
+        { "variant_id": "fifo-unsliced", "execution": "scheduled", "policy": { "type": "fifo" }, "slice_workgroups": null },
+        { "variant_id": "priority-unsliced", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": null },
+        { "variant_id": "rr-s16384x4-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 16384, "y": 4, "z": 1 } },
+        { "variant_id": "rr-s16384x4-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 16384, "y": 4, "z": 1 } },
+        { "variant_id": "rr-s16384x4-q4", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 4 }, "slice_workgroups": { "x": 16384, "y": 4, "z": 1 } },
+        { "variant_id": "rr-s4096x2-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "rr-s4096x2-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "rr-s4096x2-q4", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 4 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "priority-s16384x4", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": { "x": 16384, "y": 4, "z": 1 } },
+        { "variant_id": "priority-s4096x2", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } }
+      ]
+    },
+    {
+      "case_id": "mixed-balanced-layered",
+      "workload": {
+        "cpu": { "task_count": 24, "iterations": 1000000 },
+        "gpu": { "task_count": 8, "workgroups": { "x": 16384, "y": 4, "z": 1 } },
+        "dependencies": { "shape": "layered", "layers": 4 },
+        "priorities": { "assignment": "cycle", "values": [0] },
+        "bursts": { "count": 1 }
+      },
+      "reference_variant": "direct",
+      "variants": [
+        { "variant_id": "direct", "execution": "direct" },
+        { "variant_id": "fifo-unsliced", "execution": "scheduled", "policy": { "type": "fifo" }, "slice_workgroups": null },
+        { "variant_id": "rr-s4096x2-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "rr-s4096x2-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "rr-s4096x2-q4", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 4 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "rr-s1024-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s1024-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s1024-q4", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 4 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } }
+      ]
+    },
+    {
+      "case_id": "mixed-priority-bursty",
+      "workload": {
+        "cpu": { "task_count": 24, "iterations": 1000000 },
+        "gpu": { "task_count": 12, "workgroups": { "x": 16384, "y": 4, "z": 1 } },
+        "dependencies": { "shape": "random", "edge_probability": 0.15 },
+        "priorities": { "assignment": "random", "values": [0, 10, 100] },
+        "bursts": { "count": 4 }
+      },
+      "reference_variant": "direct",
+      "variants": [
+        { "variant_id": "direct", "execution": "direct" },
+        { "variant_id": "fifo-unsliced", "execution": "scheduled", "policy": { "type": "fifo" }, "slice_workgroups": null },
+        { "variant_id": "priority-unsliced", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": null },
+        { "variant_id": "rr-s4096x2-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "rr-s4096x2-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "rr-s4096x2-q4", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 4 }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "rr-s1024-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s1024-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s1024-q4", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 4 }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } },
+        { "variant_id": "priority-s4096x2", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": { "x": 4096, "y": 2, "z": 1 } },
+        { "variant_id": "priority-s1024", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": { "x": 1024, "y": 1, "z": 1 } }
+      ]
+    }
+  ]
+}

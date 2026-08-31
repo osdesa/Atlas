@@ -1,11 +1,21 @@
 set(
     ATLAS_BENCHMARK_SUPPORT_SOURCES
+    BaselineAnalysis.cpp
+    BaselineAnalysis.h
+    BaselineConfig.cpp
+    BaselineConfig.h
+    BaselineRunner.cpp
+    BaselineRunner.h
+    BaselineWriter.cpp
+    BaselineWriter.h
     BenchmarkConfig.cpp
     BenchmarkConfig.h
     BenchmarkMetrics.cpp
     BenchmarkMetrics.h
     BenchmarkRunner.cpp
     BenchmarkRunner.h
+    DirectBenchmarkRunner.cpp
+    DirectBenchmarkRunner.h
     ResultWriter.cpp
     ResultWriter.h
     WorkloadGenerator.cpp
@@ -36,7 +46,9 @@ target_compile_definitions(
         ATLAS_BENCHMARK_GIT_REVISION="${ATLAS_BENCHMARK_GIT_REVISION}"
         ATLAS_BENCHMARK_COMPILER="${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}"
         ATLAS_BENCHMARK_BUILD_TYPE="$<CONFIG>"
+        ATLAS_BENCHMARK_CMAKE_VERSION="${CMAKE_VERSION}"
         ATLAS_BENCHMARK_SYSTEM="${CMAKE_SYSTEM_NAME}"
+        ATLAS_BENCHMARK_SYSTEM_PROCESSOR="${CMAKE_SYSTEM_PROCESSOR}"
 )
 
 if(ATLAS_BENCHMARK_ENABLE_VULKAN)

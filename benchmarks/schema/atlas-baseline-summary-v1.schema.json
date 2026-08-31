@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-baseline-summary-v1.schema.json",
+  "title": "Atlas baseline comparison summary version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary_schema_version", "suite_id", "environment", "analysis", "cases"],
+  "properties": {
+    "summary_schema_version": { "const": 1 },
+    "suite_id": { "type": "string", "minLength": 1 },
+    "environment": { "$ref": "atlas-baseline-run-v1.schema.json#/$defs/environment" },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confidence_level", "bootstrap_resamples", "method"],
+      "properties": {
+        "confidence_level": { "const": 0.95 },
+        "bootstrap_resamples": { "const": 10000 },
+        "method": { "const": "deterministic_hierarchical_percentile_bootstrap" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "reference_variant_id", "variants", "comparisons"],
+        "properties": {
+          "case_id": { "type": "string", "minLength": 1 },
+          "reference_variant_id": { "type": "string", "minLength": 1 },
+          "variants": { "type": "array", "items": { "$ref": "#/$defs/variant_summary" } },
+          "comparisons": { "type": "array", "items": { "$ref": "#/$defs/comparison" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "optional_number": { "type": ["number", "null"] },
+    "interval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lower", "upper"],
+      "properties": { "lower": { "$ref": "#/$defs/optional_number" }, "upper": { "$ref": "#/$defs/optional_number" } }
+    },
+    "direction": { "enum": ["lower_is_better", "higher_is_better", "descriptive"] },
+    "absolute_metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "direction", "sample_count", "mean", "confidence_interval"],
+      "properties": {
+        "metric": { "type": "string", "minLength": 1 },
+        "direction": { "$ref": "#/$defs/direction" },
+        "sample_count": { "type": "integer", "minimum": 0 },
+        "mean": { "$ref": "#/$defs/optional_number" },
+        "confidence_interval": { "$ref": "#/$defs/interval" }
+      }
+    },
+    "variant_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variant_id", "execution", "metrics"],
+      "properties": {
+        "variant_id": { "type": "string", "minLength": 1 },
+        "execution": { "enum": ["direct", "scheduled"] },
+        "metrics": { "type": "array", "items": { "$ref": "#/$defs/absolute_metric" } }
+      }
+    },
+    "paired_metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "direction", "paired_sample_count", "mean_difference", "difference_confidence_interval", "percent_sample_count", "mean_percent_change", "percent_confidence_interval"],
+      "properties": {
+        "metric": { "type": "string", "minLength": 1 },
+        "direction": { "$ref": "#/$defs/direction" },
+        "paired_sample_count": { "type": "integer", "minimum": 0 },
+        "mean_difference": { "$ref": "#/$defs/optional_number" },
+        "difference_confidence_interval": { "$ref": "#/$defs/interval" },
+        "percent_sample_count": { "type": "integer", "minimum": 0 },
+        "mean_percent_change": { "$ref": "#/$defs/optional_number" },
+        "percent_confidence_interval": { "$ref": "#/$defs/interval" }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variant_id", "reference_variant_id", "metrics"],
+      "properties": {
+        "variant_id": { "type": "string", "minLength": 1 },
+        "reference_variant_id": { "type": "string", "minLength": 1 },
+        "metrics": { "type": "array", "items": { "$ref": "#/$defs/paired_metric" } }
+      }
+    }
+  }
+}

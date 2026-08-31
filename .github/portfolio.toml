@@ -20,6 +20,7 @@ highlights = [
   "Scheduled explicit CPU and GPU tasks through independent capacities and one shared attributed completion channel.",
   "Verified standalone and mixed compute through Mesa Lavapipe with checked GLSL-to-SPIR-V builds.",
   "Built a versioned reproducible benchmark runner with deterministic CPU/Vulkan DAGs and JSON Lines/CSV metrics.",
+  "Compared direct and scheduled policy/slicing variants with paired deterministic confidence intervals.",
 ]
 
 show_repository = true

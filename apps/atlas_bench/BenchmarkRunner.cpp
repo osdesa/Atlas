@@ -280,12 +280,14 @@ namespace Atlas::Benchmark
 #endif
             }
 
-            RunRecord record{ manifest.experimentId, seed, repetition, result, std::move(tasks), {}, std::nullopt, std::nullopt };
+            RunRecord record{ manifest.experimentId, seed,         repetition,  result, std::move(tasks), {},
+                              std::nullopt,          std::nullopt, std::nullopt };
 #if ATLAS_BENCHMARK_VULKAN_ENABLED
             if (gpuResources != nullptr)
             {
                 record.gpuDeviceName = gpuResources->runtime.deviceInfo().name;
                 record.gpuApiVersion = gpuResources->runtime.deviceInfo().apiVersion;
+                record.gpuDeviceType = static_cast<std::uint32_t>(gpuResources->runtime.deviceInfo().type);
             }
 #endif
             record.metrics = calculateMetrics(record.schedulerResult, record.tasks, manifest.workerCount);
@@ -335,5 +337,11 @@ namespace Atlas::Benchmark
     BenchmarkBatch BenchmarkRunner::run()
     {
         return implementation->run();
+    }
+
+    RunRecord BenchmarkRunner::runSingle(const std::uint64_t seed, const std::size_t repetition)
+    {
+        const std::vector<TaskDescriptor> descriptors{ generateWorkload(implementation->manifest, seed) };
+        return implementation->executeOne(seed, repetition, descriptors);
     }
 } // namespace Atlas::Benchmark

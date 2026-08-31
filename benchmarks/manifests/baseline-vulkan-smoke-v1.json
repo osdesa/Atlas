@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "suite_id": "baseline-vulkan-smoke",
+  "seeds": [2026],
+  "warmup_runs": 1,
+  "repetitions": 2,
+  "worker_count": 2,
+  "cases": [
+    {
+      "case_id": "mixed-sliced",
+      "workload": {
+        "cpu": { "task_count": 4, "iterations": 10000 },
+        "gpu": { "task_count": 3, "workgroups": { "x": 8, "y": 2, "z": 1 } },
+        "dependencies": { "shape": "independent" },
+        "priorities": { "assignment": "cycle", "values": [0, 5] },
+        "bursts": { "count": 2 }
+      },
+      "reference_variant": "direct",
+      "variants": [
+        { "variant_id": "direct", "execution": "direct" },
+        { "variant_id": "fifo-unsliced", "execution": "scheduled", "policy": { "type": "fifo" }, "slice_workgroups": null },
+        { "variant_id": "priority-unsliced", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": null },
+        { "variant_id": "rr-s3-q1", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 1 }, "slice_workgroups": { "x": 3, "y": 1, "z": 1 } },
+        { "variant_id": "rr-s3-q2", "execution": "scheduled", "policy": { "type": "round_robin", "quantum": 2 }, "slice_workgroups": { "x": 3, "y": 1, "z": 1 } },
+        { "variant_id": "priority-s3", "execution": "scheduled", "policy": { "type": "static_priority" }, "slice_workgroups": { "x": 3, "y": 1, "z": 1 } }
+      ]
+    }
+  ]
+}

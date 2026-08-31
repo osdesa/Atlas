@@ -10,7 +10,7 @@ finalises directed acyclic task graphs, executes CPU work through synchronous or
 worker-pool executors, executes declarative Vulkan compute dispatches, and can
 schedule mixed CPU/GPU graphs with independent backend capacities.
 
-Milestones 4 through 10 introduced the Vulkan backend, mixed scheduling,
+Milestones 4 through 11 introduced the Vulkan backend, mixed scheduling,
 cooperative dispatch slicing, task cancellation, interchangeable scheduling
 policies, ready-set starvation measurements, and reproducible benchmarking.
 The current implementation includes:
@@ -30,7 +30,9 @@ The current implementation includes:
 - per-task ready-wait duration and same-resource selection-bypass accounting;
 - first-ready response, scheduler-active, and uncontested slice-switch timing;
 - an opt-in versioned manifest benchmark runner with deterministic generated
-  workloads and JSON Lines/CSV output; and
+  workloads and JSON Lines/CSV output;
+- additive direct-versus-scheduled comparison suites with normalized output,
+  environment metadata, and paired confidence intervals; and
 - standalone CPU, Vulkan, mixed, and combined examples.
 
 Read these documents before making architectural changes:
@@ -47,6 +49,8 @@ Read these documents before making architectural changes:
   intervention and ready-set measurement contracts;
 - `docs/milestone-10-benchmarking-framework.md` for manifest, metric, and result
   contracts;
+- `docs/milestone-11-baseline-comparisons.md` for direct-driver, suite,
+  uncertainty, and comparison-output contracts;
 - `docs/index.md` for the public documentation overview.
 
 ## First actions in a new session
@@ -324,7 +328,7 @@ the project scope:
 - multiple Vulkan queues or concurrent Vulkan dispatch execution;
 - graphics/presentation support;
 - true CPU or Vulkan dispatch preemption;
-- adaptive backend selection, direct baseline evaluation, general event
+- adaptive backend selection, checked final evaluation results, general event
   tracing, Vulkan timestamp-query utilization, and allocator/pipeline-cache
   optimization.
 

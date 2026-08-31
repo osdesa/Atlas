@@ -35,6 +35,14 @@ namespace Atlas::Benchmark
         /// @brief Runs every configured seed, warmup, and measured repetition.
         BenchmarkBatch run();
 
+        /**
+         * @brief Executes one measured run while retaining this runner's warmed resources.
+         * @param seed Workload and input seed.
+         * @param repetition Stable measured-repetition index.
+         * @return One complete scheduled run record.
+         */
+        RunRecord runSingle(std::uint64_t seed, std::size_t repetition);
+
         BenchmarkRunner(const BenchmarkRunner&) = delete;
         BenchmarkRunner& operator=(const BenchmarkRunner&) = delete;
         BenchmarkRunner(BenchmarkRunner&&) = delete;

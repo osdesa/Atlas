@@ -30,7 +30,10 @@ The current implementation can:
 - record scheduler-active and uncontested slice-switch durations alongside
   graph-level logical completion count and elapsed time; and
 - run versioned deterministic CPU/Vulkan benchmark manifests with warmups,
-  repetitions, generated DAGs, and JSON Lines/CSV export.
+  repetitions, generated DAGs, and JSON Lines/CSV export; and
+- compare identical generated workloads through direct topological executor
+  submission and scheduled policy/slice matrices with paired 95% confidence
+  intervals.
 
 The CPU CLI runs the same 17-task sensor pipeline through the synchronous and
 four-thread worker-pool executors and compares their output. Opt-in Vulkan
@@ -39,8 +42,8 @@ graph that reports logical work-unit progress.
 
 Atlas does **not** yet provide runtime task submission, repeated graph
 execution, dynamic priority or starvation mitigation, multiple Vulkan queues,
-true active-dispatch preemption, direct baseline comparisons, full event
-tracing, or Vulkan timestamp-query utilization. Static-priority starvation
+true active-dispatch preemption, full event tracing, Vulkan timestamp-query
+utilization, or adaptive scheduling. Static-priority starvation
 exposure is measurable, but Atlas does not claim to prevent it.
 
 ## Task model and lifecycle
@@ -76,6 +79,9 @@ terminal outcome. `SchedulerResult` also records control-thread active time and
 uncontested immediate sliced-GPU turnaround samples. See the
 [Milestone 10 design](docs/milestone-10-benchmarking-framework.md) for the
 benchmark schemas, metric formulas, and availability rules.
+See [Milestone 11 baseline comparisons](docs/milestone-11-baseline-comparisons.md)
+for direct-driver boundaries, paired execution, uncertainty, and the canonical
+policy/slicing matrix.
 
 Schedulers own state changes; `Task` does not validate a universal transition
 matrix. `KahnScheduler::execute()` is a single control-thread operation even
@@ -165,6 +171,10 @@ ctest --preset benchmark-linux
 ./build/benchmark-linux/apps/atlas_bench/atlas_bench \
   --manifest benchmarks/manifests/mixed-sliced-smoke-v1.json \
   --output-dir build/benchmark-linux/results
+
+./build/benchmark-linux/apps/atlas_bench/atlas_bench \
+  --suite benchmarks/manifests/baseline-vulkan-smoke-v1.json \
+  --output-dir build/benchmark-linux/baseline-results
 ```
 
 The generic `dev` preset uses the same Ninja-based development settings and is
@@ -177,7 +187,7 @@ also suitable on Linux.
 - `atlas_vulkan_example`: opt-in standalone Vulkan vector addition
 - `atlas_mixed_example`: opt-in CPU/Vulkan dependency graph
 - `atlas_all_example`: opt-in runner that executes all three examples in sequence
-- `atlas_bench`: opt-in versioned manifest benchmark runner
+- `atlas_bench`: opt-in versioned experiment and baseline-suite runner
 - `atlas_unit_tests`: Catch2 unit-test executable discovered by CTest
 - `atlas_feature_tests`: Catch2 feature-test executable discovered by CTest
 - `atlas_benchmark_tests`: opt-in benchmark schema, generation, and metric tests

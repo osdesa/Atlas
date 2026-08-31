@@ -20,7 +20,8 @@ The repository separates tasking, scheduling, CPU execution, and Vulkan compute:
 - `atlas_all_example` runs `atlas_cli`, `atlas_vulkan_example`, and
   `atlas_mixed_example` in sequence, stopping when one fails.
 - `atlas_bench` is an opt-in manifest-driven benchmark runner. Its private
-  support library owns JSON parsing, workload generation, metrics, and export.
+  support library owns JSON parsing, workload generation, direct comparison,
+  paired uncertainty metrics, and export.
 - `atlas_unit_tests` and `atlas_feature_tests` link to `Atlas::Atlas` and Catch2.
   `catch_discover_tests` registers their test cases with CTest.
 - `atlas_benchmark_tests` is created only with benchmark builds and validates
@@ -204,6 +205,22 @@ Results consist of a resolved manifest, one JSON object per measured run, a
 graph-level CSV table, and a task-level CSV table. Existing files are preserved
 unless the caller passes `--overwrite`. Do not add performance thresholds to CI
 until later evaluation has characterized variance.
+
+Milestone 11 adds `--suite` without changing the single-experiment path. A
+suite shares each generated logical workload across direct and scheduled
+variants, rotates measured order, and emits normalized raw records plus paired
+95% confidence summaries. The direct driver is benchmark-private: it performs
+stable topological dependency coordination over the existing executors and
+completion channel but does not construct a `TaskGraph`, invoke
+`KahnScheduler`, use a policy, or slice GPU work. It is therefore a graph and
+scheduler-overhead baseline rather than raw callable or Vulkan queue timing.
+
+`--environment-file` optionally supplements automatic build, processor, worker,
+and Vulkan metadata. Successful suites create resolved suite/environment files,
+JSONL and normalized CSV raw data, and JSON/CSV comparisons. The checked CPU and
+Vulkan suites are CI smoke checks only; `baseline-canonical-v1.json` is the
+non-CI evaluation matrix. Machine-specific result directories remain below
+ignored build output and are not committed.
 
 ## Sanitizers
 

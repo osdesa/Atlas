@@ -70,12 +70,12 @@ namespace Atlas::Benchmark
 
         Json optionalNumber(const std::optional<double> value)
         {
-            return value.has_value() ? Json{ value.value() } : Json{ nullptr };
+            return value.has_value() ? Json(value.value()) : Json(nullptr);
         }
 
         Json optionalDuration(const std::optional<std::chrono::microseconds> value)
         {
-            return value.has_value() ? Json{ value->count() } : Json{ nullptr };
+            return value.has_value() ? Json(value->count()) : Json(nullptr);
         }
 
         Json dimensionsJson(const DispatchDimensions dimensions)
@@ -112,8 +112,7 @@ namespace Atlas::Benchmark
                     { "gpu",
                       { { "task_count", manifest.gpu.taskCount },
                         { "workgroups", dimensionsJson(manifest.gpu.workgroups) },
-                        { "slice_workgroups",
-                          manifest.gpu.sliced ? dimensionsJson(manifest.gpu.sliceWorkgroups) : Json{ nullptr } } } },
+                        { "slice_workgroups", manifest.gpu.sliced ? dimensionsJson(manifest.gpu.sliceWorkgroups) : Json(nullptr) } } },
                     { "dependencies", std::move(dependencies) },
                     { "priorities",
                       { { "assignment", toString(manifest.priorities.assignment) }, { "values", manifest.priorities.values } } },
@@ -147,7 +146,7 @@ namespace Atlas::Benchmark
 
         Json runJson(const RunRecord& record, const ExperimentManifest& manifest)
         {
-            Json tasks{ Json::array() };
+            Json tasks = Json::array();
             for (const TaskMeasurement& task : record.tasks)
             {
                 tasks.push_back(taskJson(task));
@@ -165,9 +164,8 @@ namespace Atlas::Benchmark
                     { "build_type", ATLAS_BENCHMARK_BUILD_TYPE },
                     { "operating_system", ATLAS_BENCHMARK_SYSTEM },
                     { "worker_count", manifest.workerCount },
-                    { "gpu_device", record.gpuDeviceName.has_value() ? Json{ record.gpuDeviceName.value() } : Json{ nullptr } },
-                    { "gpu_api_version",
-                      record.gpuApiVersion.has_value() ? Json{ record.gpuApiVersion.value() } : Json{ nullptr } } } },
+                    { "gpu_device", record.gpuDeviceName.has_value() ? Json(record.gpuDeviceName.value()) : Json(nullptr) },
+                    { "gpu_api_version", record.gpuApiVersion.has_value() ? Json(record.gpuApiVersion.value()) : Json(nullptr) } } },
                 { "result",
                   { { "status", toString(record.schedulerResult.status) },
                     { "executed_task_count", record.schedulerResult.executedTaskCount },

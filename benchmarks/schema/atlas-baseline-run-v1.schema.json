@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-baseline-run-v1.schema.json",
+  "title": "Atlas normalized baseline run version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_schema_version", "suite_id", "case_id", "variant_id", "execution", "seed", "repetition", "execution_order", "environment", "result", "metrics", "tasks"],
+  "properties": {
+    "run_schema_version": { "const": 1 },
+    "suite_id": { "type": "string", "minLength": 1 },
+    "case_id": { "type": "string", "minLength": 1 },
+    "variant_id": { "type": "string", "minLength": 1 },
+    "execution": { "enum": ["direct", "scheduled"] },
+    "seed": { "type": "integer", "minimum": 0 },
+    "repetition": { "type": "integer", "minimum": 0 },
+    "execution_order": { "type": "integer", "minimum": 0 },
+    "environment": { "$ref": "#/$defs/environment" },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "executed_task_count", "completion_time_us", "control_active_us", "control_active_fraction"],
+      "properties": {
+        "status": { "enum": ["Success", "TaskFailed", "ExecutorUnavailable", "InvalidGraph", "GraphNotFinalised", "Cancelled", "PolicyError", "Unknown"] },
+        "executed_task_count": { "type": "integer", "minimum": 0 },
+        "completion_time_us": { "type": "integer", "minimum": 0 },
+        "control_active_us": { "type": "integer", "minimum": 0 },
+        "control_active_fraction": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["throughput_tasks_per_second", "response_latency", "ready_wait", "selection_bypass_mean", "selection_bypass_max", "immediate_slice_switch_mean_us", "cpu_busy_fraction", "gpu_host_busy_fraction", "gpu_timestamp_supported", "gpu_timestamp_busy_fraction", "cpu_jain_fairness", "gpu_jain_fairness"],
+      "properties": {
+        "throughput_tasks_per_second": { "type": "number", "minimum": 0 },
+        "response_latency": { "$ref": "#/$defs/distribution" },
+        "ready_wait": { "$ref": "#/$defs/distribution" },
+        "selection_bypass_mean": { "$ref": "#/$defs/optional_nonnegative" },
+        "selection_bypass_max": { "$ref": "#/$defs/optional_nonnegative" },
+        "immediate_slice_switch_mean_us": { "$ref": "#/$defs/optional_nonnegative" },
+        "cpu_busy_fraction": { "$ref": "#/$defs/optional_nonnegative" },
+        "gpu_host_busy_fraction": { "$ref": "#/$defs/optional_nonnegative" },
+        "gpu_timestamp_supported": { "const": false },
+        "gpu_timestamp_busy_fraction": { "type": "null" },
+        "cpu_jain_fairness": { "$ref": "#/$defs/optional_nonnegative" },
+        "gpu_jain_fairness": { "$ref": "#/$defs/optional_nonnegative" }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["index", "name", "resource", "priority", "burst", "state", "execution_us", "ready_wait_us", "response_us", "selection_bypasses", "completed_work_units", "total_work_units"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "name": { "type": "string" },
+          "resource": { "enum": ["cpu", "gpu"] },
+          "priority": { "type": "integer", "minimum": 0 },
+          "burst": { "type": "integer", "minimum": 0 },
+          "state": { "type": "string" },
+          "execution_us": { "type": "integer", "minimum": 0 },
+          "ready_wait_us": { "type": "integer", "minimum": 0 },
+          "response_us": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
+          "selection_bypasses": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
+          "completed_work_units": { "type": "integer", "minimum": 0 },
+          "total_work_units": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "optional_nonnegative": { "type": ["number", "null"], "minimum": 0 },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean_us", "p50_us", "p95_us", "max_us"],
+      "properties": {
+        "mean_us": { "$ref": "#/$defs/optional_nonnegative" },
+        "p50_us": { "$ref": "#/$defs/optional_nonnegative" },
+        "p95_us": { "$ref": "#/$defs/optional_nonnegative" },
+        "max_us": { "$ref": "#/$defs/optional_nonnegative" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["atlas_version", "git_revision", "compiler", "build_type", "operating_system", "system_processor", "cmake_version", "logical_processor_count", "worker_count", "gpu_device", "gpu_api_version", "gpu_device_type", "user_metadata"],
+      "properties": {
+        "atlas_version": { "type": "string" },
+        "git_revision": { "type": "string" },
+        "compiler": { "type": "string" },
+        "build_type": { "type": "string" },
+        "operating_system": { "type": "string" },
+        "system_processor": { "type": "string" },
+        "cmake_version": { "type": "string" },
+        "logical_processor_count": { "type": "integer", "minimum": 0 },
+        "worker_count": { "type": "integer", "minimum": 1 },
+        "gpu_device": { "type": ["string", "null"] },
+        "gpu_api_version": { "type": ["integer", "null"], "minimum": 0 },
+        "gpu_device_type": { "type": ["integer", "null"], "minimum": 0 },
+        "user_metadata": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["schema_version", "environment_id", "cpu_model", "physical_memory_bytes", "os_version", "gpu_driver", "power_profile", "notes"],
+              "properties": {
+                "schema_version": { "const": 1 },
+                "environment_id": { "type": "string", "minLength": 1 },
+                "cpu_model": { "type": ["string", "null"] },
+                "physical_memory_bytes": { "type": ["integer", "null"], "minimum": 0 },
+                "os_version": { "type": ["string", "null"] },
+                "gpu_driver": { "type": ["string", "null"] },
+                "power_profile": { "type": ["string", "null"] },
+                "notes": { "type": ["string", "null"] }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -88,7 +88,9 @@ jobs:
         run: ctest --preset benchmark-windows
 
       - name: Run CPU benchmark smoke experiment
-        run: .\build\benchmark-windows\apps\atlas_bench\Release\atlas_bench.exe --manifest benchmarks\manifests\cpu-smoke-v1.json --output-dir build\benchmark-windows\smoke-results
+        run: |
+          .\build\benchmark-windows\apps\atlas_bench\Release\atlas_bench.exe --manifest benchmarks\manifests\cpu-smoke-v1.json --output-dir build\benchmark-windows\smoke-results
+          .\build\benchmark-windows\apps\atlas_bench\Release\atlas_bench.exe --suite benchmarks\manifests\baseline-cpu-smoke-v1.json --output-dir build\benchmark-windows\baseline-smoke-results
 
   vulkan-integration:
     name: Ubuntu / Vulkan (Lavapipe)
@@ -137,6 +139,8 @@ jobs:
         run: |
           ./build/benchmark-linux/apps/atlas_bench/atlas_bench --manifest benchmarks/manifests/cpu-smoke-v1.json --output-dir build/benchmark-linux/cpu-smoke-results
           ./build/benchmark-linux/apps/atlas_bench/atlas_bench --manifest benchmarks/manifests/mixed-sliced-smoke-v1.json --output-dir build/benchmark-linux/gpu-smoke-results
+          ./build/benchmark-linux/apps/atlas_bench/atlas_bench --suite benchmarks/manifests/baseline-cpu-smoke-v1.json --output-dir build/benchmark-linux/baseline-cpu-smoke-results
+          ./build/benchmark-linux/apps/atlas_bench/atlas_bench --suite benchmarks/manifests/baseline-vulkan-smoke-v1.json --output-dir build/benchmark-linux/baseline-vulkan-smoke-results
 
   clang-tidy:
     name: Ubuntu / ClangTidy

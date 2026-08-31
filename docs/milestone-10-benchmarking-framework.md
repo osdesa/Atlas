@@ -113,8 +113,10 @@ serialization occur outside `SchedulerResult::executionTime`.
 
 ## Deferred scope
 
-Milestone 10 does not add direct CPU/Vulkan baselines, confidence intervals,
+At the Milestone 10 boundary, direct CPU/Vulkan baselines, confidence intervals,
 plots, stored evaluation results, adaptive policy selection, performance gates,
-general event tracing, or Vulkan timestamp queries. Baselines belong to
-Milestone 11; event streams, timestamp-query utilization, and visualisation
-remain Milestone 12 work.
+general event tracing, and Vulkan timestamp queries were deferred. Additive
+direct and scheduled comparison suites plus confidence intervals are now
+implemented by [Milestone 11](milestone-11-baseline-comparisons.md) without
+changing these version-one contracts. Event streams, timestamp-query
+utilization, and visualisation remain Milestone 12 work.

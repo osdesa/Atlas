@@ -71,6 +71,7 @@ namespace Atlas::Benchmark
         RunMetrics metrics;
         std::optional<std::string> gpuDeviceName;
         std::optional<std::uint32_t> gpuApiVersion;
+        std::optional<std::uint32_t> gpuDeviceType;
     };
 
     /**
