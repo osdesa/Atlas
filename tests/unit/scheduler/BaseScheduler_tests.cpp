@@ -42,7 +42,7 @@ TEST_CASE("BaseScheduler rejects a task graph that is not finalised", "[UNIT]")
 TEST_CASE("BaseScheduler accepts and retains a finalised task graph", "[UNIT]")
 {
     Atlas::TaskGraph graph;
-    const std::optional<Atlas::TaskHandle> task{ graph.addTask([] {}, Atlas::TaskOptions{ "Root" }) };
+    const std::optional<Atlas::TaskHandle> task{ graph.addCpuTask([] {}, Atlas::TaskOptions{ "Root" }) };
 
     REQUIRE(task.has_value());
     REQUIRE(graph.finishTaskGraph());

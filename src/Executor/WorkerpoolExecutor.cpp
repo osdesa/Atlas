@@ -1,5 +1,7 @@
 #include "atlas/Executor/WorkerpoolExecutor.h"
 
+#include "atlas/Executor/CompletionChannel.h"
+
 #include <chrono>
 #include <exception>
 #include <stdexcept>
@@ -34,7 +36,7 @@ namespace Atlas
         shutdown();
     }
 
-    bool WorkerpoolExecutor::submit(TaskHandle taskHandle, TaskFunction taskFunction)
+    bool WorkerpoolExecutor::submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel)
     {
         if (!taskHandle.isValid())
         {
@@ -48,28 +50,14 @@ namespace Atlas
                 return false;
             }
 
-            taskQueue.emplace_back(
-                WorkItem{ std::move(taskFunction), TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 } } });
+            taskQueue.emplace_back(WorkItem{
+                std::move(taskFunction), TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 }, ExecutionResource::CPU },
+                &completionChannel });
             ++unfinishedTasks;
         }
 
         workAvailable.notify_one();
         return true;
-    }
-
-    std::optional<TaskCompletion> WorkerpoolExecutor::waitForCompletion()
-    {
-        std::unique_lock lock{ stateMutex };
-        workComplete.wait(lock, [this] { return !completions.empty() || unfinishedTasks == 0; });
-
-        if (completions.empty())
-        {
-            return std::nullopt;
-        }
-
-        TaskCompletion completion{ std::move(completions.front().completion) };
-        completions.pop_front();
-        return completion;
     }
 
     void WorkerpoolExecutor::shutdown() noexcept
@@ -91,8 +79,6 @@ namespace Atlas
             std::lock_guard lock{ stateMutex };
             lifecycle = Lifecycle::Stopped;
         }
-
-        workComplete.notify_all();
     }
 
     void WorkerpoolExecutor::workerLoop()
@@ -131,13 +117,9 @@ namespace Atlas
             workItem.completion.executionDuration =
                 std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
 
-            {
-                std::lock_guard lock{ stateMutex };
-                completions.splice(completions.end(), executingWork, executingWork.begin());
-                --unfinishedTasks;
-            }
-
-            workComplete.notify_one();
+            workItem.completionChannel->publish(std::move(workItem.completion));
+            std::lock_guard lock{ stateMutex };
+            --unfinishedTasks;
         }
     }
 } // namespace Atlas

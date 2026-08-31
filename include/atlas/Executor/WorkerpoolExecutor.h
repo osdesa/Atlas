@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <list>
 #include <mutex>
-#include <optional>
 #include <thread>
 #include <vector>
 
@@ -50,20 +49,14 @@ namespace Atlas
         ~WorkerpoolExecutor() override;
 
         /**
-         * @brief Accepts one callable for asynchronous worker-pool execution.
+         * @brief Accepts one callable and publishes its outcome to a shared channel.
          * @param taskHandle The identity attached to the completion.
          * @param taskFunction Callable work transferred into the executor.
+         * @param completionChannel Channel that outlives all accepted work.
          * @return True when execution was accepted; false after shutdown.
          * @throws std::invalid_argument If @p taskHandle is invalid.
          */
-        bool submit(TaskHandle taskHandle, TaskFunction taskFunction) override;
-
-        /**
-         * @brief Waits for and removes the next produced completion.
-         * @return The next completion, or an empty optional when no accepted or
-         * completed work remains.
-         */
-        std::optional<TaskCompletion> waitForCompletion() override;
+        bool submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel) override;
 
         /**
          * @brief Prevents later submissions, drains accepted work, and joins every worker.
@@ -73,17 +66,22 @@ namespace Atlas
         void shutdown() noexcept override;
 
       private:
+        /// @brief Lifecycle states controlling submission and worker shutdown.
         enum class Lifecycle : std::uint8_t
         {
-            Running,
-            ShuttingDown,
-            Stopped
+            Running,      ///< New submissions are accepted.
+            ShuttingDown, ///< Accepted work is draining; new submissions are rejected.
+            Stopped       ///< All workers have exited and no work is accepted.
         };
 
         struct WorkItem
         {
+            /// @brief Callable transferred to a worker.
             TaskFunction function;
+            /// @brief Mutable outcome populated by the worker.
             TaskCompletion completion;
+            /// @brief Scheduler-owned publication destination.
+            CompletionChannel* completionChannel{ nullptr };
         };
 
         /// @brief Waits for and executes queued work until shutdown has drained it.
@@ -95,19 +93,8 @@ namespace Atlas
         /// @brief Indicates a task is ready to be executed by a worker thread.
         std::condition_variable workAvailable;
 
-        /// @brief Indicates a task has completed and is ready to be retrieved.
-        std::condition_variable workComplete;
-
         /// @brief Queue of tasks waiting to be executed by worker threads.
         std::list<WorkItem> taskQueue;
-
-        /**
-         * @brief Completed work waiting to be retrieved in completion order.
-         *
-         * Nodes are allocated in taskQueue during submission and spliced here
-         * after execution, so publishing a completion does not allocate.
-         */
-        std::list<WorkItem> completions;
 
         /// @brief Number of tasks that have been submitted but not yet completed.
         std::size_t unfinishedTasks{ 0 };

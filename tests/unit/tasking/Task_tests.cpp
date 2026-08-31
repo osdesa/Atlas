@@ -1,3 +1,4 @@
+#include "../../support/VulkanTestFactory.h"
 #include "atlas/Tasking/Task.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -48,21 +49,47 @@ TEST_CASE("Task exposes its callable work", "[UNIT]")
     const Atlas::TaskFunction taskFunction{ [&executed] { executed = true; } };
     const Atlas::Task task{ VALID_TASK_HANDLE, taskFunction, Atlas::TaskOptions{ TASK_NAME } };
 
-    task.function();
+    REQUIRE(task.cpuFunction() != nullptr);
+    task.cpuFunction()->operator()();
 
     REQUIRE(executed);
 }
 
+TEST_CASE("Task exposes cooperatively sliced Vulkan work and progress", "[UNIT]")
+{
+    const Atlas::SlicedVulkanDispatch slicedDispatch{ Atlas::Testing::VulkanTestFactory::dispatch(), { 1U, 1U, 1U } };
+    const Atlas::Task task{ VALID_TASK_HANDLE, slicedDispatch,
+                            Atlas::TaskOptions{ "Sliced GPU task", Atlas::ExecutionResource::GPU } };
+
+    REQUIRE(task.isValid());
+    REQUIRE(task.cpuFunction() == nullptr);
+    REQUIRE(task.gpuDispatch() == nullptr);
+    REQUIRE(task.slicedGpuDispatch() != nullptr);
+    REQUIRE(task.slicedGpuDispatch()->sliceCount() == 1U);
+    REQUIRE(task.executionInfo.completedWorkUnitCount == 0U);
+    REQUIRE(task.executionInfo.totalWorkUnitCount == 1U);
+}
+
+TEST_CASE("Task rejects resource metadata that disagrees with sliced Vulkan work", "[UNIT]")
+{
+    const Atlas::SlicedVulkanDispatch slicedDispatch{ Atlas::Testing::VulkanTestFactory::dispatch(), { 1U, 1U, 1U } };
+    const Atlas::Task task{ VALID_TASK_HANDLE, slicedDispatch, Atlas::TaskOptions{ "Mismatched sliced task" } };
+
+    REQUIRE_FALSE(task.isValid());
+    REQUIRE(task.slicedGpuDispatch() != nullptr);
+}
+
 TEST_CASE("Task preserves and exposes immutable task metadata", "[UNIT]")
 {
-    const Atlas::TaskOptions options{ TASK_NAME, Atlas::ExecutionResource::GPU, 4U };
+    const Atlas::TaskOptions options{ TASK_NAME, Atlas::ExecutionResource::CPU, 4U };
     const Atlas::Task task{ VALID_TASK_HANDLE, dummyTaskFunction, options };
 
     STATIC_REQUIRE(std::is_const_v<decltype(task.handle)>);
-    STATIC_REQUIRE(std::is_const_v<decltype(task.function)>);
     STATIC_REQUIRE(std::is_const_v<decltype(task.options)>);
+    REQUIRE(task.cpuFunction() != nullptr);
+    REQUIRE(task.gpuDispatch() == nullptr);
     REQUIRE(task.options.name == TASK_NAME);
-    REQUIRE(task.options.executionResource == Atlas::ExecutionResource::GPU);
+    REQUIRE(task.options.executionResource == Atlas::ExecutionResource::CPU);
     REQUIRE(task.options.priority == 4U);
 }
 

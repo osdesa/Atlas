@@ -12,7 +12,34 @@
 
 namespace Atlas
 {
-    std::optional<TaskHandle> TaskGraph::addTask(TaskFunction taskFunction, TaskOptions taskOptions)
+    std::optional<TaskHandle> TaskGraph::addCpuTask(TaskFunction taskFunction, TaskOptions taskOptions)
+    {
+        if (taskOptions.executionResource != ExecutionResource::CPU)
+        {
+            return std::nullopt;
+        }
+        return addTaskWork(TaskWork{ std::move(taskFunction) }, std::move(taskOptions));
+    }
+
+    std::optional<TaskHandle> TaskGraph::addGpuTask(VulkanDispatch dispatch, TaskOptions taskOptions)
+    {
+        if (taskOptions.executionResource != ExecutionResource::GPU)
+        {
+            return std::nullopt;
+        }
+        return addTaskWork(TaskWork{ std::move(dispatch) }, std::move(taskOptions));
+    }
+
+    std::optional<TaskHandle> TaskGraph::addGpuTask(SlicedVulkanDispatch dispatch, TaskOptions taskOptions)
+    {
+        if (taskOptions.executionResource != ExecutionResource::GPU)
+        {
+            return std::nullopt;
+        }
+        return addTaskWork(TaskWork{ std::move(dispatch) }, std::move(taskOptions));
+    }
+
+    std::optional<TaskHandle> TaskGraph::addTaskWork(TaskWork work, TaskOptions taskOptions)
     {
         if (isFinalised || !taskOptions.isValid())
         {
@@ -25,7 +52,21 @@ namespace Atlas
             return std::nullopt;
         }
 
-        tasks.emplace_back(std::make_shared<Task>(taskHandle.value(), std::move(taskFunction), std::move(taskOptions)));
+        if (std::holds_alternative<TaskFunction>(work))
+        {
+            tasks.emplace_back(
+                std::make_shared<Task>(taskHandle.value(), std::move(std::get<TaskFunction>(work)), std::move(taskOptions)));
+        }
+        else if (std::holds_alternative<VulkanDispatch>(work))
+        {
+            tasks.emplace_back(
+                std::make_shared<Task>(taskHandle.value(), std::move(std::get<VulkanDispatch>(work)), std::move(taskOptions)));
+        }
+        else
+        {
+            tasks.emplace_back(
+                std::make_shared<Task>(taskHandle.value(), std::move(std::get<SlicedVulkanDispatch>(work)), std::move(taskOptions)));
+        }
         return taskHandle;
     }
 

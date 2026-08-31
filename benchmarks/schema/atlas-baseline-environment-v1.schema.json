@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-baseline-environment-v1.schema.json",
+  "title": "Atlas baseline user environment metadata version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "environment_id"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "environment_id": { "type": "string", "minLength": 1 },
+    "cpu_model": { "type": "string" },
+    "physical_memory_bytes": { "type": "integer", "minimum": 0 },
+    "os_version": { "type": "string" },
+    "gpu_driver": { "type": "string" },
+    "power_profile": { "type": "string" },
+    "notes": { "type": "string" }
+  }
+}

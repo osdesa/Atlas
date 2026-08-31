@@ -13,6 +13,8 @@ TEST_CASE("SchedulerStatus has stable human-readable names", "[UNIT]")
     const bool executorUnavailableMatches{ Atlas::toString(Atlas::SchedulerStatus::ExecutorUnavailable) ==
                                            std::string_view{ "ExecutorUnavailable" } };
     const bool unknownMatches{ Atlas::toString(Atlas::SchedulerStatus::Unknown) == std::string_view{ "Unknown" } };
+    const bool cancelledMatches{ Atlas::toString(Atlas::SchedulerStatus::Cancelled) == std::string_view{ "Cancelled" } };
+    const bool policyErrorMatches{ Atlas::toString(Atlas::SchedulerStatus::PolicyError) == std::string_view{ "PolicyError" } };
 
     REQUIRE(successMatches);
     REQUIRE(invalidGraphMatches);
@@ -20,4 +22,8 @@ TEST_CASE("SchedulerStatus has stable human-readable names", "[UNIT]")
     REQUIRE(taskFailedMatches);
     REQUIRE(executorUnavailableMatches);
     REQUIRE(unknownMatches);
+    REQUIRE(cancelledMatches);
+    REQUIRE(policyErrorMatches);
+    REQUIRE(static_cast<std::uint8_t>(Atlas::SchedulerStatus::Cancelled) == 6U);
+    REQUIRE(static_cast<std::uint8_t>(Atlas::SchedulerStatus::PolicyError) == 7U);
 }

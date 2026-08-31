@@ -5,9 +5,6 @@
 #include "atlas/Executor/TaskCompletion.h"
 #include "atlas/Tasking/TaskFunction.h"
 
-#include <optional>
-#include <queue>
-
 /**
  * @file SynchronousCpuExecutor.h
  * @brief Declares immediate CPU execution on the submitting thread.
@@ -32,22 +29,18 @@ namespace Atlas
     {
 
       public:
+        /// @brief Constructs a capacity-one synchronous executor.
         SynchronousCpuExecutor() : CpuExecutor{ 1U } {}
 
         /**
-         * @brief Executes one accepted callable and queues its completion.
+         * @brief Executes one callable and publishes its completion to a shared channel.
          * @param taskHandle The identity attached to the completion.
          * @param taskFunction Callable work transferred into the executor.
+         * @param completionChannel Channel that outlives this synchronous publication.
          * @return True when execution was accepted; false after shutdown.
          * @throws std::invalid_argument If @p taskHandle is invalid.
          */
-        bool submit(TaskHandle taskHandle, TaskFunction taskFunction) override;
-
-        /**
-         * @brief Removes and returns the oldest queued completion without blocking.
-         * @return The oldest completion, or an empty optional when the queue is empty.
-         */
-        std::optional<TaskCompletion> waitForCompletion() override;
+        bool submit(TaskHandle taskHandle, TaskFunction taskFunction, CompletionChannel& completionChannel) override;
 
         /**
          * @brief Prevents later submissions without discarding queued completions.
@@ -57,8 +50,8 @@ namespace Atlas
         void shutdown() noexcept override;
 
       private:
-        /// @brief Completed task outcomes waiting to be retrieved in submission order.
-        std::queue<TaskCompletion> completions;
+        /// @brief Invokes one callable and captures its exception and duration.
+        TaskCompletion execute(TaskHandle taskHandle, const TaskFunction& taskFunction);
 
         /// @brief Whether the executor will accept another submission.
         bool acceptingSubmissions{ true };

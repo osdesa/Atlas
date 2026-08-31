@@ -1,201 +1,111 @@
-# Development guide
+# Atlas Development Guide
+
+## Architecture
+
+Atlas separates immutable graph work, backend execution, and scheduler control:
+
+- `TaskGraph` owns graph-scoped handles, task payload variants, dependencies,
+  and finalisation.
+- `CpuExecutor` implementations run CPU callables. `VulkanExecutor` owns a
+  worker and submits declarative dispatches through a retained Vulkan context.
+- `CompletionChannel` is the single preallocated completion path used by CPU
+  and Vulkan producers.
+- `KahnScheduler` owns ready queues, independent capacities/in-flight counts,
+  policy instances, state transitions, dependency release, cancellation, and
+  metrics. It always receives both CPU and Vulkan executors.
+- `VulkanRuntime` owns the instance/device/queue context. Public buffers and
+  pipelines retain that context without exposing raw owning handles.
+- `atlas_bench` is a C++ harness because it exercises executor and scheduler
+  APIs directly for paired direct-versus-scheduled comparisons. JSON parsing,
+  result writing, and statistics remain outside the Atlas library boundary.
+
+Vulkan is not a pluggable optional backend. `VulkanDispatchExecutor` exists as
+the narrow scheduler test seam for Vulkan dispatch submission, not as a generic
+multi-backend API.
 
 ## Repository layout
 
-The repository is deliberately small while the core task model and concurrent
-CPU task-graph executor are being developed:
+- `include/atlas/Tasking/`: task identity, metadata, payload, and graph APIs.
+- `include/atlas/Executor/`: CPU/Vulkan executor and completion contracts.
+- `include/atlas/Scheduler/`: scheduler and policy APIs.
+- `include/atlas/Vulkan/`: opaque resource and runtime APIs.
+- `src/`: implementations matching those public modules.
+- `apps/atlas/`: current mixed-graph executable and shader.
+- `apps/atlas_bench/`: suite parser, runners, analysis, and result writers.
+- `benchmarks/manifests/`: canonical and smoke suite definitions.
+- `benchmarks/schema/`: current suite and output schemas.
+- `tests/unit/`, `tests/feature/`, `tests/benchmark/`: behavioral tests.
 
-- `include/atlas/`: public Atlas headers
-- `src/`: compiled library implementation
-- `apps/atlas_cli/`: example task-graph executable using the synchronous backend
-- `tests/`: Catch2/CTest unit and feature tests
-- `cmake/`: target-scoped warnings, sanitizers, and static-analysis helpers
-- `.github/workflows/`: Windows and Linux continuous integration
+## Ownership and lifecycle
 
-Directories for future runtime components should be added only when their
-implementations begin.
+A task handle is valid only in its originating graph. A graph is structurally
+mutable until finalisation and is intended for one scheduler execution. Tasks
+contain exactly one CPU callable, ordinary Vulkan dispatch, or sliced Vulkan
+dispatch matching their declared execution resource.
 
-## Targets
+The scheduler is the only writer of task lifecycle state. Executors own work
+values while executing but publish outcomes instead of mutating graph objects.
+Every accepted submission must generate exactly one completion attributed to
+the accepted handle/resource/work unit. Unknown, duplicate, missing, extra, or
+mismatched outcomes are infrastructure failures and never release dependants.
 
-- `atlas` is a compiled static library. `Atlas::Atlas` is its namespaced alias.
-- `atlas_cli` links to `Atlas::Atlas` and executes an example frame task graph.
-- `atlas_unit_tests` and `atlas_feature_tests` link to `Atlas::Atlas` and Catch2.
-  `catch_discover_tests` registers their test cases with CTest.
+The completion channel capacity is the sum of active backend capacities and is
+allocated before submission. Producer publication is non-throwing and does not
+allocate. Executor shutdown is idempotent, rejects new work, drains accepted
+work, and joins owned threads.
 
-The Vulkan SDK is discovered at configure time with `find_package(Vulkan
-REQUIRED)`. `atlas` links to `Vulkan::Vulkan`, but no Vulkan API is called at
-this stage.
+Vulkan buffers and pipelines belong to one runtime context. Cross-context
+dispatch resources are rejected before queue submission. Destruction order is
+private RAII state; a resource or `VulkanExecutor` retains the context it needs.
 
-The executor module defines a backend-neutral CPU submission/completion contract,
-a `SynchronousCpuExecutor`, and a fixed-size `WorkerpoolExecutor`. The synchronous
-implementation executes on the submitting thread. The worker-pool implementation
-owns a FIFO work queue, runs independent callables concurrently, captures every
-callable exception, and drains accepted work before joining during shutdown.
-Both implementations return task-attributed completions containing callable
-duration and any captured exception. `KahnScheduler` remains backend-neutral:
-capacity one preserves synchronous FIFO behavior, while a worker pool keeps
-independent ready tasks in flight up to its worker count.
+## Scheduler behavior
 
-`KahnScheduler` borrows a `CpuExecutor`; the caller owns that executor, keeps it
-alive, and remains responsible for shutdown. The executor must be initially
-drained and exclusively available to the scheduler during `execute()`. The
-scheduler marks selected work `Running`, tracks accepted handles, and applies
-completions to `TaskExecutionInfo` on its control thread. A rejected submission
-restores the task to `Ready`. Missing, unknown, duplicate, or mismatched
-completions report `ExecutorUnavailable` and never release dependants.
+CPU and Vulkan ready sets and capacities are independent. FIFO,
+`RoundRobinSchedulingPolicy`, and `StaticPrioritySchedulingPolicy` are cloned
+once per backend and receive only stable candidates. They do not own graph or
+executor state.
 
-`WorkerpoolExecutor` requires a non-zero fixed worker count. Public executor
-calls must be serialized, although accepted callables run concurrently. Its FIFO
-work queue is protected by a mutex and condition variable; a separate protected
-completion queue returns results in completion order. Shutdown rejects new work,
-drains queued and running work, retains produced completions, joins every worker,
-and is idempotent. A callable must not invoke lifecycle operations on its own
-executor.
+Sliced dispatches preserve completed work-unit count and accumulated duration.
+An incomplete task enters `Paused` and returns to the Vulkan ready tail. Only a
+logical task success increments the executed-task count or releases dependants.
 
-## Current task and execution model
+Cancellation synchronizes with task claiming. Once effective, submissions stop
+and accepted work drains. Ordinary running work completes; sliced Vulkan work
+can stop only after a completed unit. Task, policy, and infrastructure failures
+are fail-stop and preserve the first applicable exception.
 
-`TaskGraph` owns task definitions and exposes `shared_ptr<const Task>` views.
-Identity, callable work, and options are immutable. `TaskExecutionInfo` groups
-the logically mutable lifecycle state, captured exception, and callable duration
-so the scheduler control thread can update them through that otherwise read-only
-view. Retaining a returned `shared_ptr` extends the task object's lifetime beyond
-the graph, so callers must not infer a strict non-owning lifetime from the
-graph-owned description.
+See [Task lifecycle](task-lifecycle.md) for the state machine and
+[User Guide](user-guide.md) for current external behavior.
 
-Task options currently contain an optional name, a static `uint32_t` priority,
-and CPU/GPU execution-resource intent. Lower numeric priorities represent higher
-priority, but the FIFO Kahn scheduler does not yet use priority or resource intent
-when selecting or dispatching work. Both CPU- and GPU-designated tasks are sent
-to the supplied CPU executor; the CLI's synchronous executor runs their host
-callables on the calling thread.
+## Build and test
 
-Tasks are `Unknown` during graph construction. Successful finalisation assigns
-`Ready` to roots and `Blocked` to tasks with dependencies. `KahnScheduler` owns
-subsequent state changes and does not call a shared transition validator:
-
-```text
-Unknown --successful graph finalisation--> Ready or Blocked
-Blocked --final dependency succeeds------> Ready
-Ready   --selected by scheduler-----------> Running
-Running --callable returns----------------> Success
-Running --callable throws-----------------> Failure
-Running --missing/mismatched completion---> Failure (ExecutorUnavailable)
-```
-
-`Success` and `Failure` are terminal for the current scheduler. The task's
-execution information retains the captured exception when applicable and the
-time spent executing its callable. A queued task not marked `Ready` is skipped;
-if this prevents every graph task from completing, execution is reported as
-`InvalidGraph`. Atlas does not currently define a cancellation state or
-cancellation API.
-
-Scheduler control remains single-threaded and a graph is intended for one
-execution, but worker callables may overlap. Execution-information fields are
-not atomic; callers must not inspect or mutate them while `execute()` is active.
-Captured references and other shared resources used by concurrent callables are
-the application’s synchronization responsibility. Completed tasks are not run
-again.
-
-## Presets
-
-All checked-in configurations build below `build/<preset>`. Warnings are enabled
-for Atlas targets, while ordinary CI, analysis, ASan/UBSan, and TSan remain
-independent configurations.
-
-| Preset | Generator | Configuration | Intended use |
-| --- | --- | --- | --- |
-| `dev` | Ninja | Debug | Cross-platform local development |
-| `dev-windows` | Locally available Visual Studio | Debug | Windows/MSVC development |
-| `dev-linux` | Ninja | Debug | Linux development |
-| `ci-windows` | Locally available Visual Studio | Release | Windows CI with MSVC level-four warnings |
-| `ci-linux` | Ninja | Release | Linux CI, warnings as errors |
-| `analysis-linux` | Ninja/Clang | Debug | Required Clang-Tidy analysis |
-| `asan-ubsan-linux` | Ninja/Clang | Debug | Full ASan/UBSan suite |
-| `tsan-linux` | Ninja/Clang | Debug | Labelled concurrency suite under TSan |
-
-Each configure preset has a build and test preset with the same name:
+The normal build always discovers Vulkan, compiles both shaders, builds
+`atlas` and `atlas_bench`, and includes real Vulkan feature tests when tests are
+enabled:
 
 ```bash
-cmake --preset dev-linux
-cmake --build --preset dev-linux
-ctest --preset dev-linux
+cmake -S . -B build
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
 ```
 
-Use `cmake --list-presets=all` to inspect presets available on the current
-platform.
+Linux CI uses Mesa Lavapipe selected through `VK_DRIVER_FILES`. Driver manifest
+names vary, so no source, CMake, or checked configuration may hard-code one.
 
-## Sanitizers
+Use focused tests while iterating, then validate in proportion to risk. Run
+real Vulkan tests for any runtime, resource, dispatch, executor, scheduler, app,
+or benchmark change. Use ASan/UBSan and repeated TSan tests for ownership and
+concurrency changes. A local LeakSanitizer invocation under `ptrace` may require
+`LSAN_OPTIONS=detect_leaks=0`; never weaken CI for that limitation.
 
-AddressSanitizer and UndefinedBehaviorSanitizer use a dedicated Clang preset:
+## Code and documentation
 
-```bash
-cmake --preset asan-ubsan-linux
-cmake --build --preset asan-ubsan-linux
-ctest --preset asan-ubsan-linux
-```
+Use target-scoped CMake, C++20, explicit ownership, repository formatting, and
+warnings-as-errors compatibility. Public headers live under
+`include/atlas/<Module>/`; implementations live under matching `src/` paths.
+Shader targets use `atlas_compile_shader`, which compiles and validates SPIR-V.
 
-ThreadSanitizer is separate because its runtime cannot be combined with
-ASan/UBSan:
-
-```bash
-cmake --preset tsan-linux
-cmake --build --preset tsan-linux
-ctest --preset tsan-linux --repeat until-fail:5
-```
-
-Sanitizer flags are attached only to Atlas-owned targets. Requesting an
-unsupported sanitizer configuration is an error. LeakSanitizer cannot operate
-under `ptrace`; use `LSAN_OPTIONS=detect_leaks=0` only for that local environment.
-
-## Clang-Tidy
-
-The analysis preset requires Clang-Tidy and fails rather than silently skipping
-analysis:
-
-```bash
-cmake --preset analysis-linux
-cmake --build --preset analysis-linux
-```
-
-Developer presets may still request optional analysis. The checked-in
-`.clang-tidy` file selects focused correctness, modernisation, performance, and
-readability checks.
-
-## Pre-commit formatting
-
-The checked-in VS Code workspace settings use the recommended clangd extension
-to run ClangFormat whenever a C or C++ file is saved. Formatting follows the
-repository's `.clang-format` configuration.
-
-The versioned `.githooks/pre-commit` hook formats staged C and C++ files with
-the repository's `.clang-format` configuration. Enable it after cloning with:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-The hook formats and re-stages files that have no unstaged edits. It stops when
-a staged file also has unstaged changes, preventing it from staging unrelated
-work.
-
-## Adding sources and future modules
-
-Keep build configuration target-based:
-
-1. Add implementation and public headers only for the concrete module being
-   developed.
-2. Existing Atlas library and test targets discover files recursively with
-   `file(GLOB_RECURSE ... CONFIGURE_DEPENDS)`, sort the resulting directory-local
-   list, and attach it with `target_sources`. Place a new file under the matching
-   `src`, `include/atlas`, `tests/unit`, or `tests/feature` tree; do not also list
-   it manually. A genuinely new target should own its source discovery in its
-   nearest `CMakeLists.txt` rather than sharing a repository-wide aggregate list.
-3. Express includes, compile features, definitions, and dependencies with the
-   relevant `target_*` command and the narrowest appropriate visibility.
-4. Apply `atlas_set_project_warnings`, `atlas_enable_sanitizers`, and
-   `atlas_enable_clang_tidy` only to new Atlas-owned targets.
-5. Add focused tests to the appropriate unit or feature suite, or create a new
-   test target only when its separate lifecycle justifies it.
-
-Do not add global include directories or compiler flags. External dependencies
-must remain isolated from Atlas warning and analysis settings.
+Update tests and all user-facing documentation with behavior changes. Review
+`docs/user-guide.md` after every milestone and keep it limited to the current
+implementation. Do not add compatibility aliases, obsolete format readers,
+backend fallbacks, or speculative interfaces.

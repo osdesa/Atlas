@@ -1,14 +1,16 @@
 #ifndef ATLAS_TASK_COMPLETION
 #define ATLAS_TASK_COMPLETION
 
+#include "atlas/Tasking/ExecutionResource.h"
 #include "atlas/Tasking/TaskHandle.h"
 
 #include <chrono>
+#include <cstddef>
 #include <exception>
 
 /**
  * @file TaskCompletion.h
- * @brief Declares the outcome produced by executing one task callable.
+ * @brief Declares the outcome produced by executing one task payload.
  */
 
 namespace Atlas
@@ -28,14 +30,20 @@ namespace Atlas
         /// @brief Identifies the task that completed.
         TaskHandle handle;
 
-        /// @brief The exception captured from the callable, or nullptr on success.
+        /// @brief The exception captured from backend execution, or nullptr on success.
         std::exception_ptr exception{ nullptr };
 
-        /// @brief Time spent executing the task callable, excluding queue wait time.
+        /// @brief Time spent executing the task payload, excluding executor queue wait time.
         std::chrono::microseconds executionDuration{ 0 };
 
+        /// @brief Backend resource that produced this completion.
+        ExecutionResource resource{ ExecutionResource::CPU };
+
+        /// @brief Zero-based work-unit index, or zero for an ordinary task payload.
+        std::size_t workUnitIndex{ 0U };
+
         /**
-         * @brief Reports whether the callable completed without throwing.
+         * @brief Reports whether backend execution completed without an exception.
          * @return True when no exception was captured.
          */
         bool succeeded() const noexcept

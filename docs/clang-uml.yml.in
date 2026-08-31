@@ -137,6 +137,50 @@ diagrams:
         - '  FontColor #0F172A'
         - '}'
 
+  vulkan_dispatch_executor:
+    type: class
+    glob:
+      - src/Executor/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::VulkanDispatchExecutor
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  completion_channel:
+    type: class
+    glob:
+      - src/Executor/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::CompletionChannel
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
   task_completion:
     type: class
     glob:
@@ -203,6 +247,75 @@ diagrams:
         - '  FontColor #0F172A'
         - '}'
 
+  vulkan_compute:
+    type: class
+    glob:
+      - src/Vulkan/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::VulkanDispatch
+        - match:
+            radius: 1
+            pattern: Atlas::SlicedVulkanDispatch
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  vulkan_runtime:
+    type: class
+    glob:
+      - src/Vulkan/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::VulkanRuntime
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  vulkan_executor:
+    type: class
+    glob:
+      - src/Executor/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::VulkanExecutor
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
   base_scheduler:
     type: class
     glob:
@@ -234,6 +347,28 @@ diagrams:
         - match:
             radius: 1
             pattern: Atlas::KahnScheduler
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
+  scheduling_policy:
+    type: class
+    glob:
+      - src/Scheduler/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::SchedulingPolicy
     exclude:
       namespaces:
         - std

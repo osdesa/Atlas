@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-baseline-suite-v1.schema.json",
+  "title": "Atlas baseline comparison suite version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite_id", "seeds", "warmup_runs", "repetitions", "worker_count", "cases"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "suite_id": { "type": "string", "minLength": 1 },
+    "seeds": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0 } },
+    "warmup_runs": { "type": "integer", "minimum": 0 },
+    "repetitions": { "type": "integer", "minimum": 1 },
+    "worker_count": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case_id", "workload", "reference_variant", "variants"],
+        "properties": {
+          "case_id": { "type": "string", "minLength": 1 },
+          "workload": { "$ref": "#/$defs/workload" },
+          "reference_variant": { "type": "string", "minLength": 1 },
+          "variants": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/variant" } }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "y": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "z": { "type": "integer", "minimum": 1, "maximum": 4294967295 }
+      }
+    },
+    "policy": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["type"], "properties": { "type": { "enum": ["fifo", "static_priority"] } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "quantum"], "properties": { "type": { "const": "round_robin" }, "quantum": { "type": "integer", "minimum": 1 } } }
+      ]
+    },
+    "variant": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["variant_id", "execution"],
+          "properties": { "variant_id": { "type": "string", "minLength": 1 }, "execution": { "const": "direct" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["variant_id", "execution", "policy", "slice_workgroups"],
+          "properties": {
+            "variant_id": { "type": "string", "minLength": 1 },
+            "execution": { "const": "scheduled" },
+            "policy": { "$ref": "#/$defs/policy" },
+            "slice_workgroups": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/dimensions" }] }
+          }
+        }
+      ]
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "gpu", "dependencies", "priorities", "bursts"],
+      "properties": {
+        "cpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_count", "iterations"],
+          "properties": { "task_count": { "type": "integer", "minimum": 0 }, "iterations": { "type": "integer", "minimum": 0 } }
+        },
+        "gpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["task_count", "workgroups"],
+          "properties": { "task_count": { "type": "integer", "minimum": 0 }, "workgroups": { "$ref": "#/$defs/dimensions" } }
+        },
+        "dependencies": {
+          "oneOf": [
+            { "type": "object", "additionalProperties": false, "required": ["shape"], "properties": { "shape": { "enum": ["independent", "chain"] } } },
+            { "type": "object", "additionalProperties": false, "required": ["shape", "layers"], "properties": { "shape": { "const": "layered" }, "layers": { "type": "integer", "minimum": 1 } } },
+            { "type": "object", "additionalProperties": false, "required": ["shape", "edge_probability"], "properties": { "shape": { "const": "random" }, "edge_probability": { "type": "number", "minimum": 0, "maximum": 1 } } }
+          ]
+        },
+        "priorities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["assignment", "values"],
+          "properties": {
+            "assignment": { "enum": ["cycle", "random"] },
+            "values": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0, "maximum": 4294967295 } }
+          }
+        },
+        "bursts": { "type": "object", "additionalProperties": false, "required": ["count"], "properties": { "count": { "type": "integer", "minimum": 1 } } }
+      }
+    }
+  }
+}

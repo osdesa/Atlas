@@ -1,3 +1,4 @@
+#include "../../support/VulkanTestFactory.h"
 #include "atlas/Tasking/TaskGraph.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -10,7 +11,7 @@ namespace
 
     Atlas::TaskHandle addTask(Atlas::TaskGraph& graph, const char* name)
     {
-        const std::optional<Atlas::TaskHandle> taskHandle{ graph.addTask(doNothing, Atlas::TaskOptions{ name }) };
+        const std::optional<Atlas::TaskHandle> taskHandle{ graph.addCpuTask(doNothing, Atlas::TaskOptions{ name }) };
         REQUIRE(taskHandle.has_value());
         return taskHandle.value();
     }
@@ -54,34 +55,53 @@ TEST_CASE("TaskGraph exposes read-only task queries", "[UNIT]")
     REQUIRE(task.value()->getDependents().empty());
 }
 
-TEST_CASE("TaskGraph preserves CPU and GPU task metadata", "[UNIT]")
+TEST_CASE("TaskGraph preserves CPU metadata and rejects GPU metadata for CPU work", "[UNIT]")
 {
     Atlas::TaskGraph graph;
     const Atlas::TaskOptions cpuOptions{ "CPU task", Atlas::ExecutionResource::CPU, 2U };
     const Atlas::TaskOptions gpuOptions{ "GPU task", Atlas::ExecutionResource::GPU, 5U };
 
-    const std::optional<Atlas::TaskHandle> cpuHandle{ graph.addTask(doNothing, cpuOptions) };
-    const std::optional<Atlas::TaskHandle> gpuHandle{ graph.addTask(doNothing, gpuOptions) };
+    const std::optional<Atlas::TaskHandle> cpuHandle{ graph.addCpuTask(doNothing, cpuOptions) };
+    const std::optional<Atlas::TaskHandle> gpuHandle{ graph.addCpuTask(doNothing, gpuOptions) };
 
     REQUIRE(cpuHandle.has_value());
-    REQUIRE(gpuHandle.has_value());
+    REQUIRE_FALSE(gpuHandle.has_value());
 
     const std::optional<std::shared_ptr<const Atlas::Task>> cpuTask{ graph.findTask(cpuHandle.value()) };
-    const std::optional<std::shared_ptr<const Atlas::Task>> gpuTask{ graph.findTask(gpuHandle.value()) };
-
     REQUIRE(cpuTask.has_value());
-    REQUIRE(gpuTask.has_value());
     REQUIRE(cpuTask.value()->options.executionResource == Atlas::ExecutionResource::CPU);
     REQUIRE(cpuTask.value()->options.priority == 2U);
-    REQUIRE(gpuTask.value()->options.executionResource == Atlas::ExecutionResource::GPU);
-    REQUIRE(gpuTask.value()->options.priority == 5U);
+}
+
+TEST_CASE("TaskGraph accepts sliced GPU work and rejects CPU metadata", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::SlicedVulkanDispatch firstDispatch{ Atlas::Testing::VulkanTestFactory::dispatch(), { 1U, 1U, 1U } };
+    const Atlas::SlicedVulkanDispatch rejectedDispatch{ Atlas::Testing::VulkanTestFactory::dispatch(), { 1U, 1U, 1U } };
+
+    const std::optional<Atlas::TaskHandle> gpuHandle{ graph.addGpuTask(
+        firstDispatch, Atlas::TaskOptions{ "Sliced GPU", Atlas::ExecutionResource::GPU, 3U }) };
+    const std::optional<Atlas::TaskHandle> rejectedHandle{ graph.addGpuTask(
+        rejectedDispatch, Atlas::TaskOptions{ "Wrong backend", Atlas::ExecutionResource::CPU }) };
+
+    REQUIRE(gpuHandle.has_value());
+    REQUIRE_FALSE(rejectedHandle.has_value());
+    REQUIRE(graph.getTaskCount() == 1U);
+
+    const std::optional<std::shared_ptr<const Atlas::Task>> gpuTask{ graph.findTask(gpuHandle.value()) };
+    REQUIRE(gpuTask.has_value());
+    REQUIRE(gpuTask.value()->isValid());
+    REQUIRE(gpuTask.value()->slicedGpuDispatch() != nullptr);
+    REQUIRE(gpuTask.value()->options.priority == 3U);
+    REQUIRE(gpuTask.value()->executionInfo.completedWorkUnitCount == 0U);
+    REQUIRE(gpuTask.value()->executionInfo.totalWorkUnitCount == 1U);
 }
 
 TEST_CASE("TaskGraph accepts anonymous task metadata", "[UNIT]")
 {
     Atlas::TaskGraph graph;
 
-    const std::optional<Atlas::TaskHandle> anonymousHandle{ graph.addTask(doNothing, Atlas::TaskOptions{}) };
+    const std::optional<Atlas::TaskHandle> anonymousHandle{ graph.addCpuTask(doNothing, Atlas::TaskOptions{}) };
 
     REQUIRE(anonymousHandle.has_value());
     REQUIRE(anonymousHandle.value().getTaskID() == Atlas::TaskId{ 1U });
@@ -101,7 +121,7 @@ TEST_CASE("TaskGraph rejects an out-of-range execution resource without consumin
     constexpr auto invalidResource{ static_cast<Atlas::ExecutionResource>(255U) };
     const Atlas::TaskOptions invalidOptions{ "Invalid resource", invalidResource };
 
-    REQUIRE_FALSE(graph.addTask(doNothing, invalidOptions).has_value());
+    REQUIRE_FALSE(graph.addCpuTask(doNothing, invalidOptions).has_value());
     REQUIRE(graph.getTaskCount() == 0U);
 
     const Atlas::TaskHandle firstValidTask{ addTask(graph, "Valid task") };
@@ -234,7 +254,7 @@ TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")
     REQUIRE(graph.addDependency(firstDependent, root));
     REQUIRE(graph.finishTaskGraph());
 
-    REQUIRE_FALSE(graph.addTask(doNothing, Atlas::TaskOptions{ "Late task" }).has_value());
+    REQUIRE_FALSE(graph.addCpuTask(doNothing, Atlas::TaskOptions{ "Late task" }).has_value());
     REQUIRE_FALSE(graph.addDependency(secondDependent, root));
     REQUIRE(graph.getTaskCount() == 3U);
 

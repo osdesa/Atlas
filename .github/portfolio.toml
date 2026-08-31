@@ -1,6 +1,6 @@
 title = "Atlas"
 
-summary = "Atlas is a tested C++20 task-graph prototype with dependency-aware concurrent CPU execution."
+summary = "Atlas is a tested C++20 task graph with concurrent CPU and Vulkan compute execution."
 
 status = "Active"
 
@@ -16,8 +16,11 @@ technologies = [
 highlights = [
   "Built directed acyclic task graphs with dependency validation and cycle rejection.",
   "Implemented capacity-aware Kahn scheduling through interchangeable synchronous and fixed-size worker-pool CPU executors.",
-  "Added attributed completions, exception isolation, draining shutdown, and deterministic concurrent graph tests.",
-  "Configured Vulkan SDK discovery as groundwork for a future compute backend; no Vulkan workloads execute yet.",
+  "Built a compute-only Vulkan runtime with persistent buffers, pipelines, staging transfers, and declarative dispatches.",
+  "Scheduled explicit CPU and GPU tasks through independent capacities and one shared attributed completion channel.",
+  "Verified standalone and mixed compute through Mesa Lavapipe with checked GLSL-to-SPIR-V builds.",
+  "Built a versioned reproducible benchmark runner with deterministic CPU/Vulkan DAGs and JSON Lines/CSV metrics.",
+  "Compared direct and scheduled policy/slicing variants with paired deterministic confidence intervals.",
 ]
 
 show_repository = true

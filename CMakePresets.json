@@ -1,344 +1,344 @@
 {
-  "version": 5,
-  "cmakeMinimumRequired": {
-    "major": 3,
-    "minor": 24,
-    "patch": 0
-  },
-  "configurePresets": [
-    {
-      "name": "base",
-      "hidden": true,
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "cacheVariables": {
-        "ATLAS_BUILD_TESTS": "ON",
-        "ATLAS_WARNINGS_AS_ERRORS": "ON",
-        "ATLAS_ENABLE_SANITIZERS": "OFF",
-        "ATLAS_ENABLE_THREAD_SANITIZER": "OFF",
-        "ATLAS_ENABLE_CLANG_TIDY": "OFF",
-        "ATLAS_REQUIRE_CLANG_TIDY": "OFF",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      }
+    "version": 5,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 24,
+        "patch": 0
     },
-    {
-      "name": "dev",
-      "displayName": "Development (Ninja)",
-      "description": "Cross-platform debug build using Ninja",
-      "inherits": "base",
-      "generator": "Ninja",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "ATLAS_ENABLE_SANITIZERS": "ON",
-        "ATLAS_ENABLE_CLANG_TIDY": "ON"
-      }
-    },
-    {
-      "name": "dev-windows",
-      "displayName": "Windows development (Visual Studio)",
-      "description": "Debug build using the locally available Visual Studio generator",
-      "inherits": "base",
-      "architecture": "x64",
-      "cacheVariables": {
-        "ATLAS_ENABLE_SANITIZERS": "OFF",
-        "ATLAS_ENABLE_CLANG_TIDY": "ON"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
-    },
-    {
-      "name": "dev-linux",
-      "displayName": "Linux development (Ninja)",
-      "description": "Debug build using Ninja and the default Linux compiler",
-      "inherits": "base",
-      "generator": "Ninja",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "ATLAS_ENABLE_SANITIZERS": "ON",
-        "ATLAS_ENABLE_CLANG_TIDY": "ON"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
-      "name": "docs-windows",
-      "displayName": "Windows documentation",
-      "description": "Generate Atlas API documentation and UML diagrams on Windows",
-      "inherits": "base",
-      "architecture": "x64",
-      "cacheVariables": {
-        "ATLAS_BUILD_DOCUMENTATION": "ON",
-        "ATLAS_BUILD_TESTS": "OFF",
-        "ATLAS_ENABLE_SANITIZERS": "OFF",
-        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
-    },
-    {
-      "name": "docs-linux",
-      "displayName": "Linux documentation",
-      "description": "Generate Atlas API documentation and UML diagrams on Linux",
-      "inherits": "base",
-      "generator": "Ninja",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "ATLAS_BUILD_DOCUMENTATION": "ON",
-        "ATLAS_BUILD_TESTS": "OFF",
-        "ATLAS_ENABLE_SANITIZERS": "OFF",
-        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
-      "name": "ci-windows",
-      "displayName": "Windows CI (MSVC)",
-      "description": "Release build with MSVC level-four warnings enabled",
-      "inherits": "base",
-      "binaryDir": "${sourceDir}/build/ci-windows",
-      "architecture": "x64",
-      "cacheVariables": {
-        "ATLAS_WARNINGS_AS_ERRORS": "OFF",
-        "ATLAS_ENABLE_SANITIZERS": "OFF",
-        "ATLAS_ENABLE_CLANG_TIDY": "OFF"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
-    },
-    {
-      "name": "ci-linux",
-      "displayName": "Linux CI (GCC)",
-      "description": "Release build with Atlas warnings promoted to errors",
-      "inherits": "base",
-      "binaryDir": "${sourceDir}/build/ci-linux",
-      "generator": "Ninja",
-      "cacheVariables": {
-        "ATLAS_WARNINGS_AS_ERRORS": "ON",
-        "ATLAS_ENABLE_SANITIZERS": "OFF",
-        "ATLAS_ENABLE_CLANG_TIDY": "OFF",
-        "CMAKE_BUILD_TYPE": "Release"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
-      "name": "analysis-linux",
-      "displayName": "Linux Clang-Tidy analysis",
-      "description": "Required Clang-Tidy analysis without sanitizer instrumentation",
-      "inherits": "base",
-      "generator": "Ninja",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "ATLAS_ENABLE_CLANG_TIDY": "ON",
-        "ATLAS_REQUIRE_CLANG_TIDY": "ON"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
-      "name": "asan-ubsan-linux",
-      "displayName": "Linux ASan and UBSan",
-      "description": "Clang debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
-      "inherits": "base",
-      "generator": "Ninja",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "ATLAS_ENABLE_SANITIZERS": "ON"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    },
-    {
-      "name": "tsan-linux",
-      "displayName": "Linux ThreadSanitizer",
-      "description": "Clang debug build with ThreadSanitizer for concurrency tests",
-      "inherits": "base",
-      "generator": "Ninja",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_CXX_COMPILER": "clang++",
-        "ATLAS_ENABLE_THREAD_SANITIZER": "ON"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Linux"
-      }
-    }
-  ],
-  "buildPresets": [
-    {
-      "name": "dev",
-      "configurePreset": "dev",
-      "configuration": "Debug"
-    },
-    {
-      "name": "dev-windows",
-      "configurePreset": "dev-windows",
-      "configuration": "Debug"
-    },
-    {
-      "name": "dev-linux",
-      "configurePreset": "dev-linux",
-      "configuration": "Debug"
-    },
-    {
-      "name": "docs-windows",
-      "configurePreset": "docs-windows",
-      "configuration": "Debug",
-      "targets": [
-        "docs"
-      ]
-    },
-    {
-      "name": "docs-linux",
-      "configurePreset": "docs-linux",
-      "configuration": "Debug",
-      "targets": [
-        "docs"
-      ]
-    },
-    {
-      "name": "ci-windows",
-      "configurePreset": "ci-windows",
-      "configuration": "Release"
-    },
-    {
-      "name": "ci-linux",
-      "configurePreset": "ci-linux",
-      "configuration": "Release"
-    },
-    {
-      "name": "analysis-linux",
-      "configurePreset": "analysis-linux",
-      "configuration": "Debug"
-    },
-    {
-      "name": "asan-ubsan-linux",
-      "configurePreset": "asan-ubsan-linux",
-      "configuration": "Debug"
-    },
-    {
-      "name": "tsan-linux",
-      "configurePreset": "tsan-linux",
-      "configuration": "Debug"
-    }
-  ],
-  "testPresets": [
-    {
-      "name": "dev",
-      "configurePreset": "dev",
-      "configuration": "Debug",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
-    },
-    {
-      "name": "dev-windows",
-      "configurePreset": "dev-windows",
-      "configuration": "Debug",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
-    },
-    {
-      "name": "dev-linux",
-      "configurePreset": "dev-linux",
-      "configuration": "Debug",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
-    },
-    {
-      "name": "ci-windows",
-      "configurePreset": "ci-windows",
-      "configuration": "Release",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
-    },
-    {
-      "name": "ci-linux",
-      "configurePreset": "ci-linux",
-      "configuration": "Release",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
-    },
-    {
-      "name": "asan-ubsan-linux",
-      "configurePreset": "asan-ubsan-linux",
-      "configuration": "Debug",
-      "environment": {
-        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
-        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
-      },
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
-    },
-    {
-      "name": "tsan-linux",
-      "configurePreset": "tsan-linux",
-      "configuration": "Debug",
-      "environment": {
-        "TSAN_OPTIONS": "halt_on_error=1"
-      },
-      "filter": {
-        "include": {
-          "label": "CONCURRENCY"
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "ATLAS_BUILD_TESTS": "ON",
+                "ATLAS_WARNINGS_AS_ERRORS": "ON",
+                "ATLAS_ENABLE_SANITIZERS": "OFF",
+                "ATLAS_ENABLE_THREAD_SANITIZER": "OFF",
+                "ATLAS_ENABLE_CLANG_TIDY": "OFF",
+                "ATLAS_REQUIRE_CLANG_TIDY": "OFF",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "dev",
+            "displayName": "Development (Ninja)",
+            "description": "Cross-platform debug build using Ninja",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ATLAS_ENABLE_SANITIZERS": "ON",
+                "ATLAS_ENABLE_CLANG_TIDY": "ON"
+            }
+        },
+        {
+            "name": "dev-windows",
+            "displayName": "Windows development (Visual Studio)",
+            "description": "Debug build using the locally available Visual Studio generator",
+            "inherits": "base",
+            "architecture": "x64",
+            "cacheVariables": {
+                "ATLAS_ENABLE_SANITIZERS": "OFF",
+                "ATLAS_ENABLE_CLANG_TIDY": "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "dev-linux",
+            "displayName": "Linux development (Ninja)",
+            "description": "Debug build using Ninja and the default Linux compiler",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ATLAS_ENABLE_SANITIZERS": "ON",
+                "ATLAS_ENABLE_CLANG_TIDY": "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "docs-windows",
+            "displayName": "Windows documentation",
+            "description": "Generate Atlas API documentation and UML diagrams on Windows",
+            "inherits": "base",
+            "architecture": "x64",
+            "cacheVariables": {
+                "ATLAS_BUILD_DOCUMENTATION": "ON",
+                "ATLAS_BUILD_TESTS": "OFF",
+                "ATLAS_ENABLE_SANITIZERS": "OFF",
+                "ATLAS_ENABLE_CLANG_TIDY": "OFF"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "docs-linux",
+            "displayName": "Linux documentation",
+            "description": "Generate Atlas API documentation and UML diagrams on Linux",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ATLAS_BUILD_DOCUMENTATION": "ON",
+                "ATLAS_BUILD_TESTS": "OFF",
+                "ATLAS_ENABLE_SANITIZERS": "OFF",
+                "ATLAS_ENABLE_CLANG_TIDY": "OFF"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "ci-windows",
+            "displayName": "Windows CI (MSVC)",
+            "description": "Release build with MSVC level-four warnings enabled",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/ci-windows",
+            "architecture": "x64",
+            "cacheVariables": {
+                "ATLAS_WARNINGS_AS_ERRORS": "OFF",
+                "ATLAS_ENABLE_SANITIZERS": "OFF",
+                "ATLAS_ENABLE_CLANG_TIDY": "OFF"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "ci-linux",
+            "displayName": "Linux CI (GCC)",
+            "description": "Release build with Atlas warnings promoted to errors",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/ci-linux",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "ATLAS_WARNINGS_AS_ERRORS": "ON",
+                "ATLAS_ENABLE_SANITIZERS": "OFF",
+                "ATLAS_ENABLE_CLANG_TIDY": "OFF",
+                "CMAKE_BUILD_TYPE": "Release"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "analysis-linux",
+            "displayName": "Linux Clang-Tidy analysis",
+            "description": "Required Clang-Tidy analysis without sanitizer instrumentation",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "ATLAS_ENABLE_CLANG_TIDY": "ON",
+                "ATLAS_REQUIRE_CLANG_TIDY": "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "asan-ubsan-linux",
+            "displayName": "Linux ASan and UBSan",
+            "description": "Clang debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "ATLAS_ENABLE_SANITIZERS": "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "tsan-linux",
+            "displayName": "Linux ThreadSanitizer",
+            "description": "Clang debug build with ThreadSanitizer for concurrency tests",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "ATLAS_ENABLE_THREAD_SANITIZER": "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
         }
-      },
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
-    }
-  ]
+    ],
+    "buildPresets": [
+        {
+            "name": "dev",
+            "configurePreset": "dev",
+            "configuration": "Debug"
+        },
+        {
+            "name": "dev-windows",
+            "configurePreset": "dev-windows",
+            "configuration": "Debug"
+        },
+        {
+            "name": "dev-linux",
+            "configurePreset": "dev-linux",
+            "configuration": "Debug"
+        },
+        {
+            "name": "docs-windows",
+            "configurePreset": "docs-windows",
+            "configuration": "Debug",
+            "targets": [
+                "docs"
+            ]
+        },
+        {
+            "name": "docs-linux",
+            "configurePreset": "docs-linux",
+            "configuration": "Debug",
+            "targets": [
+                "docs"
+            ]
+        },
+        {
+            "name": "ci-windows",
+            "configurePreset": "ci-windows",
+            "configuration": "Release"
+        },
+        {
+            "name": "ci-linux",
+            "configurePreset": "ci-linux",
+            "configuration": "Release"
+        },
+        {
+            "name": "analysis-linux",
+            "configurePreset": "analysis-linux",
+            "configuration": "Debug"
+        },
+        {
+            "name": "asan-ubsan-linux",
+            "configurePreset": "asan-ubsan-linux",
+            "configuration": "Debug"
+        },
+        {
+            "name": "tsan-linux",
+            "configurePreset": "tsan-linux",
+            "configuration": "Debug"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "dev",
+            "configurePreset": "dev",
+            "configuration": "Debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "dev-windows",
+            "configurePreset": "dev-windows",
+            "configuration": "Debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "dev-linux",
+            "configurePreset": "dev-linux",
+            "configuration": "Debug",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "ci-windows",
+            "configurePreset": "ci-windows",
+            "configuration": "Release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "ci-linux",
+            "configurePreset": "ci-linux",
+            "configuration": "Release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "asan-ubsan-linux",
+            "configurePreset": "asan-ubsan-linux",
+            "configuration": "Debug",
+            "environment": {
+                "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+                "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+            },
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "tsan-linux",
+            "configurePreset": "tsan-linux",
+            "configuration": "Debug",
+            "environment": {
+                "TSAN_OPTIONS": "halt_on_error=1"
+            },
+            "filter": {
+                "include": {
+                    "label": "CONCURRENCY"
+                }
+            },
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        }
+    ]
 }

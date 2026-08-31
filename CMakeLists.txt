@@ -32,6 +32,27 @@ include(StaticAnalysis)
 find_package(Vulkan REQUIRED)
 find_package(Threads REQUIRED)
 
+include(FetchContent)
+FetchContent_Declare(
+    nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+include(VulkanShaders)
+atlas_compile_shader(
+    atlas_vector_add_shader
+    "${CMAKE_CURRENT_SOURCE_DIR}/apps/atlas/shaders/vector_add.comp"
+    ATLAS_VECTOR_ADD_SPIRV
+)
+atlas_compile_shader(
+    atlas_benchmark_shader
+    "${CMAKE_CURRENT_SOURCE_DIR}/apps/atlas_bench/shaders/benchmark.comp"
+    ATLAS_BENCHMARK_SPIRV
+)
+
 file(
     GLOB_RECURSE ATLAS_SOURCES
     CONFIGURE_DEPENDS
@@ -48,11 +69,11 @@ file(
 list(SORT ATLAS_SOURCES)
 list(SORT ATLAS_PUBLIC_HEADERS)
 
-add_library(atlas STATIC)
-add_library(Atlas::Atlas ALIAS atlas)
+add_library(atlas_library STATIC)
+add_library(Atlas::Atlas ALIAS atlas_library)
 
 target_sources(
-    atlas
+    atlas_library
     PRIVATE
         ${ATLAS_SOURCES}
     PUBLIC
@@ -63,22 +84,23 @@ target_sources(
 )
 
 target_include_directories(
-    atlas
+    atlas_library
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
 )
 
-target_compile_features(atlas PUBLIC cxx_std_20)
+target_compile_features(atlas_library PUBLIC cxx_std_20)
 
-target_link_libraries(atlas PRIVATE Vulkan::Vulkan Threads::Threads)
+target_link_libraries(atlas_library PUBLIC Vulkan::Vulkan PRIVATE Threads::Threads)
 
-atlas_set_project_warnings(atlas)
-atlas_enable_sanitizers(atlas)
-atlas_enable_clang_tidy(atlas)
+atlas_set_project_warnings(atlas_library)
+atlas_enable_sanitizers(atlas_library)
+atlas_enable_clang_tidy(atlas_library)
 
 atlas_add_documentation()
 
-add_subdirectory(apps/atlas_cli)
+add_subdirectory(apps/atlas)
+add_subdirectory(apps/atlas_bench)
 
 if(ATLAS_BUILD_TESTS)
     include(FetchContent)
@@ -95,4 +117,10 @@ if(ATLAS_BUILD_TESTS)
 
     enable_testing()
     add_subdirectory(tests)
+
+    add_dependencies(atlas_feature_tests atlas_vector_add_shader)
+    target_compile_definitions(
+        atlas_feature_tests
+        PRIVATE ATLAS_VECTOR_ADD_SPIRV_PATH="${ATLAS_VECTOR_ADD_SPIRV}"
+    )
 endif()

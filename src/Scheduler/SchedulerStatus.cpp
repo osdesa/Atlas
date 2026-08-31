@@ -23,6 +23,10 @@ namespace Atlas
             return "ExecutorUnavailable";
         case SchedulerStatus::Unknown:
             return "Unknown";
+        case SchedulerStatus::Cancelled:
+            return "Cancelled";
+        case SchedulerStatus::PolicyError:
+            return "PolicyError";
         }
 
         return "Unknown";

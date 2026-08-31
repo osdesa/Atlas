@@ -1,3 +1,4 @@
+#include "../../support/StandaloneExecutorHarness.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -11,6 +12,7 @@
 
 namespace
 {
+    using ExecutorHarness = Atlas::Test::StandaloneExecutorHarness<Atlas::SynchronousCpuExecutor>;
     const Atlas::GraphId TEST_GRAPH_ID{ Atlas::GraphId::create() };
     const Atlas::TaskHandle INVALID_TASK_HANDLE{ Atlas::TaskId{}, TEST_GRAPH_ID };
     const Atlas::TaskHandle FIRST_TASK_HANDLE{ Atlas::TaskId{ 1U }, TEST_GRAPH_ID };
@@ -26,13 +28,13 @@ TEST_CASE("SynchronousCpuExecutor has exclusive executor state", "[UNIT]")
     STATIC_REQUIRE_FALSE(std::is_move_assignable_v<Atlas::SynchronousCpuExecutor>);
     STATIC_REQUIRE(std::has_virtual_destructor_v<Atlas::CpuExecutor>);
 
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
     REQUIRE(executor.maxConcurrency() == 1U);
 }
 
 TEST_CASE("SynchronousCpuExecutor executes accepted work before submit returns", "[UNIT]")
 {
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
     bool executed{ false };
 
     const bool accepted{ executor.submit(FIRST_TASK_HANDLE, [&executed] { executed = true; }) };
@@ -51,7 +53,7 @@ TEST_CASE("SynchronousCpuExecutor executes accepted work before submit returns",
 
 TEST_CASE("SynchronousCpuExecutor treats an empty task function as successful work", "[UNIT]")
 {
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
 
     REQUIRE(executor.submit(FIRST_TASK_HANDLE, Atlas::TaskFunction{}));
 
@@ -64,7 +66,7 @@ TEST_CASE("SynchronousCpuExecutor treats an empty task function as successful wo
 
 TEST_CASE("SynchronousCpuExecutor captures callable failures", "[UNIT]")
 {
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
 
     REQUIRE(executor.submit(FIRST_TASK_HANDLE, [] { throw std::runtime_error{ "CPU task failed" }; }));
 
@@ -90,7 +92,7 @@ TEST_CASE("SynchronousCpuExecutor captures callable failures", "[UNIT]")
 
 TEST_CASE("SynchronousCpuExecutor continues after a non-standard callable failure", "[UNIT]")
 {
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
     bool laterWorkExecuted{ false };
 
     REQUIRE(executor.submit(FIRST_TASK_HANDLE, [] { throw 7; }));
@@ -122,7 +124,7 @@ TEST_CASE("SynchronousCpuExecutor continues after a non-standard callable failur
 
 TEST_CASE("SynchronousCpuExecutor retains completions in submission order", "[UNIT]")
 {
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
     std::vector<int> executionOrder;
 
     REQUIRE(executor.submit(FIRST_TASK_HANDLE, [&executionOrder] { executionOrder.emplace_back(1); }));
@@ -141,7 +143,7 @@ TEST_CASE("SynchronousCpuExecutor retains completions in submission order", "[UN
 
 TEST_CASE("SynchronousCpuExecutor preserves each queued task outcome", "[UNIT]")
 {
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
 
     REQUIRE(executor.submit(FIRST_TASK_HANDLE, [] {}));
     REQUIRE(executor.submit(SECOND_TASK_HANDLE, [] { throw std::runtime_error{ "second task failed" }; }));
@@ -159,7 +161,7 @@ TEST_CASE("SynchronousCpuExecutor preserves each queued task outcome", "[UNIT]")
 
 TEST_CASE("SynchronousCpuExecutor rejects invalid task handles", "[UNIT]")
 {
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
     bool workExecuted{ false };
 
     REQUIRE_THROWS_AS(executor.submit(INVALID_TASK_HANDLE, [&workExecuted] { workExecuted = true; }), std::invalid_argument);
@@ -173,7 +175,7 @@ TEST_CASE("SynchronousCpuExecutor rejects invalid task handles", "[UNIT]")
 
 TEST_CASE("SynchronousCpuExecutor rejects submissions after shutdown without discarding completions", "[UNIT]")
 {
-    Atlas::SynchronousCpuExecutor executor;
+    ExecutorHarness executor;
     bool rejectedWorkExecuted{ false };
 
     REQUIRE(executor.submit(FIRST_TASK_HANDLE, [] {}));

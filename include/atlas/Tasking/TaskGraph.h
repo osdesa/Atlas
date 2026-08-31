@@ -42,13 +42,30 @@ namespace Atlas
         TaskGraph() noexcept : graphID{ GraphId::create() }, taskIdGenerator{ graphID }, isFinalised{ false } {}
 
         /**
-         * @brief Adds a new task to the graph with the given work and metadata.
-         * @param taskFunction The function to execute for this task. Empty functions are valid, but will not perform
-         * any work.
-         * @param taskOptions The metadata associated with this task.
-         * @return The handle assigned to the new task.
+         * @brief Adds explicit CPU callable work to the graph.
+         * @param taskFunction The callable to execute on the CPU backend.
+         * @param taskOptions CPU task metadata; its resource must remain CPU.
+         * @return The assigned handle, or empty when the graph rejects the task.
          */
-        std::optional<TaskHandle> addTask(TaskFunction taskFunction, TaskOptions taskOptions);
+        std::optional<TaskHandle> addCpuTask(TaskFunction taskFunction, TaskOptions taskOptions = TaskOptions{});
+
+        /**
+         * @brief Adds explicit Vulkan dispatch work to the graph.
+         * @param dispatch The validated declarative dispatch to execute.
+         * @param taskOptions GPU task metadata; its resource must remain GPU.
+         * @return The assigned handle, or empty when the graph rejects the task.
+         */
+        std::optional<TaskHandle> addGpuTask(VulkanDispatch dispatch,
+                                             TaskOptions taskOptions = TaskOptions{ {}, ExecutionResource::GPU });
+
+        /**
+         * @brief Adds cooperatively sliced Vulkan work to the graph.
+         * @param dispatch The validated logical dispatch and slice geometry.
+         * @param taskOptions GPU task metadata; its resource must remain GPU.
+         * @return The assigned handle, or empty when the graph rejects the task.
+         */
+        std::optional<TaskHandle> addGpuTask(SlicedVulkanDispatch dispatch,
+                                             TaskOptions taskOptions = TaskOptions{ {}, ExecutionResource::GPU });
 
         /**
          * @brief Retrieves the handles of every task owned by this graph.
@@ -125,6 +142,8 @@ namespace Atlas
         TaskGraph& operator=(TaskGraph&&) = delete;
 
       private:
+        std::optional<TaskHandle> addTaskWork(TaskWork work, TaskOptions taskOptions);
+
         /**
          * @brief Finds a mutable task owned by this graph for internal graph construction.
          *
