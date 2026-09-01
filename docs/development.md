@@ -91,6 +91,12 @@ and accepted work drains. Ordinary running work completes; sliced Vulkan work
 can stop only after a completed unit. Task, policy, and infrastructure failures
 are fail-stop and preserve the first applicable exception.
 
+`VK_ERROR_DEVICE_LOST` is an infrastructure failure even when it arrives in a
+task-attributed completion. The shared Vulkan context latches the loss, later
+device operations fail immediately, queued accepted dispatches receive one
+failure completion each, and the scheduler reports `ExecutorUnavailable` after
+draining accepted work. Other dispatch exceptions remain task failures.
+
 See [Task lifecycle](task-lifecycle.md) for the state machine and
 [User Guide](user-guide.md) for current external behavior.
 
@@ -126,6 +132,40 @@ real Vulkan tests for any runtime, resource, dispatch, executor, scheduler, app,
 or benchmark change. Use ASan/UBSan and repeated TSan tests for ownership and
 concurrency changes. A local LeakSanitizer invocation under `ptrace` may require
 `LSAN_OPTIONS=detect_leaks=0`; never weaken CI for that limitation.
+
+Generated DAG and large-graph tests are tagged `STRESS`. Their bounded defaults
+use seed `684453` and 128 generated rounds. Replay or extend them with strict
+unsigned decimal environment values:
+
+```bash
+ATLAS_STRESS_SEED=684453 ATLAS_STRESS_ROUNDS=10000 \
+  ctest --preset ci-linux -L STRESS --output-on-failure
+```
+
+The manual `Manual robustness` workflow runs this 10,000-round soak on
+Lavapipe, the full ASan/UBSan suite, and the TSan concurrency suite twenty times.
+It has no schedule and does not gate ordinary pull requests.
+
+For an optional local physical-GPU run, select an installed ICD externally and
+use the same build rather than checking a machine path into the repository:
+
+```bash
+export VK_DRIVER_FILES=/absolute/path/to/physical_icd.json
+cmake --preset ci-linux
+cmake --build --preset ci-linux --parallel
+ctest --preset ci-linux
+ATLAS_STRESS_SEED=684453 ATLAS_STRESS_ROUNDS=10000 \
+  ctest --preset ci-linux -L STRESS --output-on-failure
+./build/ci-linux/apps/atlas/atlas
+./build/ci-linux/apps/atlas_bench/atlas_bench \
+  --suite benchmarks/manifests/smoke-v1.json \
+  --environment-file <environment.json> \
+  --output-dir build/ci-linux/physical-robustness-smoke
+```
+
+These are correctness and deadlock checks. Atlas records benchmark timing but
+does not apply absolute performance thresholds to shared CI or unrelated
+physical hosts.
 
 ## Code and documentation
 

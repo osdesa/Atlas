@@ -3,6 +3,7 @@
 #include "ReadyTaskAccounting.h"
 #include "SchedulerTimingAccounting.h"
 #include "atlas/Scheduler/FifoSchedulingPolicy.h"
+#include "atlas/Vulkan/VulkanError.h"
 
 #include <algorithm>
 #include <chrono>
@@ -44,6 +45,26 @@ namespace Atlas
                                .taskId = task->handle.getTaskID().getValue(),
                                .priority = task->options.priority,
                                .state = task->executionInfo.state };
+        }
+
+        bool isDeviceLoss(const std::exception_ptr& exception) noexcept
+        {
+            if (exception == nullptr)
+            {
+                return false;
+            }
+            try
+            {
+                std::rethrow_exception(exception);
+            }
+            catch (const VulkanError& error)
+            {
+                return error.result() == VK_ERROR_DEVICE_LOST;
+            }
+            catch (...)
+            {
+                return false;
+            }
         }
     } // namespace
 
@@ -144,7 +165,10 @@ namespace Atlas
         schedulerTimingAccounting->pause();
         result.status = forcedStatus.value_or(determineStatus(state));
         result.executedTaskCount = state.successfulTaskCount;
-        result.exception = state.firstTaskException != nullptr ? state.firstTaskException : state.firstPolicyException;
+        result.exception =
+            state.firstTaskException != nullptr
+                ? state.firstTaskException
+                : (state.firstInfrastructureException != nullptr ? state.firstInfrastructureException : state.firstPolicyException);
         result.executionTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
         result.schedulerActiveDuration = schedulerTimingAccounting->activeDuration();
         result.immediateSliceSwitchDuration = schedulerTimingAccounting->immediateSliceSwitchDuration();
@@ -259,6 +283,10 @@ namespace Atlas
                 emitTrace(taskTraceEvent(TraceEventKind::SubmissionRejected, task.value()));
                 state.executorFailure = true;
                 state.submissionsEnabled = false;
+                if (state.firstInfrastructureException == nullptr)
+                {
+                    state.firstInfrastructureException = std::current_exception();
+                }
                 return;
             }
             schedulerTimingAccounting->resume();
@@ -412,11 +440,22 @@ namespace Atlas
         {
             markCancellationTerminal(completion.handle);
             readyTaskAccounting->recordTerminal(task.value());
-            state.taskFailureObserved = true;
             state.submissionsEnabled = false;
-            if (state.firstTaskException == nullptr)
+            if (isDeviceLoss(completion.exception))
             {
-                state.firstTaskException = completion.exception;
+                state.executorFailure = true;
+                if (state.firstInfrastructureException == nullptr)
+                {
+                    state.firstInfrastructureException = completion.exception;
+                }
+            }
+            else
+            {
+                state.taskFailureObserved = true;
+                if (state.firstTaskException == nullptr)
+                {
+                    state.firstTaskException = completion.exception;
+                }
             }
             emitTrace(taskTraceEvent(TraceEventKind::TaskFailed, task.value()));
         }

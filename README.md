@@ -15,6 +15,9 @@ Canonical physical Intel and Lavapipe baselines found no evidence-supported
 adaptive scheduling target, so Atlas retains its fixed policies and proceeds to
 robustness work. See the [Milestone 13 evaluation](docs/milestone-13-evaluation.md)
 for the preregistered decision and uncertainty-supported results.
+Milestone 15 adds replayable generated-DAG and large-graph validation,
+systematic fault and cancellation stress, sanitizer/soak workflows, and
+fail-stop Vulkan device-loss handling.
 
 See the [User Guide](docs/user-guide.md) for requirements, exact build and run
 commands, all CLI arguments, the benchmark JSON contract, output files, common

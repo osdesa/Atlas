@@ -98,6 +98,8 @@ namespace Atlas
             std::exception_ptr firstTaskException{ nullptr };
             /// @brief First policy exception or synthesized contract error observed.
             std::exception_ptr firstPolicyException{ nullptr };
+            /// @brief First thrown submission error or permanent backend exception.
+            std::exception_ptr firstInfrastructureException{ nullptr };
             /// @brief Whether new task submissions are still permitted.
             bool submissionsEnabled{ true };
             /// @brief Whether an executor or completion contract failed.

@@ -1,7 +1,7 @@
 # Remaining milestones
 
-Planning document recording completed Milestones 12–13, skipped Milestone 14,
-and ordered Milestones 15–18 after the current CPU/Vulkan task-graph
+Planning document recording completed Milestones 12–15, skipped Milestone 14,
+and ordered Milestones 16–18 after the current CPU/Vulkan task-graph
 implementation. The
 [User Guide](user-guide.md) documents shipped functionality.
 
@@ -39,7 +39,7 @@ static priority materially worsened response without a material stable fairness
 gain. Atlas therefore adds no adaptive controller, tuning state, or dynamic
 slice geometry and proceeds directly to robustness.
 
-## Milestone 15 — Robustness and validation
+## Milestone 15 — Robustness and validation (complete)
 
 1. Add randomized DAG/property tests and very large graph tests.
 2. Add cancellation/shutdown fault matrices, malformed executor streams, Vulkan failure injection, and device-loss handling.
@@ -47,6 +47,10 @@ slice geometry and proceeds directly to robustness.
 4. Use Milestone 13 variance evidence to add performance-regression thresholds
    only for metrics and environments shown to be stable.
 5. Continue real Lavapipe execution and add optional physical-GPU runs without making them required for ordinary development.
+
+The [Milestone 15 validation](milestone-15-validation.md) records the
+replayable stress contract, fault coverage, sanitizer and soak commands,
+device-loss behavior, and the decision not to apply portable timing gates.
 
 ## Milestone 16 — Final evaluation
 

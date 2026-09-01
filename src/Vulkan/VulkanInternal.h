@@ -4,6 +4,9 @@
 #include "atlas/Vulkan/VulkanCompute.h"
 #include "atlas/Vulkan/VulkanRuntime.h"
 
+#include <atomic>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -14,6 +17,15 @@ namespace Atlas
 {
     namespace Detail
     {
+        /// @brief Private executor boundaries available for deterministic fault injection.
+        enum class VulkanExecutorFaultPoint : std::uint8_t
+        {
+            BeforeExecution,
+            BeforeQueueSubmit,
+            AfterFenceWait,
+            BeforeTimestampReadback
+        };
+
         class VulkanAccess final
         {
           public:
@@ -31,6 +43,11 @@ namespace Atlas
         struct VulkanContext final
         {
             ~VulkanContext();
+
+            /// @brief Throws immediately after the logical device has been reported lost.
+            void requireDeviceAvailable(const char* operation) const;
+            /// @brief Latches device loss and throws for any unsuccessful device operation.
+            void checkDeviceResult(VkResult result, const char* operation);
 
             /// @brief Vulkan instance shared by all resources in this runtime.
             VkInstance instance{ VK_NULL_HANDLE };
@@ -58,6 +75,10 @@ namespace Atlas
             VulkanValidationCallback validationCallback;
             /// @brief Serializes submissions and transfer operations on the queue.
             std::mutex queueMutex;
+            /// @brief Permanently records VK_ERROR_DEVICE_LOST for every context owner.
+            std::atomic_bool deviceLost{ false };
+            /// @brief Private test hook; empty during ordinary execution.
+            std::function<void(VulkanExecutorFaultPoint)> executorFaultInjector;
         };
 
         /// @brief Throws VulkanError when @p result is not VK_SUCCESS.
@@ -110,6 +131,18 @@ namespace Atlas
         /// @brief Shared context kept alive by runtime-owned resources.
         std::shared_ptr<Detail::VulkanContext> context;
     };
+
+    namespace Detail
+    {
+        /// @brief Grants tests access to private Vulkan fault injection without public handles.
+        struct VulkanTestingAccess final
+        {
+            static std::shared_ptr<VulkanContext> context(VulkanRuntime& runtime) noexcept
+            {
+                return runtime.implementation->context;
+            }
+        };
+    } // namespace Detail
 } // namespace Atlas
 /// @endcond
 

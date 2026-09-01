@@ -19,6 +19,12 @@ for validation, summaries, and SVG timelines.
 Graphics, presentation, multiple Vulkan queues, runtime graph mutation,
 repeated graph execution, and true CPU/GPU preemption are not implemented.
 
+Vulkan device loss is permanent for a runtime context. Atlas stops new graph
+submissions, drains already accepted CPU and Vulkan work, reports
+`ExecutorUnavailable`, and preserves an attributable `VulkanError`. Resources
+remain safely destructible, but the runtime and its executors cannot be reused;
+Atlas does not recreate the device or select a fallback.
+
 ## Requirements
 
 Atlas requires:
@@ -227,6 +233,10 @@ adaptive scheduling policy.
   non-existent or incompatible manifest.
 - **No suitable device/queue/feature:** use a device with compute support and
   the Vulkan capabilities reported by the startup error.
+- **Device lost during execution:** the affected runtime context is permanently
+  unavailable. Destroy the runtime and its resources, diagnose the driver or
+  workload failure, and start a new process or explicitly construct a new
+  runtime; Atlas performs no automatic recovery.
 - **Validation layer unavailable:** install the Khronos validation layer when
   running validation-enabled tests.
 - **Invalid suite:** correct the exact missing, unknown, out-of-range, or

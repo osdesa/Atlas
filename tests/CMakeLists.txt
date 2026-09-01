@@ -1,5 +1,5 @@
 function(atlas_add_test_suite target_name suite_label)
-    cmake_parse_arguments(PARSE_ARGV 2 suite "" "" "SOURCES")
+    cmake_parse_arguments(PARSE_ARGV 2 suite "" "TIMEOUT" "SOURCES")
 
     if(NOT suite_SOURCES)
         return()
@@ -24,12 +24,16 @@ function(atlas_add_test_suite target_name suite_label)
     atlas_enable_sanitizers(${target_name})
     atlas_enable_clang_tidy(${target_name})
 
+    if(NOT suite_TIMEOUT)
+        set(suite_TIMEOUT 60)
+    endif()
+
     catch_discover_tests(
         ${target_name}
         ADD_TAGS_AS_LABELS
         PROPERTIES
             LABELS "${suite_label}"
-            TIMEOUT 60
+            TIMEOUT ${suite_TIMEOUT}
     )
 endfunction()
 

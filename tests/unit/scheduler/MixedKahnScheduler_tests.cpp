@@ -7,6 +7,7 @@
 #include "atlas/Scheduler/RoundRobinSchedulingPolicy.h"
 #include "atlas/Scheduler/StaticPrioritySchedulingPolicy.h"
 #include "atlas/Tasking/TaskGraph.h"
+#include "atlas/Vulkan/VulkanError.h"
 
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
@@ -684,6 +685,28 @@ TEST_CASE("KahnScheduler preserves a GPU dispatch exception and blocks dependant
     REQUIRE(result.status == Atlas::SchedulerStatus::TaskFailed);
     REQUIRE(result.exception == failure);
     REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
+}
+
+TEST_CASE("KahnScheduler classifies Vulkan device loss as infrastructure failure", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::TaskHandle gpuTask{ requireHandle(graph.addGpuTask(Atlas::Testing::VulkanTestFactory::dispatch())) };
+    const Atlas::TaskHandle dependent{ requireHandle(graph.addCpuTask([] {})) };
+    REQUIRE(graph.addDependency(dependent, gpuTask));
+    REQUIRE(graph.finishTaskGraph());
+    const std::exception_ptr deviceLoss{ std::make_exception_ptr(Atlas::VulkanError{ VK_ERROR_DEVICE_LOST, "injected dispatch" }) };
+
+    Atlas::SynchronousCpuExecutor cpuExecutor;
+    ImmediateVulkanDispatchExecutor gpuExecutor{ Atlas::ExecutionResource::GPU, deviceLoss };
+    Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
+    REQUIRE(result.exception == deviceLoss);
+    REQUIRE(result.executedTaskCount == 0U);
+    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.exception == deviceLoss);
     REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
 }
 

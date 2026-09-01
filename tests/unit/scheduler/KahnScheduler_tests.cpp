@@ -153,6 +153,19 @@ namespace
         std::vector<Atlas::TaskHandle> submittedHandles;
     };
 
+    class ThrowingCpuExecutor final : public Atlas::CpuExecutor
+    {
+      public:
+        ThrowingCpuExecutor() : CpuExecutor{ 1U } {}
+
+        bool submit(Atlas::TaskHandle, Atlas::TaskFunction, Atlas::CompletionChannel&) override
+        {
+            throw std::runtime_error{ "injected submission failure" };
+        }
+
+        void shutdown() noexcept override {}
+    };
+
     Atlas::TaskHandle addTask(Atlas::TaskGraph& graph, Atlas::TaskFunction function, const char* name)
     {
         const std::optional<Atlas::TaskHandle> handle{ graph.addCpuTask(std::move(function), Atlas::TaskOptions{ name }) };
@@ -400,6 +413,29 @@ TEST_CASE("KahnScheduler restores a task when the CPU executor rejects submissio
     REQUIRE(task.value()->executionInfo.state == Atlas::TaskState::Ready);
     REQUIRE(task.value()->executionInfo.exception == nullptr);
     REQUIRE(task.value()->executionInfo.executionDuration == std::chrono::microseconds{ 0 });
+}
+
+TEST_CASE("KahnScheduler retains a thrown submission exception as infrastructure failure", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::TaskHandle task{ addTask(graph, [] {}, "Rejected by throw") };
+    REQUIRE(graph.finishTaskGraph());
+
+    ThrowingCpuExecutor executor;
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
+    const Atlas::SchedulerResult result{ scheduler.execute() };
+
+    REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
+    REQUIRE(result.exception != nullptr);
+    REQUIRE(graph.findTask(task).value()->executionInfo.state == Atlas::TaskState::Ready);
+    try
+    {
+        std::rethrow_exception(result.exception);
+    }
+    catch (const std::runtime_error& error)
+    {
+        REQUIRE(std::string_view{ error.what() } == "injected submission failure");
+    }
 }
 
 TEST_CASE("KahnScheduler drains accepted work after a later submission is rejected", "[UNIT]")

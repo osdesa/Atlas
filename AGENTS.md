@@ -18,7 +18,9 @@ and benchmark schema version two records capability-checked Vulkan timestamp
 measurements when the selected compute queue supports them.
 Milestone 13 canonical physical Intel and Lavapipe baselines found no stable
 material trade-off or workload-dependent fixed quantum optimum. Adaptive
-scheduling is therefore skipped; robustness and validation are the next work.
+scheduling is therefore skipped. Milestone 15 adds deterministic generated-DAG
+and large-graph validation, fault matrices, sanitizer/soak workflows, and
+fail-stop Vulkan device-loss handling; final evaluation is the next work.
 
 The supported executables are:
 

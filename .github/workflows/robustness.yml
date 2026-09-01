@@ -1,0 +1,71 @@
+name: Manual robustness
+
+on:
+  workflow_dispatch:
+    inputs:
+      stress_seed:
+        description: Replayable unsigned seed for generated DAG stress
+        required: true
+        default: "684453"
+      stress_rounds:
+        description: Number of generated DAG rounds
+        required: true
+        default: "10000"
+
+permissions:
+  contents: read
+
+jobs:
+  lavapipe:
+    name: Lavapipe sanitizers and soak
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build and Vulkan dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang ninja-build libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
+
+      - name: Select Lavapipe
+        run: |
+          lavapipe_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
+          test -n "${lavapipe_icd}"
+          echo "VK_DRIVER_FILES=${lavapipe_icd}" >> "${GITHUB_ENV}"
+
+      - name: Run release soak and Vulkan smoke
+        env:
+          ATLAS_STRESS_SEED: ${{ inputs.stress_seed }}
+          ATLAS_STRESS_ROUNDS: ${{ inputs.stress_rounds }}
+        run: |
+          cmake --preset ci-linux
+          cmake --build --preset ci-linux --parallel
+          ctest --preset ci-linux -L STRESS --output-junit build/ci-linux/stress.junit.xml
+          ./build/ci-linux/apps/atlas/atlas
+          ./build/ci-linux/apps/atlas_bench/atlas_bench --suite benchmarks/manifests/smoke-v1.json --output-dir build/ci-linux/robustness-smoke
+
+      - name: Run ASan and UBSan
+        run: |
+          cmake --preset asan-ubsan-linux
+          cmake --build --preset asan-ubsan-linux --parallel
+          ctest --preset asan-ubsan-linux --output-junit build/asan-ubsan-linux/tests.junit.xml
+
+      - name: Run repeated TSan concurrency tests
+        run: |
+          cmake --preset tsan-linux
+          cmake --build --preset tsan-linux --parallel
+          ctest --preset tsan-linux --repeat until-fail:20 --output-junit build/tsan-linux/tests.junit.xml
+
+      - name: Upload robustness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-robustness-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            build/**/*.junit.xml
+            build/**/Testing/Temporary/LastTest.log
+            build/ci-linux/robustness-smoke/

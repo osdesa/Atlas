@@ -83,3 +83,20 @@ TEST_CASE("CompletionChannel preserves a completion work-unit index", "[UNIT]")
     REQUIRE(event.completion->handle == handle);
     REQUIRE(event.completion->workUnitIndex == 4U);
 }
+
+TEST_CASE("CompletionChannel reports publication overflow and rejects publication after closure", "[UNIT]")
+{
+    Atlas::CompletionChannel channel{ 1U };
+    REQUIRE(channel.publish(Atlas::TaskCompletion{ testHandle(4U), nullptr, {}, Atlas::ExecutionResource::GPU }));
+    REQUIRE_FALSE(channel.publish(Atlas::TaskCompletion{ testHandle(5U), nullptr, {}, Atlas::ExecutionResource::GPU }));
+
+    REQUIRE(channel.wait().kind == Atlas::CompletionEventKind::Completion);
+    const Atlas::CompletionEvent overflow{ channel.wait() };
+    REQUIRE(overflow.kind == Atlas::CompletionEventKind::ProducerFailure);
+    REQUIRE(overflow.resource == Atlas::ExecutionResource::GPU);
+
+    channel.close();
+    REQUIRE_FALSE(channel.publish(Atlas::TaskCompletion{ testHandle(6U) }));
+    REQUIRE(channel.wait().kind == Atlas::CompletionEventKind::ProducerFailure);
+    REQUIRE(channel.wait().kind == Atlas::CompletionEventKind::Closed);
+}

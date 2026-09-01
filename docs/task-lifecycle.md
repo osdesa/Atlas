@@ -160,6 +160,14 @@ scheduling policy or an invalid selected index is a policy error. Both stop new
 submissions and drain accepted work. Useful duration and progress recorded
 before a later failure are retained.
 
+`VK_ERROR_DEVICE_LOST` is always an executor infrastructure failure, including
+when a CPU callable or Vulkan worker reports it through an attributed task
+completion. That task enters `Failure`, its dependants remain blocked, the
+shared runtime context rejects later device work, and accepted work on either
+resource drains before `execute()` returns. The result retains the first task
+exception when one preceded the loss; otherwise it exposes the device-loss
+exception.
+
 Final status precedence is:
 
 ```text

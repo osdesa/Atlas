@@ -1,8 +1,9 @@
 #include "atlas/Tasking/TaskGraph.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 /**
@@ -52,20 +53,34 @@ namespace Atlas
             return std::nullopt;
         }
 
+        std::shared_ptr<Task> task;
         if (std::holds_alternative<TaskFunction>(work))
         {
-            tasks.emplace_back(
-                std::make_shared<Task>(taskHandle.value(), std::move(std::get<TaskFunction>(work)), std::move(taskOptions)));
+            task = std::make_shared<Task>(taskHandle.value(), std::move(std::get<TaskFunction>(work)), std::move(taskOptions));
         }
         else if (std::holds_alternative<VulkanDispatch>(work))
         {
-            tasks.emplace_back(
-                std::make_shared<Task>(taskHandle.value(), std::move(std::get<VulkanDispatch>(work)), std::move(taskOptions)));
+            task = std::make_shared<Task>(taskHandle.value(), std::move(std::get<VulkanDispatch>(work)), std::move(taskOptions));
         }
         else
         {
-            tasks.emplace_back(
-                std::make_shared<Task>(taskHandle.value(), std::move(std::get<SlicedVulkanDispatch>(work)), std::move(taskOptions)));
+            task = std::make_shared<Task>(taskHandle.value(), std::move(std::get<SlicedVulkanDispatch>(work)), std::move(taskOptions));
+        }
+
+        tasks.emplace_back(task);
+        try
+        {
+            const bool inserted{ taskIndex.emplace(taskHandle.value(), std::move(task)).second };
+            if (!inserted)
+            {
+                tasks.pop_back();
+                return std::nullopt;
+            }
+        }
+        catch (...)
+        {
+            tasks.pop_back();
+            throw;
         }
         return taskHandle;
     }
@@ -143,32 +158,45 @@ namespace Atlas
             return true;
         }
 
-        // Ensure the graph has no cycles
-        bool hasCycles{ false };
+        std::unordered_map<TaskHandle, std::size_t, TaskHandle::Hash> remainingDependencies;
+        remainingDependencies.reserve(tasks.size());
+        std::vector<TaskHandle> ready;
+        ready.reserve(tasks.size());
         for (const std::shared_ptr<Task>& task : tasks)
         {
-            for (const TaskHandle dependency : task->getDependencies())
+            const std::size_t dependencyCount{ task->getDependencies().size() };
+            remainingDependencies.emplace(task->handle, dependencyCount);
+            if (dependencyCount == 0U)
             {
-                if (checkForCycles(task->handle, dependency))
+                ready.emplace_back(task->handle);
+            }
+        }
+
+        std::size_t processedCount{ 0U };
+        for (std::size_t readyIndex{ 0U }; readyIndex < ready.size(); ++readyIndex)
+        {
+            const std::optional<std::shared_ptr<const Task>> task{ findTask(ready.at(readyIndex)) };
+            if (!task.has_value())
+            {
+                return false;
+            }
+            ++processedCount;
+            for (const TaskHandle dependent : task.value()->getDependents())
+            {
+                auto remaining{ remainingDependencies.find(dependent) };
+                if (remaining == remainingDependencies.end() || remaining->second == 0U)
                 {
-                    hasCycles = true;
-                    break;
+                    return false;
+                }
+                --remaining->second;
+                if (remaining->second == 0U)
+                {
+                    ready.emplace_back(dependent);
                 }
             }
         }
 
-        // Ensure at least one task has no dependencies
-        bool hasRootTask{ false };
-        for (const std::shared_ptr<Task>& task : tasks)
-        {
-            if (task->getDependencies().empty())
-            {
-                hasRootTask = true;
-                break;
-            }
-        }
-
-        isFinalised = (!hasCycles && hasRootTask);
+        isFinalised = !ready.empty() && processedCount == tasks.size();
 
         if (isFinalised)
         {
@@ -181,7 +209,8 @@ namespace Atlas
     bool TaskGraph::checkForCycles(TaskHandle dependent, TaskHandle dependency) const
     {
         std::vector<TaskHandle> pending{ dependency };
-        std::vector<TaskHandle> visited;
+        std::unordered_set<TaskHandle, TaskHandle::Hash> visited;
+        visited.reserve(tasks.size());
 
         while (!pending.empty())
         {
@@ -193,12 +222,10 @@ namespace Atlas
                 return true;
             }
 
-            if (std::find(visited.begin(), visited.end(), current) != visited.end())
+            if (!visited.emplace(current).second)
             {
                 continue;
             }
-
-            visited.emplace_back(current);
 
             const std::optional<std::shared_ptr<const Task>> task{ findTask(current) };
             if (!task.has_value())
@@ -241,28 +268,22 @@ namespace Atlas
 
     std::optional<std::shared_ptr<Task>> TaskGraph::findMutableTask(TaskHandle taskHandle) noexcept
     {
-        const auto taskIt{ std::find_if(tasks.begin(), tasks.end(),
-                                        [taskHandle](const std::shared_ptr<Task>& task) { return task->handle == taskHandle; }) };
-
-        if (taskIt == tasks.end())
+        const auto taskIt{ taskIndex.find(taskHandle) };
+        if (taskIt == taskIndex.end())
         {
             return std::nullopt;
         }
-
-        return *taskIt;
+        return taskIt->second;
     }
 
     std::optional<std::shared_ptr<const Task>> TaskGraph::findTask(TaskHandle taskHandle) const noexcept
     {
-        const auto taskIt{ std::find_if(tasks.begin(), tasks.end(),
-                                        [taskHandle](const std::shared_ptr<Task>& task) { return task->handle == taskHandle; }) };
-
-        if (taskIt == tasks.end())
+        const auto taskIt{ taskIndex.find(taskHandle) };
+        if (taskIt == taskIndex.end())
         {
             return std::nullopt;
         }
-
-        return std::shared_ptr<const Task>{ *taskIt };
+        return std::shared_ptr<const Task>{ taskIt->second };
     }
 
 } // namespace Atlas

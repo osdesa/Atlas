@@ -22,6 +22,29 @@
 
 namespace Atlas
 {
+    namespace
+    {
+        bool isDeviceLoss(const std::exception_ptr& exception) noexcept
+        {
+            if (exception == nullptr)
+            {
+                return false;
+            }
+            try
+            {
+                std::rethrow_exception(exception);
+            }
+            catch (const VulkanError& error)
+            {
+                return error.result() == VK_ERROR_DEVICE_LOST;
+            }
+            catch (...)
+            {
+                return false;
+            }
+        }
+    } // namespace
+
     /// @cond INTERNAL
     struct VulkanExecutor::Impl final
     {
@@ -29,6 +52,7 @@ namespace Atlas
         {
             Running,      ///< The worker accepts new dispatches.
             ShuttingDown, ///< Accepted dispatches are draining.
+            Failed,       ///< Device loss permanently prevents later submissions.
             Stopped       ///< The worker has exited permanently.
         };
 
@@ -47,6 +71,7 @@ namespace Atlas
         /// @brief Starts the single worker for @p runtimeContext.
         explicit Impl(std::shared_ptr<Detail::VulkanContext> runtimeContext) : context{ std::move(runtimeContext) }
         {
+            context->requireDeviceAvailable("create Vulkan executor");
             if constexpr (profilingEnabled)
             {
                 if (context->timestampCapabilities.supported)
@@ -57,8 +82,8 @@ namespace Atlas
                                                            .queryType = VK_QUERY_TYPE_TIMESTAMP,
                                                            .queryCount = 2U,
                                                            .pipelineStatistics = 0U };
-                    Detail::throwIfFailed(vkCreateQueryPool(context->device, &queryInfo, nullptr, &timestampQueryPool),
-                                          "vkCreateQueryPool");
+                    context->checkDeviceResult(vkCreateQueryPool(context->device, &queryInfo, nullptr, &timestampQueryPool),
+                                               "vkCreateQueryPool");
                 }
             }
             worker = std::jthread{ [this] { workerLoop(); } };
@@ -86,8 +111,13 @@ namespace Atlas
                 std::lock_guard lock{ stateMutex };
                 if (lifecycle != Lifecycle::Running)
                 {
+                    if (lifecycle == Lifecycle::Failed || context->deviceLost.load(std::memory_order_acquire))
+                    {
+                        throw VulkanError{ VK_ERROR_DEVICE_LOST, "submit Vulkan dispatch" };
+                    }
                     return false;
                 }
+                context->requireDeviceAvailable("submit Vulkan dispatch");
                 pending.emplace_back(WorkItem{ dispatch,
                                                TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 },
                                                                ExecutionResource::GPU, dispatch.workUnitIndex() },
@@ -153,13 +183,32 @@ namespace Atlas
                     }
                 }
                 const auto start{ std::chrono::steady_clock::now() };
+                std::exception_ptr failure;
+                {
+                    std::lock_guard lock{ stateMutex };
+                    failure = terminalFailure;
+                }
                 try
                 {
+                    if (failure != nullptr)
+                    {
+                        std::rethrow_exception(failure);
+                    }
                     item.completion.deviceExecutionDuration = execute(item.dispatch);
                 }
                 catch (...)
                 {
                     item.completion.exception = std::current_exception();
+                    if (isDeviceLoss(item.completion.exception))
+                    {
+                        context->deviceLost.store(true, std::memory_order_release);
+                        std::lock_guard lock{ stateMutex };
+                        lifecycle = Lifecycle::Failed;
+                        if (terminalFailure == nullptr)
+                        {
+                            terminalFailure = item.completion.exception;
+                        }
+                    }
                 }
                 item.completion.executionDuration =
                     std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
@@ -196,6 +245,11 @@ namespace Atlas
         /// @brief Records and submits one dispatch, waiting for its fence.
         std::optional<std::chrono::nanoseconds> execute(const VulkanDispatch& dispatch)
         {
+            context->requireDeviceAvailable("execute Vulkan dispatch");
+            if (context->executorFaultInjector)
+            {
+                context->executorFaultInjector(Detail::VulkanExecutorFaultPoint::BeforeExecution);
+            }
             const auto& pipeline{ Detail::VulkanAccess::pipeline(dispatch.pipeline()) };
             if (pipeline == nullptr || pipeline->context != context)
             {
@@ -235,8 +289,8 @@ namespace Atlas
                                                            .maxSets = 1U,
                                                            .poolSizeCount = 1U,
                                                            .pPoolSizes = &poolSize };
-                Detail::throwIfFailed(vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool),
-                                      "vkCreateDescriptorPool");
+                context->checkDeviceResult(vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool),
+                                           "vkCreateDescriptorPool");
 
                 VkDescriptorSet descriptorSet{ VK_NULL_HANDLE };
                 const VkDescriptorSetAllocateInfo descriptorInfo{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -244,8 +298,8 @@ namespace Atlas
                                                                   .descriptorPool = descriptorPool,
                                                                   .descriptorSetCount = 1U,
                                                                   .pSetLayouts = &pipeline->descriptorSetLayout };
-                Detail::throwIfFailed(vkAllocateDescriptorSets(context->device, &descriptorInfo, &descriptorSet),
-                                      "vkAllocateDescriptorSets");
+                context->checkDeviceResult(vkAllocateDescriptorSets(context->device, &descriptorInfo, &descriptorSet),
+                                           "vkAllocateDescriptorSets");
 
                 std::vector<VkDescriptorBufferInfo> bufferInfos;
                 std::vector<VkWriteDescriptorSet> descriptorWrites;
@@ -277,16 +331,16 @@ namespace Atlas
                                                                .commandPool = context->commandPool,
                                                                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                                                                .commandBufferCount = 1U };
-                Detail::throwIfFailed(vkAllocateCommandBuffers(context->device, &commandInfo, &commandBuffer),
-                                      "vkAllocateCommandBuffers");
+                context->checkDeviceResult(vkAllocateCommandBuffers(context->device, &commandInfo, &commandBuffer),
+                                           "vkAllocateCommandBuffers");
                 const VkFenceCreateInfo fenceInfo{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = nullptr, .flags = 0U };
-                Detail::throwIfFailed(vkCreateFence(context->device, &fenceInfo, nullptr, &fence), "vkCreateFence");
+                context->checkDeviceResult(vkCreateFence(context->device, &fenceInfo, nullptr, &fence), "vkCreateFence");
 
                 const VkCommandBufferBeginInfo beginInfo{ .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                                                           .pNext = nullptr,
                                                           .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
                                                           .pInheritanceInfo = nullptr };
-                Detail::throwIfFailed(vkBeginCommandBuffer(commandBuffer, &beginInfo), "vkBeginCommandBuffer");
+                context->checkDeviceResult(vkBeginCommandBuffer(commandBuffer, &beginInfo), "vkBeginCommandBuffer");
                 if (timestampQueryPool != VK_NULL_HANDLE)
                 {
                     vkCmdResetQueryPool(commandBuffer, timestampQueryPool, 0U, 2U);
@@ -356,7 +410,7 @@ namespace Atlas
                 {
                     vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampQueryPool, 1U);
                 }
-                Detail::throwIfFailed(vkEndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
+                context->checkDeviceResult(vkEndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
 
                 const VkSubmitInfo submitInfo{ .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                                                .pNext = nullptr,
@@ -367,9 +421,18 @@ namespace Atlas
                                                .pCommandBuffers = &commandBuffer,
                                                .signalSemaphoreCount = 0U,
                                                .pSignalSemaphores = nullptr };
-                Detail::throwIfFailed(vkQueueSubmit(context->queue, 1U, &submitInfo, fence), "vkQueueSubmit");
-                Detail::throwIfFailed(vkWaitForFences(context->device, 1U, &fence, VK_TRUE, std::numeric_limits<std::uint64_t>::max()),
-                                      "vkWaitForFences");
+                if (context->executorFaultInjector)
+                {
+                    context->executorFaultInjector(Detail::VulkanExecutorFaultPoint::BeforeQueueSubmit);
+                }
+                context->checkDeviceResult(vkQueueSubmit(context->queue, 1U, &submitInfo, fence), "vkQueueSubmit");
+                context->checkDeviceResult(
+                    vkWaitForFences(context->device, 1U, &fence, VK_TRUE, std::numeric_limits<std::uint64_t>::max()),
+                    "vkWaitForFences");
+                if (context->executorFaultInjector)
+                {
+                    context->executorFaultInjector(Detail::VulkanExecutorFaultPoint::AfterFenceWait);
+                }
             }
             catch (...)
             {
@@ -382,12 +445,16 @@ namespace Atlas
             {
                 if (timestampQueryPool != VK_NULL_HANDLE)
                 {
+                    if (context->executorFaultInjector)
+                    {
+                        context->executorFaultInjector(Detail::VulkanExecutorFaultPoint::BeforeTimestampReadback);
+                    }
                     std::array<std::uint64_t, 4U> queryResults{};
-                    Detail::throwIfFailed(vkGetQueryPoolResults(context->device, timestampQueryPool, 0U, 2U, sizeof(queryResults),
-                                                                queryResults.data(), 2U * sizeof(std::uint64_t),
-                                                                VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT |
-                                                                    VK_QUERY_RESULT_WITH_AVAILABILITY_BIT),
-                                          "vkGetQueryPoolResults");
+                    context->checkDeviceResult(vkGetQueryPoolResults(context->device, timestampQueryPool, 0U, 2U, sizeof(queryResults),
+                                                                     queryResults.data(), 2U * sizeof(std::uint64_t),
+                                                                     VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT |
+                                                                         VK_QUERY_RESULT_WITH_AVAILABILITY_BIT),
+                                               "vkGetQueryPoolResults");
                     if (queryResults.at(1U) == 0U || queryResults.at(3U) == 0U)
                     {
                         throw std::runtime_error{ "Vulkan timestamp results were unavailable after fence completion" };
@@ -433,6 +500,8 @@ namespace Atlas
         std::jthread worker;
         /// @brief Reused timestamp queries when supported by the selected queue.
         VkQueryPool timestampQueryPool{ VK_NULL_HANDLE };
+        /// @brief First permanent device-loss exception applied to queued accepted work.
+        std::exception_ptr terminalFailure;
     };
     /// @endcond
 
