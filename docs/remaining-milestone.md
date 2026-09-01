@@ -1,7 +1,7 @@
 # Remaining milestones
 
-Planning document recording completed Milestones 12–15, skipped Milestone 14,
-and ordered Milestones 16–18 after the current CPU/Vulkan task-graph
+Planning document recording completed Milestones 12–16, skipped Milestone 14,
+and ordered optional Milestones 17–18 after the current CPU/Vulkan task-graph
 implementation. The
 [User Guide](user-guide.md) documents shipped functionality.
 
@@ -52,13 +52,17 @@ The [Milestone 15 validation](milestone-15-validation.md) records the
 replayable stress contract, fault coverage, sanitizer and soak commands,
 device-loss behavior, and the decision not to apply portable timing gates.
 
-## Milestone 16 — Final evaluation
+## Milestone 16 — Final evaluation (complete)
 
 1. Check in experiment manifests, environment capture, raw result layout, analysis scripts, tables, and plots.
 2. Provide a one-command clean-build reproduction path using a selected Vulkan implementation.
 3. Analyze latency, throughput, fairness, scheduler overhead, slice cost, and utilization with uncertainty.
 4. Document software Vulkan versus hardware, cooperative boundaries, static graph model, one queue, and lack of active-dispatch interruption.
 5. Tie conclusions directly to stated research questions and update the User Guide, development docs, AGENTS.md, Doxygen, UML, CI, and benchmark contracts.
+
+The [Milestone 16 final evaluation](milestone-16-evaluation.md) records the
+8,600-run physical Intel and Lavapipe study, immutable raw bundles, checked
+derived evidence, and final fixed-policy conclusions.
 
 ## Milestone 17 — Local web task studio
 

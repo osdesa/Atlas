@@ -20,7 +20,9 @@ Milestone 13 canonical physical Intel and Lavapipe baselines found no stable
 material trade-off or workload-dependent fixed quantum optimum. Adaptive
 scheduling is therefore skipped. Milestone 15 adds deterministic generated-DAG
 and large-graph validation, fault matrices, sanitizer/soak workflows, and
-fail-stop Vulkan device-loss handling; final evaluation is the next work.
+fail-stop Vulkan device-loss handling. Milestone 16 completes an 8,600-run
+physical Intel and Lavapipe final evaluation; the optional local studio is the
+next work.
 
 The supported executables are:
 

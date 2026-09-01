@@ -18,8 +18,10 @@ measurement, and comparison-suite benchmarking.
   questions, physical/software Vulkan evidence, and adaptive no-go decision.
 - [Milestone 15 validation](milestone-15-validation.md): deterministic stress,
   fault handling, sanitizer, soak, and device-loss evidence.
-- [Remaining milestones](remaining-milestone.md): completed Milestones 12–15,
-  skipped adaptive scheduling, and ordered scope for Milestones 16–18.
+- [Milestone 16 final evaluation](milestone-16-evaluation.md): reproducible
+  physical/software Vulkan results and final policy conclusions.
+- [Remaining milestones](remaining-milestone.md): completed Milestones 12–16,
+  skipped adaptive scheduling, and optional product scope for Milestones 17–18.
 
 The generated API reference is organized into Tasking, Executor, Scheduling,
 Vulkan, and Profiling modules. Documentation describes the current

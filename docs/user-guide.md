@@ -210,7 +210,7 @@ out. `gpu_timestamp_supported` states the capability and
 has device timing. Host execution duration remains distinct from queue/device
 execution duration.
 
-## Baseline evaluation
+## Evaluation conclusions
 
 Milestone 13 ran the full canonical suite on a physical Intel Iris Xe device
 and Mesa Lavapipe: 4,300 measured trials completed successfully in each
@@ -221,9 +221,16 @@ no-go decision are recorded in
 
 Every stable material same-slice quantum comparison favored quantum 1. Static
 priority materially worsened p95 response while its fairness changes remained
-below the practical threshold or inconclusive. Atlas therefore retains FIFO,
-fixed work-unit round-robin, and fixed static priority; it does not implement an
-adaptive scheduling policy.
+below the practical threshold or inconclusive.
+
+The final Milestone 16 rerun produced another 4,300 successful trials in each
+environment. It confirms FIFO and quantum-one round-robin as defensible
+defaults, finds no general case for static priority, and measures substantial
+fine-slicing cost. Two narrow quantum effects replicate, but they do not define
+a portable online decision rule. Atlas therefore does not implement an
+adaptive scheduling policy. Methods, limitations, checked tables and plots,
+and immutable raw-data links are in the
+[Milestone 16 final evaluation](milestone-16-evaluation.md).
 
 ## Final evaluation tooling
 
@@ -256,6 +263,16 @@ Python 3.10 or newer is required only for evaluation and trace tooling. If
 that it was unavailable while retaining the Vulkan metadata resolved by Atlas.
 See `benchmarks/evaluation/README.md` for the complete bundle layout and
 publication verification command.
+
+The published study can be downloaded, hash-checked, structurally validated,
+and reanalyzed in one command:
+
+```bash
+python3 tools/atlas_evaluation.py verify \
+  --study benchmarks/evaluation/final-v1/study.json \
+  --artifact-index benchmarks/evaluation/final-v1/artifacts.json \
+  --output-dir build/final-verification
+```
 
 ## Common failures
 

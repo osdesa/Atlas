@@ -100,15 +100,16 @@ draining accepted work. Other dispatch exceptions remain task failures.
 See [Task lifecycle](task-lifecycle.md) for the state machine and
 [User Guide](user-guide.md) for current external behavior.
 
-## Research baseline
+## Research evidence
 
 The [Milestone 13 evaluation](milestone-13-evaluation.md) preregistered a 5%
 practical-effect threshold and conservative 95% confidence rules, then ran the
 4,300-trial canonical suite on physical Intel Iris Xe and Mesa Lavapipe. Every
 stable material same-slice quantum separation favored quantum 1, and static
 priority produced no material stable fairness gain to offset its response
-cost. Adaptive scheduling is consequently skipped; fixed policy behavior
-remains the comparison basis for robustness and final evaluation.
+cost. Adaptive scheduling is consequently skipped. The
+[Milestone 16 final evaluation](milestone-16-evaluation.md) repeats the full
+suite on both implementations and completes that evaluation.
 
 ## Final evaluation pipeline
 
@@ -119,12 +120,21 @@ complete raw directories, computes arbitrary predeclared paired contrasts, and
 generates the final machine-readable result, tables, and SVG plots. This keeps
 research interpretation outside the Atlas library and benchmark executor.
 
-Final collection requires a clean source revision, a new output directory, an
-explicit `VK_DRIVER_FILES` selection supplied through `--icd`, and checked
+The published collection used clean source revision `49da375e5670`, a new
+output directory per environment, an explicit `VK_DRIVER_FILES` selection
+supplied through `--icd`, and checked
 environment metadata. Both declared environments must contain the exact
 planned successful run keys and the same embedded Git revision. GPU-bearing
-runs must contain capability-checked timestamp utilization. Any code, suite, or
-analysis change after collection invalidates both final bundles.
+runs must contain capability-checked timestamp utilization. Repeating the study
+after a code, suite, or analysis change requires new bundles and a new artifact
+index rather than mutating the published evidence.
+
+Raw outputs are attached to GitHub Release `milestone-16-evaluation-v1`; their
+digests and source provenance are checked in
+`benchmarks/evaluation/final-v1/artifacts.json`. Derived JSON, CSV, Markdown,
+and SVG evidence is checked in beside the study contract. Use the tool's
+`verify` command to download both assets, validate outer and internal hashes,
+check provenance, and regenerate the analysis.
 
 Ordinary CI runs the Python contract tests and analyzes the small Lavapipe
 smoke suite. The 4,300-run canonical suite remains a controlled manual/release
