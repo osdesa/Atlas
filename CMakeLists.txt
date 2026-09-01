@@ -16,6 +16,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ATLAS_BUILD_TESTS "Build Atlas tests" ON)
 option(ATLAS_BUILD_DOCUMENTATION "Build Atlas API documentation with Doxygen" OFF)
+option(ATLAS_ENABLE_PROFILING "Compile Atlas event tracing and Vulkan timestamp profiling" ON)
 option(ATLAS_WARNINGS_AS_ERRORS "Treat compiler warnings in Atlas targets as errors on non-MSVC toolchains" OFF)
 option(ATLAS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer for Atlas targets" OFF)
 option(ATLAS_ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer for Atlas targets" OFF)
@@ -90,6 +91,11 @@ target_include_directories(
 )
 
 target_compile_features(atlas_library PUBLIC cxx_std_20)
+
+target_compile_definitions(
+    atlas_library
+    PUBLIC ATLAS_PROFILING_ENABLED=$<IF:$<BOOL:${ATLAS_ENABLE_PROFILING}>,1,0>
+)
 
 target_link_libraries(atlas_library PUBLIC Vulkan::Vulkan PRIVATE Threads::Threads)
 

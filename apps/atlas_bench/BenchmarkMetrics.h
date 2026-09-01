@@ -39,6 +39,7 @@ namespace Atlas::Benchmark
         std::size_t burstIndex{ 0U };
         TaskState state{ TaskState::Unknown };
         std::chrono::microseconds executionDuration{ 0 };
+        std::optional<std::chrono::nanoseconds> deviceExecutionDuration;
         std::chrono::microseconds readyWaitDuration{ 0 };
         std::optional<std::chrono::microseconds> responseDuration;
         std::size_t selectionBypassCount{ 0U };
@@ -56,6 +57,7 @@ namespace Atlas::Benchmark
         std::optional<double> immediateSliceSwitchMeanMicroseconds;
         std::optional<double> cpuBusyFraction;
         std::optional<double> gpuHostBusyFraction;
+        std::optional<double> gpuTimestampBusyFraction;
         std::optional<double> cpuJainFairness;
         std::optional<double> gpuJainFairness;
     };
@@ -72,6 +74,7 @@ namespace Atlas::Benchmark
         std::optional<std::string> gpuDeviceName;
         std::optional<std::uint32_t> gpuApiVersion;
         std::optional<std::uint32_t> gpuDeviceType;
+        bool gpuTimestampSupported{ false };
     };
 
     /**

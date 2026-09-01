@@ -48,6 +48,8 @@ namespace Atlas
             std::uint32_t queueFamilyIndex{ 0U };
             /// @brief Selected device properties and limits.
             VkPhysicalDeviceProperties properties{};
+            /// @brief Timestamp-query properties for the selected queue family.
+            VulkanTimestampCapabilities timestampCapabilities;
             /// @brief Memory types available on the selected device.
             VkPhysicalDeviceMemoryProperties memoryProperties{};
             /// @brief Public device-selection description.

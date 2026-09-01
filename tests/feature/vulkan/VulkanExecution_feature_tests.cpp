@@ -134,6 +134,14 @@ TEST_CASE("VulkanExecutor executes and reuses persistent compute resources", "[F
     REQUIRE(secondCompletion->succeeded());
     REQUIRE(firstCompletion->workUnitIndex == 0U);
     REQUIRE(secondCompletion->workUnitIndex == 0U);
+    const bool timestampSupported{ Atlas::profilingEnabled && fixture.runtime.timestampCapabilities().supported };
+    REQUIRE(firstCompletion->deviceExecutionDuration.has_value() == timestampSupported);
+    REQUIRE(secondCompletion->deviceExecutionDuration.has_value() == timestampSupported);
+    if (timestampSupported)
+    {
+        REQUIRE(firstCompletion->deviceExecutionDuration->count() > 0);
+        REQUIRE(secondCompletion->deviceExecutionDuration->count() > 0);
+    }
     REQUIRE_FALSE(executor.waitForCompletion().has_value());
 
     fixture.runtime.download(fixture.output, writableBytesOf(output));

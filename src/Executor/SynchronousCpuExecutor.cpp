@@ -21,7 +21,42 @@ namespace Atlas
             return false;
         }
 
-        completionChannel.publish(execute(taskHandle, taskFunction));
+        TraceSession* const traceSession{ completionChannel.traceSession() };
+        if constexpr (profilingEnabled)
+        {
+            if (traceSession != nullptr)
+            {
+                traceSession->emit(TraceEvent{ .kind = TraceEventKind::BackendStarted,
+                                               .source = TraceEventSource::CpuExecutor,
+                                               .resource = ExecutionResource::CPU,
+                                               .hasTask = true,
+                                               .hasResource = true,
+                                               .graphId = taskHandle.getGraphID().getValue(),
+                                               .taskId = taskHandle.getTaskID().getValue(),
+                                               .workUnitIndex = 0U,
+                                               .workerIndex = 0U });
+            }
+        }
+        TaskCompletion completion{ execute(taskHandle, taskFunction) };
+        if constexpr (profilingEnabled)
+        {
+            if (traceSession != nullptr)
+            {
+                traceSession->emit(
+                    TraceEvent{ .kind = TraceEventKind::BackendFinished,
+                                .source = TraceEventSource::CpuExecutor,
+                                .resource = ExecutionResource::CPU,
+                                .hasTask = true,
+                                .hasResource = true,
+                                .graphId = taskHandle.getGraphID().getValue(),
+                                .taskId = taskHandle.getTaskID().getValue(),
+                                .workUnitIndex = 0U,
+                                .workerIndex = 0U,
+                                .hostDurationNanoseconds = static_cast<std::uint64_t>(
+                                    std::chrono::duration_cast<std::chrono::nanoseconds>(completion.executionDuration).count()) });
+            }
+        }
+        completionChannel.publish(std::move(completion));
         return true;
     }
 

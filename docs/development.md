@@ -15,6 +15,9 @@ Atlas separates immutable graph work, backend execution, and scheduler control:
   metrics. It always receives both CPU and Vulkan executors.
 - `VulkanRuntime` owns the instance/device/queue context. Public buffers and
   pipelines retain that context without exposing raw owning handles.
+- `TraceSession` timestamps fixed-size events from scheduler and executor
+  producers. `BoundedTraceBuffer` provides best-effort non-blocking publication,
+  while `TraceJsonlWriter` drains records on its own thread.
 - `atlas_bench` is a C++ harness because it exercises executor and scheduler
   APIs directly for paired direct-versus-scheduled comparisons. JSON parsing,
   result writing, and statistics remain outside the Atlas library boundary.
@@ -29,6 +32,7 @@ multi-backend API.
 - `include/atlas/Executor/`: CPU/Vulkan executor and completion contracts.
 - `include/atlas/Scheduler/`: scheduler and policy APIs.
 - `include/atlas/Vulkan/`: opaque resource and runtime APIs.
+- `include/atlas/Profiling/`: trace event, buffer, session, and JSONL writer APIs.
 - `src/`: implementations matching those public modules.
 - `apps/atlas/`: current mixed-graph executable and shader.
 - `apps/atlas_bench/`: suite parser, runners, analysis, and result writers.
@@ -57,6 +61,19 @@ work, and joins owned threads.
 Vulkan buffers and pipelines belong to one runtime context. Cross-context
 dispatch resources are rejected before queue submission. Destruction order is
 private RAII state; a resource or `VulkanExecutor` retains the context it needs.
+
+Tracing is an optional borrowed association: the writer/session must outlive
+the scheduler and all accepted executor work. The completion channel carries
+that association without widening executor submission interfaces. Event
+publication is bounded, allocation-free after setup, non-throwing, and may
+drop under capacity or lock contention. Consumers must use footer counters when
+deciding whether a trace is complete enough for analysis.
+
+When compiled with profiling, `VulkanExecutor` reuses a two-query timestamp
+pool. Support requires a nonzero `timestampValidBits` value on the selected
+compute queue and a positive device timestamp period. Results are availability
+checked, masked to the reported valid-bit width, and converted to nanoseconds;
+host duration and device duration remain separate measurements.
 
 ## Scheduler behavior
 
@@ -91,6 +108,8 @@ ctest --test-dir build --output-on-failure
 
 Linux CI uses Mesa Lavapipe selected through `VK_DRIVER_FILES`. Driver manifest
 names vary, so no source, CMake, or checked configuration may hard-code one.
+CI also builds and tests `profiling-disabled-linux`, exercises trace generation,
+and validates the resulting stream with `tools/atlas_trace.py`.
 
 Use focused tests while iterating, then validate in proportion to risk. Run
 real Vulkan tests for any runtime, resource, dispatch, executor, scheduler, app,

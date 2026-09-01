@@ -5,6 +5,7 @@
 #include "atlas/Executor/CompletionChannel.h"
 #include "atlas/Executor/CpuExecutor.h"
 #include "atlas/Executor/VulkanDispatchExecutor.h"
+#include "atlas/Profiling/Trace.h"
 #include "atlas/Scheduler/SchedulingPolicy.h"
 #include "atlas/Tasking/TaskGraph.h"
 
@@ -38,18 +39,21 @@ namespace Atlas
          * @param taskGraph Finalised graph to execute.
          * @param cpuExecutor CPU backend used for callable tasks.
          * @param gpuExecutor GPU backend used for declarative dispatches.
+         * @param traceSession Optional borrowed trace session that must outlive execution.
          */
-        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, VulkanDispatchExecutor& gpuExecutor);
+        KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, VulkanDispatchExecutor& gpuExecutor,
+                      TraceSession* traceSession = nullptr);
         /**
          * @brief Borrows independent executors and clones one policy per backend.
          * @param taskGraph Finalised graph to execute.
          * @param cpuExecutor CPU backend used for callable tasks.
          * @param gpuExecutor GPU backend used for declarative dispatches.
          * @param policy Backend-neutral selection policy cloned independently for CPU and GPU work.
+         * @param traceSession Optional borrowed trace session that must outlive execution.
          * @throws std::invalid_argument When either policy clone is null.
          */
         KahnScheduler(const TaskGraph& taskGraph, CpuExecutor& cpuExecutor, VulkanDispatchExecutor& gpuExecutor,
-                      const SchedulingPolicy& policy);
+                      const SchedulingPolicy& policy, TraceSession* traceSession = nullptr);
 
         /// @brief Executes the finalised graph until all accepted work drains.
         SchedulerResult execute() override;
@@ -182,6 +186,8 @@ namespace Atlas
         void completeTask(const std::shared_ptr<const Task>& task, const TaskCompletion& completion);
         /// @brief Releases dependants after a successful prerequisite.
         void updateDependencies(const std::shared_ptr<const Task>& executedTask);
+        /// @brief Publishes one best-effort event when profiling is active.
+        void emitTrace(TraceEvent event) noexcept;
 
         /// @brief Stable enqueue-ordered ready CPU candidates.
         std::vector<SchedulingCandidate> cpuReadyTasks;
@@ -217,6 +223,8 @@ namespace Atlas
         std::unique_ptr<Detail::ReadyTaskAccounting> readyTaskAccounting;
         /// @brief Scheduler-internal scalar control and slice-switch timing.
         std::unique_ptr<Detail::SchedulerTimingAccounting> schedulerTimingAccounting;
+        /// @brief Optional borrowed trace session that outlives accepted work.
+        TraceSession* traceSession{ nullptr };
     };
 } // namespace Atlas
 

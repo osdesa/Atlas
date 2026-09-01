@@ -63,6 +63,20 @@ namespace Atlas
 
     /**
      * @ingroup vulkan
+     * @brief Timestamp-query properties of the selected compute queue.
+     */
+    struct VulkanTimestampCapabilities
+    {
+        /// @brief Whether the queue exposes usable device timestamps.
+        bool supported{ false };
+        /// @brief Number of valid low-order timestamp bits for the compute queue.
+        std::uint32_t validBits{ 0U };
+        /// @brief Nanoseconds represented by one device timestamp tick.
+        float periodNanoseconds{ 0.0F };
+    };
+
+    /**
+     * @ingroup vulkan
      * @brief Owns one compute-capable Vulkan device and queue.
      * @plantumlfile vulkan_runtime.puml
      */
@@ -88,6 +102,9 @@ namespace Atlas
 
         /// @brief Returns the selected physical-device description.
         const VulkanDeviceInfo& deviceInfo() const noexcept;
+
+        /// @brief Returns device-clock timestamp support for the selected compute queue.
+        VulkanTimestampCapabilities timestampCapabilities() const noexcept;
 
         /// @brief Allocates one persistent device-local storage buffer.
         VulkanBuffer createBuffer(std::size_t sizeInBytes) const;

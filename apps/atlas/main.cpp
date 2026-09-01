@@ -2,6 +2,7 @@
 
 /** @file main.cpp @brief Runs and verifies Atlas's current CPU-to-Vulkan-to-CPU workflow. */
 #include "atlas/Executor/VulkanExecutor.h"
+#include "atlas/Profiling/TraceJsonlWriter.h"
 #include "atlas/Scheduler/FifoSchedulingPolicy.h"
 #include "atlas/Scheduler/KahnScheduler.h"
 #include "atlas/Tasking/TaskGraph.h"
@@ -12,10 +13,15 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <memory>
+#include <optional>
 #include <span>
+#include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -36,12 +42,30 @@ namespace
         std::memcpy(words.data(), bytes.data(), bytes.size());
         return words;
     }
+
+    std::optional<std::filesystem::path> tracePath(const int argumentCount, char** arguments)
+    {
+        if (argumentCount == 1)
+        {
+            return std::nullopt;
+        }
+        if (argumentCount == 3 && std::string_view{ arguments[1] } == "--trace")
+        {
+            return std::filesystem::path{ arguments[2] };
+        }
+        throw std::invalid_argument{ "Usage: atlas [--trace <jsonl-file>]" };
+    }
 } // namespace
 
-int main()
+int main(const int argumentCount, char** arguments)
 {
     try
     {
+        const std::optional<std::filesystem::path> requestedTrace{ tracePath(argumentCount, arguments) };
+        if (requestedTrace.has_value() && !Atlas::profilingEnabled)
+        {
+            throw std::runtime_error{ "Trace output is unavailable because Atlas was built with ATLAS_ENABLE_PROFILING=OFF" };
+        }
         constexpr std::size_t elementCount{ 256U };
         Atlas::VulkanRuntime runtime;
         const Atlas::VulkanBuffer leftBuffer{ runtime.createBuffer(elementCount * sizeof(float)) };
@@ -87,8 +111,17 @@ int main()
         Atlas::SynchronousCpuExecutor cpuExecutor;
         Atlas::VulkanExecutor gpuExecutor{ runtime };
         const Atlas::FifoSchedulingPolicy policy;
-        Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy };
+        std::unique_ptr<Atlas::TraceJsonlWriter> trace;
+        if (requestedTrace.has_value())
+        {
+            trace = std::make_unique<Atlas::TraceJsonlWriter>(requestedTrace.value());
+        }
+        Atlas::KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, policy, trace != nullptr ? &trace->session() : nullptr };
         const Atlas::SchedulerResult result{ scheduler.execute() };
+        if (trace != nullptr)
+        {
+            trace->finish(result.status == Atlas::SchedulerStatus::Success ? "success" : "failed");
+        }
         const Atlas::TaskExecutionInfo& computeProgress{ graph.findTask(compute.value()).value()->executionInfo };
         if (result.status != Atlas::SchedulerStatus::Success || !verified || computeProgress.completedWorkUnitCount != 2U ||
             computeProgress.totalWorkUnitCount != 2U)

@@ -476,6 +476,14 @@ namespace Atlas
         context->queueFamilyIndex = selectQueueFamily(context->physicalDevice, context->deviceDescription.computeQueueFamilies);
         vkGetPhysicalDeviceProperties(context->physicalDevice, &context->properties);
         vkGetPhysicalDeviceMemoryProperties(context->physicalDevice, &context->memoryProperties);
+        std::uint32_t selectedQueuePropertyCount{ 0U };
+        vkGetPhysicalDeviceQueueFamilyProperties(context->physicalDevice, &selectedQueuePropertyCount, nullptr);
+        std::vector<VkQueueFamilyProperties> selectedQueueProperties(selectedQueuePropertyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(context->physicalDevice, &selectedQueuePropertyCount, selectedQueueProperties.data());
+        const std::uint32_t timestampValidBits{ selectedQueueProperties.at(context->queueFamilyIndex).timestampValidBits };
+        context->timestampCapabilities =
+            VulkanTimestampCapabilities{ timestampValidBits != 0U && context->properties.limits.timestampPeriod > 0.0F,
+                                         timestampValidBits, context->properties.limits.timestampPeriod };
 
         constexpr float queuePriority{ 1.0F };
         const VkDeviceQueueCreateInfo queueInfo{ .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -513,6 +521,11 @@ namespace Atlas
     const VulkanDeviceInfo& VulkanRuntime::deviceInfo() const noexcept
     {
         return implementation->context->deviceDescription;
+    }
+
+    VulkanTimestampCapabilities VulkanRuntime::timestampCapabilities() const noexcept
+    {
+        return implementation->context->timestampCapabilities;
     }
 
     VulkanBuffer VulkanRuntime::createBuffer(const std::size_t sizeInBytes) const

@@ -43,6 +43,7 @@ namespace Atlas::Benchmark
             ImmediateSliceSwitchMean,
             CpuBusyFraction,
             GpuHostBusyFraction,
+            GpuTimestampBusyFraction,
             CpuJainFairness,
             GpuJainFairness
         };
@@ -67,6 +68,7 @@ namespace Atlas::Benchmark
             MetricSpec{ MetricId::ImmediateSliceSwitchMean, "immediate_slice_switch_mean_us", MetricDirection::Descriptive },
             MetricSpec{ MetricId::CpuBusyFraction, "cpu_busy_fraction", MetricDirection::Descriptive },
             MetricSpec{ MetricId::GpuHostBusyFraction, "gpu_host_busy_fraction", MetricDirection::Descriptive },
+            MetricSpec{ MetricId::GpuTimestampBusyFraction, "gpu_timestamp_busy_fraction", MetricDirection::Descriptive },
             MetricSpec{ MetricId::CpuJainFairness, "cpu_jain_fairness", MetricDirection::Higher },
             MetricSpec{ MetricId::GpuJainFairness, "gpu_jain_fairness", MetricDirection::Higher }
         };
@@ -129,6 +131,8 @@ namespace Atlas::Benchmark
                 return run.metrics.cpuBusyFraction;
             case MetricId::GpuHostBusyFraction:
                 return run.metrics.gpuHostBusyFraction;
+            case MetricId::GpuTimestampBusyFraction:
+                return run.metrics.gpuTimestampBusyFraction;
             case MetricId::CpuJainFairness:
                 return run.metrics.cpuJainFairness;
             case MetricId::GpuJainFairness:

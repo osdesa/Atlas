@@ -62,6 +62,9 @@ namespace Atlas
          * a terminal state after becoming ready.
          */
         std::optional<std::chrono::microseconds> responseDuration;
+
+        /// @brief Accumulated Vulkan device-clock duration when timestamp queries are supported.
+        std::optional<std::chrono::nanoseconds> deviceExecutionDuration;
     };
 } // namespace Atlas
 

@@ -9,6 +9,8 @@ CPU and Vulkan work, synchronous and worker-pool CPU execution, persistent
 Vulkan compute resources, cooperative dispatch slicing, resource-aware Kahn
 scheduling, cancellation, FIFO/round-robin/static-priority policies, per-task
 wait/response measurements, and reproducible comparison-suite benchmarking.
+It also provides bounded execution tracing, JSONL validation/summary/timeline
+tooling, and capability-checked Vulkan device-duration measurements.
 
 See the [User Guide](docs/user-guide.md) for requirements, exact build and run
 commands, all CLI arguments, the benchmark JSON contract, output files, common
@@ -39,6 +41,9 @@ ctest --preset dev-linux
 
 ```bash
 ./build/apps/atlas/atlas
+
+./build/apps/atlas/atlas --trace build/atlas-trace.jsonl
+python3 tools/atlas_trace.py summary build/atlas-trace.jsonl
 
 ./build/apps/atlas_bench/atlas_bench \
   --suite benchmarks/manifests/smoke-v1.json \

@@ -13,6 +13,9 @@ declarative Vulkan compute dispatches, and schedules mixed graphs with FIFO,
 work-unit round-robin, or stable static-priority policies. `atlas_bench` runs
 version-one comparison suites and writes JSON Lines/CSV measurements and paired
 confidence summaries.
+Atlas can also emit bounded version-one JSONL execution traces from `atlas`,
+and benchmark schema version two records capability-checked Vulkan timestamp
+measurements when the selected compute queue supports them.
 
 The supported executables are:
 

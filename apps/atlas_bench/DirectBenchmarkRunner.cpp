@@ -136,6 +136,7 @@ namespace Atlas::Benchmark
             std::size_t remainingDependencies{ 0U };
             std::vector<std::size_t> dependants;
             std::chrono::microseconds executionDuration{ 0 };
+            std::optional<std::chrono::nanoseconds> deviceExecutionDuration;
             std::chrono::microseconds readyWaitDuration{ 0 };
             std::optional<std::chrono::microseconds> responseDuration;
             Clock::time_point readyEntered;
@@ -375,6 +376,7 @@ namespace Atlas::Benchmark
                 }
 
                 state.executionDuration += completion.executionDuration;
+                state.deviceExecutionDuration = completion.deviceExecutionDuration;
                 const Clock::time_point completed{ Clock::now() };
                 if (completion.succeeded())
                 {
@@ -452,18 +454,20 @@ namespace Atlas::Benchmark
             {
                 const DirectTaskState& state{ states.at(descriptor.index) };
                 tasks.push_back(TaskMeasurement{ descriptor.index, descriptor.name, descriptor.resource, descriptor.priority,
-                                                 descriptor.burstIndex, state.state, state.executionDuration, state.readyWaitDuration,
-                                                 state.responseDuration, 0U, state.state == TaskState::Success ? 1U : 0U, 1U });
+                                                 descriptor.burstIndex, state.state, state.executionDuration,
+                                                 state.deviceExecutionDuration, state.readyWaitDuration, state.responseDuration, 0U,
+                                                 state.state == TaskState::Success ? 1U : 0U, 1U });
             }
 
             SchedulerResult result{ status, completedTasks, firstException, executionTime, controlActive, {}, 0U };
-            RunRecord record{ manifest.experimentId, seed,         repetition,  result, std::move(tasks), {},
-                              std::nullopt,          std::nullopt, std::nullopt };
+            RunRecord record{ manifest.experimentId, seed,         repetition,   result, std::move(tasks), {},
+                              std::nullopt,          std::nullopt, std::nullopt, false };
             if (gpuResources != nullptr)
             {
                 record.gpuDeviceName = gpuResources->runtime.deviceInfo().name;
                 record.gpuApiVersion = gpuResources->runtime.deviceInfo().apiVersion;
                 record.gpuDeviceType = static_cast<std::uint32_t>(gpuResources->runtime.deviceInfo().type);
+                record.gpuTimestampSupported = gpuResources->runtime.timestampCapabilities().supported;
             }
             record.metrics = calculateMetrics(record.schedulerResult, record.tasks, manifest.workerCount);
             return record;

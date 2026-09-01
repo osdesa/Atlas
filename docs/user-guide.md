@@ -12,7 +12,10 @@ preempt an active Vulkan dispatch.
 
 The current milestone also provides a comparison-suite benchmark harness with
 deterministic generated workloads, direct-versus-scheduled variants, JSON
-Lines/CSV output, environment metadata, and paired confidence intervals.
+Lines/CSV output, environment metadata, paired confidence intervals, and
+capability-checked Vulkan device timing. Optional bounded execution tracing
+records scheduler, policy, executor, state-transition, and cancellation events
+for validation, summaries, and SVG timelines.
 Graphics, presentation, multiple Vulkan queues, runtime graph mutation,
 repeated graph execution, and true CPU/GPU preemption are not implemented.
 
@@ -56,6 +59,12 @@ ctest --preset dev-linux
 The first test-enabled configuration may download Catch2 and nlohmann/json.
 Configuration fails if Vulkan or the shader tools are unavailable.
 
+Profiling is compiled in by default. Configure with
+`-DATLAS_ENABLE_PROFILING=OFF` when measuring a build that must contain no event
+clock reads, trace publication, or Vulkan timestamp queries. Such a build still
+provides the trace API, but `TraceSession::emit` is inert and `atlas --trace`
+fails with an explicit diagnostic.
+
 ## Running Atlas
 
 ### `atlas`
@@ -65,12 +74,34 @@ cooperatively sliced Vulkan vector addition, and a dependent CPU verification
 task.
 
 ```bash
-./build/apps/atlas/atlas
+./build/apps/atlas/atlas [--trace build/atlas-trace.jsonl]
 ```
 
-It accepts no command-line arguments. Success prints the number of completed
+`--trace` optionally writes a version-one JSON Lines execution trace. The path
+must not already exist. Success prints the number of completed
 Vulkan work units and the selected device name. Any graph, scheduling, Vulkan,
 or verification failure returns a non-zero exit status and prints an error.
+
+Trace producers publish fixed-size events to a preallocated bounded buffer and
+never perform file I/O. Publication is best-effort: events can be dropped when
+the buffer is full or contended. The completion footer reports accepted and
+dropped counts. A missing footer means the producing process did not finish the
+trace; analysis rejects this by default.
+
+Validate, summarize, or render a trace with the dependency-free Python tool:
+
+```bash
+python3 tools/atlas_trace.py validate build/atlas-trace.jsonl
+python3 tools/atlas_trace.py summary build/atlas-trace.jsonl
+python3 tools/atlas_trace.py timeline build/atlas-trace.jsonl \
+  --output build/atlas-timeline.svg
+```
+
+Pass `--allow-incomplete` only when intentionally inspecting a trace without a
+footer. The checked record contract is
+`benchmarks/schema/atlas-trace-v1.schema.json`. Timestamps use one monotonic
+host-clock origin per session. Sequence numbers are unique but records from
+concurrent producers need not arrive in sequence order.
 
 ### `atlas_bench`
 
@@ -156,15 +187,22 @@ A successful `atlas_bench` run prints the number of recorded runs and writes:
 
 - `suite.resolved.json` and `environment.resolved.json`;
 - `runs.jsonl` and `runs.csv` with scheduler status, timings, utilization,
-  response, fairness, and Vulkan device metadata;
+  response, fairness, Vulkan device metadata, timestamp capability, and both
+  host-side and device-side GPU busy fractions;
 - `tasks.csv` with per-task resource, priority, state, execution, ready-wait,
-  response, bypass, and work-unit measurements;
+  response, bypass, work-unit, and optional device-execution measurements;
 - `comparisons.json` and `comparisons.csv` with absolute metrics and paired
   confidence comparisons.
 
 Warmups are not written. Output paths must not already exist unless
 `--overwrite` is supplied. Timing varies by device and system load; smoke tests
 check contracts and successful execution, not elapsed-time thresholds.
+Run and summary outputs use schema version 2. GPU device duration is null when
+the selected compute queue reports no timestamp bits or profiling was compiled
+out. `gpu_timestamp_supported` states the capability and
+`gpu_timestamp_busy_fraction` is present only when every GPU task in the run
+has device timing. Host execution duration remains distinct from queue/device
+execution duration.
 
 ## Common failures
 

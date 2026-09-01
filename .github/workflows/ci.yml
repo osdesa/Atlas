@@ -61,6 +61,20 @@ jobs:
       - name: Run benchmark smoke suite
         run: ./build/ci-linux/apps/atlas_bench/atlas_bench --suite benchmarks/manifests/smoke-v1.json --output-dir build/ci-linux/smoke-results
 
+      - name: Validate trace tooling
+        run: |
+          ./build/ci-linux/apps/atlas/atlas --trace build/ci-linux/atlas-trace.jsonl
+          python3 tools/atlas_trace.py validate build/ci-linux/atlas-trace.jsonl
+          python3 tools/atlas_trace.py summary build/ci-linux/atlas-trace.jsonl
+          python3 tools/atlas_trace.py timeline build/ci-linux/atlas-trace.jsonl --output build/ci-linux/atlas-trace.svg
+          test -s build/ci-linux/atlas-trace.svg
+
+      - name: Validate profiling-disabled build
+        run: |
+          cmake --preset profiling-disabled-linux
+          cmake --build --preset profiling-disabled-linux --parallel
+          ctest --preset profiling-disabled-linux
+
   clang-tidy:
     name: ClangTidy
     runs-on: ubuntu-24.04

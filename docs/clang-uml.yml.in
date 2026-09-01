@@ -203,6 +203,28 @@ diagrams:
         - '  FontColor #0F172A'
         - '}'
 
+  trace:
+    type: class
+    glob:
+      - src/Profiling/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::TraceSession
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
   synchronous_cpu_executor:
     type: class
     glob:

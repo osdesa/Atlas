@@ -158,6 +158,23 @@
             }
         },
         {
+            "name": "profiling-disabled-linux",
+            "displayName": "Linux profiling-disabled contract",
+            "description": "Release build proving tracing and timestamp instrumentation compile away",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "ATLAS_ENABLE_PROFILING": "OFF",
+                "ATLAS_ENABLE_CLANG_TIDY": "OFF"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
             "name": "asan-ubsan-linux",
             "displayName": "Linux ASan and UBSan",
             "description": "Clang debug build with AddressSanitizer and UndefinedBehaviorSanitizer",
@@ -240,6 +257,11 @@
             "configuration": "Debug"
         },
         {
+            "name": "profiling-disabled-linux",
+            "configurePreset": "profiling-disabled-linux",
+            "configuration": "Release"
+        },
+        {
             "name": "asan-ubsan-linux",
             "configurePreset": "asan-ubsan-linux",
             "configuration": "Debug"
@@ -298,6 +320,17 @@
         {
             "name": "ci-linux",
             "configurePreset": "ci-linux",
+            "configuration": "Release",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "profiling-disabled-linux",
+            "configurePreset": "profiling-disabled-linux",
             "configuration": "Release",
             "output": {
                 "outputOnFailure": true

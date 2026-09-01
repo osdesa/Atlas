@@ -82,10 +82,12 @@ namespace Atlas
             TaskCompletion completion;
             /// @brief Scheduler-owned publication destination.
             CompletionChannel* completionChannel{ nullptr };
+            /// @brief Optional trace session that outlives accepted work.
+            TraceSession* traceSession{ nullptr };
         };
 
         /// @brief Waits for and executes queued work until shutdown has drained it.
-        void workerLoop();
+        void workerLoop(std::size_t workerIndex);
 
         /// @brief Protects queues, unfinished-work accounting, and lifecycle state.
         std::mutex stateMutex;
