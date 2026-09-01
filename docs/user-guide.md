@@ -204,6 +204,21 @@ out. `gpu_timestamp_supported` states the capability and
 has device timing. Host execution duration remains distinct from queue/device
 execution duration.
 
+## Baseline evaluation
+
+Milestone 13 ran the full canonical suite on a physical Intel Iris Xe device
+and Mesa Lavapipe: 4,300 measured trials completed successfully in each
+environment. The research questions, fixed 5% materiality threshold, 95%
+confidence rules, environment descriptions, results, and adaptive-scheduling
+no-go decision are recorded in
+[Milestone 13 baseline evaluation](milestone-13-evaluation.md).
+
+Every stable material same-slice quantum comparison favored quantum 1. Static
+priority materially worsened p95 response while its fairness changes remained
+below the practical threshold or inconclusive. Atlas therefore retains FIFO,
+fixed work-unit round-robin, and fixed static priority; it does not implement an
+adaptive scheduling policy.
+
 ## Common failures
 
 - **Vulkan unavailable or incompatible:** install a Vulkan 1.1 loader and a

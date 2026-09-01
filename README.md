@@ -11,6 +11,10 @@ scheduling, cancellation, FIFO/round-robin/static-priority policies, per-task
 wait/response measurements, and reproducible comparison-suite benchmarking.
 It also provides bounded execution tracing, JSONL validation/summary/timeline
 tooling, and capability-checked Vulkan device-duration measurements.
+Canonical physical Intel and Lavapipe baselines found no evidence-supported
+adaptive scheduling target, so Atlas retains its fixed policies and proceeds to
+robustness work. See the [Milestone 13 evaluation](docs/milestone-13-evaluation.md)
+for the preregistered decision and uncertainty-supported results.
 
 See the [User Guide](docs/user-guide.md) for requirements, exact build and run
 commands, all CLI arguments, the benchmark JSON contract, output files, common

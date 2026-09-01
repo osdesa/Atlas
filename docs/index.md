@@ -14,8 +14,10 @@ measurement, and comparison-suite benchmarking.
   contributor validation.
 - [Task lifecycle](task-lifecycle.md): scheduler state transitions, completion,
   cancellation, and failure rules.
-- [Remaining milestones](remaining-milestone.md): completed Milestone 12 and
-  ordered scope for Milestones 13–17.
+- [Milestone 13 evaluation](milestone-13-evaluation.md): preregistered baseline
+  questions, physical/software Vulkan evidence, and adaptive no-go decision.
+- [Remaining milestones](remaining-milestone.md): completed Milestones 12–13,
+  skipped adaptive scheduling, and ordered scope for Milestones 15–18.
 
 The generated API reference is organized into Tasking, Executor, Scheduling,
 Vulkan, and Profiling modules. Documentation describes the current

@@ -16,6 +16,9 @@ confidence summaries.
 Atlas can also emit bounded version-one JSONL execution traces from `atlas`,
 and benchmark schema version two records capability-checked Vulkan timestamp
 measurements when the selected compute queue supports them.
+Milestone 13 canonical physical Intel and Lavapipe baselines found no stable
+material trade-off or workload-dependent fixed quantum optimum. Adaptive
+scheduling is therefore skipped; robustness and validation are the next work.
 
 The supported executables are:
 
@@ -43,8 +46,8 @@ device creation required by Atlas is unavailable.
 
 The following remain outside the current scope unless requirements explicitly
 change: repeated/runtime graph submission, graphics or presentation, multiple
-Vulkan queues, true dispatch preemption, adaptive backend selection, general
-event tracing, Vulkan timestamp queries, and allocator/pipeline-cache tuning.
+Vulkan queues, true dispatch preemption, adaptive backend or policy selection,
+lossless general event tracing, and allocator/pipeline-cache tuning.
 
 ## First actions
 

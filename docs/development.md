@@ -94,6 +94,16 @@ are fail-stop and preserve the first applicable exception.
 See [Task lifecycle](task-lifecycle.md) for the state machine and
 [User Guide](user-guide.md) for current external behavior.
 
+## Research baseline
+
+The [Milestone 13 evaluation](milestone-13-evaluation.md) preregistered a 5%
+practical-effect threshold and conservative 95% confidence rules, then ran the
+4,300-trial canonical suite on physical Intel Iris Xe and Mesa Lavapipe. Every
+stable material same-slice quantum separation favored quantum 1, and static
+priority produced no material stable fairness gain to offset its response
+cost. Adaptive scheduling is consequently skipped; fixed policy behavior
+remains the comparison basis for robustness and final evaluation.
+
 ## Build and test
 
 The normal build always discovers Vulkan, compiles both shaders, builds
