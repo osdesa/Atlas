@@ -28,9 +28,11 @@ namespace Atlas
         std::size_t executedTaskCount{ 0U };
 
         /**
-         * @brief First task exception, otherwise the policy exception for a policy error.
+         * @brief First task exception, otherwise the infrastructure or policy exception.
          *
-         * Empty when no task or scheduling-policy exception was captured.
+         * Task failures retain precedence when accepted work later exposes a
+         * higher-status infrastructure or policy failure. Empty when no
+         * attributable exception was captured.
          */
         std::exception_ptr exception;
 

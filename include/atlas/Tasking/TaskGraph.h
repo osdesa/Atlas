@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 /**
@@ -193,6 +194,9 @@ namespace Atlas
 
         /// @brief The collection of tasks owned by this graph.
         std::vector<std::shared_ptr<Task>> tasks;
+
+        /// @brief Constant-time task lookup while @ref tasks preserves insertion order.
+        std::unordered_map<TaskHandle, std::shared_ptr<Task>, TaskHandle::Hash> taskIndex;
 
         /// @brief The process-unique ID of this graph.
         GraphId graphID;

@@ -2,6 +2,7 @@
 #define ATLAS_COMPLETION_CHANNEL
 
 #include "TaskCompletion.h"
+#include "atlas/Profiling/Trace.h"
 #include "atlas/Tasking/ExecutionResource.h"
 
 #include <array>
@@ -54,8 +55,9 @@ namespace Atlas
         /**
          * @brief Allocates storage for at most @p capacity unpublished completions.
          * @param capacity Maximum number of queued completion outcomes.
+         * @param traceSession Optional borrowed session that must outlive producers.
          */
-        explicit CompletionChannel(std::size_t capacity);
+        explicit CompletionChannel(std::size_t capacity, TraceSession* traceSession = nullptr);
 
         /// @brief Publishes one task outcome without allocating or throwing.
         bool publish(TaskCompletion completion) noexcept;
@@ -73,6 +75,12 @@ namespace Atlas
         std::size_t capacity() const noexcept
         {
             return completionStorage.size();
+        }
+
+        /// @brief Returns the optional trace session shared by accepted work.
+        TraceSession* traceSession() const noexcept
+        {
+            return tracing;
         }
 
         /// @brief Prevents copying synchronization and channel storage.
@@ -106,6 +114,8 @@ namespace Atlas
         std::array<bool, 2U> producerFailures{};
         /// @brief Whether publication has been closed permanently.
         bool isClosed{ false };
+        /// @brief Borrowed session that outlives all producers using this channel.
+        TraceSession* tracing{ nullptr };
     };
 } // namespace Atlas
 

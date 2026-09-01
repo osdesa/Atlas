@@ -13,6 +13,16 @@ declarative Vulkan compute dispatches, and schedules mixed graphs with FIFO,
 work-unit round-robin, or stable static-priority policies. `atlas_bench` runs
 version-one comparison suites and writes JSON Lines/CSV measurements and paired
 confidence summaries.
+Atlas can also emit bounded version-one JSONL execution traces from `atlas`,
+and benchmark schema version two records capability-checked Vulkan timestamp
+measurements when the selected compute queue supports them.
+Milestone 13 canonical physical Intel and Lavapipe baselines found no stable
+material trade-off or workload-dependent fixed quantum optimum. Adaptive
+scheduling is therefore skipped. Milestone 15 adds deterministic generated-DAG
+and large-graph validation, fault matrices, sanitizer/soak workflows, and
+fail-stop Vulkan device-loss handling. Milestone 16 completes an 8,600-run
+physical Intel and Lavapipe final evaluation; the optional local studio is the
+next work.
 
 The supported executables are:
 
@@ -40,8 +50,8 @@ device creation required by Atlas is unavailable.
 
 The following remain outside the current scope unless requirements explicitly
 change: repeated/runtime graph submission, graphics or presentation, multiple
-Vulkan queues, true dispatch preemption, adaptive backend selection, general
-event tracing, Vulkan timestamp queries, and allocator/pipeline-cache tuning.
+Vulkan queues, true dispatch preemption, adaptive backend or policy selection,
+lossless general event tracing, and allocator/pipeline-cache tuning.
 
 ## First actions
 

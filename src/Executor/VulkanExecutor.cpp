@@ -6,6 +6,7 @@
 #include "atlas/Executor/CompletionChannel.h"
 #include "atlas/Vulkan/VulkanError.h"
 
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -13,6 +14,7 @@
 #include <limits>
 #include <list>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -20,6 +22,29 @@
 
 namespace Atlas
 {
+    namespace
+    {
+        bool isDeviceLoss(const std::exception_ptr& exception) noexcept
+        {
+            if (exception == nullptr)
+            {
+                return false;
+            }
+            try
+            {
+                std::rethrow_exception(exception);
+            }
+            catch (const VulkanError& error)
+            {
+                return error.result() == VK_ERROR_DEVICE_LOST;
+            }
+            catch (...)
+            {
+                return false;
+            }
+        }
+    } // namespace
+
     /// @cond INTERNAL
     struct VulkanExecutor::Impl final
     {
@@ -27,6 +52,7 @@ namespace Atlas
         {
             Running,      ///< The worker accepts new dispatches.
             ShuttingDown, ///< Accepted dispatches are draining.
+            Failed,       ///< Device loss permanently prevents later submissions.
             Stopped       ///< The worker has exited permanently.
         };
 
@@ -38,11 +64,28 @@ namespace Atlas
             TaskCompletion completion;
             /// @brief Scheduler channel for the outcome.
             CompletionChannel* completionChannel{ nullptr };
+            /// @brief Optional trace session that outlives accepted work.
+            TraceSession* traceSession{ nullptr };
         };
 
         /// @brief Starts the single worker for @p runtimeContext.
         explicit Impl(std::shared_ptr<Detail::VulkanContext> runtimeContext) : context{ std::move(runtimeContext) }
         {
+            context->requireDeviceAvailable("create Vulkan executor");
+            if constexpr (profilingEnabled)
+            {
+                if (context->timestampCapabilities.supported)
+                {
+                    const VkQueryPoolCreateInfo queryInfo{ .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+                                                           .pNext = nullptr,
+                                                           .flags = 0U,
+                                                           .queryType = VK_QUERY_TYPE_TIMESTAMP,
+                                                           .queryCount = 2U,
+                                                           .pipelineStatistics = 0U };
+                    context->checkDeviceResult(vkCreateQueryPool(context->device, &queryInfo, nullptr, &timestampQueryPool),
+                                               "vkCreateQueryPool");
+                }
+            }
             worker = std::jthread{ [this] { workerLoop(); } };
         }
 
@@ -50,6 +93,10 @@ namespace Atlas
         ~Impl()
         {
             shutdown();
+            if (timestampQueryPool != VK_NULL_HANDLE)
+            {
+                vkDestroyQueryPool(context->device, timestampQueryPool, nullptr);
+            }
         }
 
         /// @brief Queues one dispatch unless shutdown has begun.
@@ -64,12 +111,17 @@ namespace Atlas
                 std::lock_guard lock{ stateMutex };
                 if (lifecycle != Lifecycle::Running)
                 {
+                    if (lifecycle == Lifecycle::Failed || context->deviceLost.load(std::memory_order_acquire))
+                    {
+                        throw VulkanError{ VK_ERROR_DEVICE_LOST, "submit Vulkan dispatch" };
+                    }
                     return false;
                 }
+                context->requireDeviceAvailable("submit Vulkan dispatch");
                 pending.emplace_back(WorkItem{ dispatch,
                                                TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 },
                                                                ExecutionResource::GPU, dispatch.workUnitIndex() },
-                                               &completionChannel });
+                                               &completionChannel, completionChannel.traceSession() });
                 ++unfinished;
             }
             workAvailable.notify_one();
@@ -115,17 +167,74 @@ namespace Atlas
                 }
 
                 WorkItem& item{ executing.front() };
+                if constexpr (profilingEnabled)
+                {
+                    if (item.traceSession != nullptr)
+                    {
+                        item.traceSession->emit(TraceEvent{ .kind = TraceEventKind::BackendStarted,
+                                                            .source = TraceEventSource::VulkanExecutor,
+                                                            .resource = ExecutionResource::GPU,
+                                                            .hasTask = true,
+                                                            .hasResource = true,
+                                                            .graphId = item.completion.handle.getGraphID().getValue(),
+                                                            .taskId = item.completion.handle.getTaskID().getValue(),
+                                                            .workUnitIndex = item.completion.workUnitIndex,
+                                                            .workerIndex = 0U });
+                    }
+                }
                 const auto start{ std::chrono::steady_clock::now() };
+                std::exception_ptr failure;
+                {
+                    std::lock_guard lock{ stateMutex };
+                    failure = terminalFailure;
+                }
                 try
                 {
-                    execute(item.dispatch);
+                    if (failure != nullptr)
+                    {
+                        std::rethrow_exception(failure);
+                    }
+                    item.completion.deviceExecutionDuration = execute(item.dispatch);
                 }
                 catch (...)
                 {
                     item.completion.exception = std::current_exception();
+                    if (isDeviceLoss(item.completion.exception))
+                    {
+                        context->deviceLost.store(true, std::memory_order_release);
+                        std::lock_guard lock{ stateMutex };
+                        lifecycle = Lifecycle::Failed;
+                        if (terminalFailure == nullptr)
+                        {
+                            terminalFailure = item.completion.exception;
+                        }
+                    }
                 }
                 item.completion.executionDuration =
                     std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
+
+                if constexpr (profilingEnabled)
+                {
+                    if (item.traceSession != nullptr)
+                    {
+                        const bool hasDeviceDuration{ item.completion.deviceExecutionDuration.has_value() };
+                        item.traceSession->emit(TraceEvent{
+                            .kind = TraceEventKind::BackendFinished,
+                            .source = TraceEventSource::VulkanExecutor,
+                            .resource = ExecutionResource::GPU,
+                            .hasTask = true,
+                            .hasResource = true,
+                            .graphId = item.completion.handle.getGraphID().getValue(),
+                            .taskId = item.completion.handle.getTaskID().getValue(),
+                            .workUnitIndex = item.completion.workUnitIndex,
+                            .workerIndex = 0U,
+                            .hostDurationNanoseconds = static_cast<std::uint64_t>(
+                                std::chrono::duration_cast<std::chrono::nanoseconds>(item.completion.executionDuration).count()),
+                            .deviceDurationNanoseconds =
+                                hasDeviceDuration ? static_cast<std::uint64_t>(item.completion.deviceExecutionDuration->count()) : 0U,
+                            .hasDeviceDuration = hasDeviceDuration });
+                    }
+                }
 
                 item.completionChannel->publish(std::move(item.completion));
                 std::lock_guard lock{ stateMutex };
@@ -134,8 +243,13 @@ namespace Atlas
         }
 
         /// @brief Records and submits one dispatch, waiting for its fence.
-        void execute(const VulkanDispatch& dispatch)
+        std::optional<std::chrono::nanoseconds> execute(const VulkanDispatch& dispatch)
         {
+            context->requireDeviceAvailable("execute Vulkan dispatch");
+            if (context->executorFaultInjector)
+            {
+                context->executorFaultInjector(Detail::VulkanExecutorFaultPoint::BeforeExecution);
+            }
             const auto& pipeline{ Detail::VulkanAccess::pipeline(dispatch.pipeline()) };
             if (pipeline == nullptr || pipeline->context != context)
             {
@@ -146,6 +260,24 @@ namespace Atlas
             VkDescriptorPool descriptorPool{ VK_NULL_HANDLE };
             VkCommandBuffer commandBuffer{ VK_NULL_HANDLE };
             VkFence fence{ VK_NULL_HANDLE };
+            const auto cleanup = [&]() noexcept
+            {
+                if (fence != VK_NULL_HANDLE)
+                {
+                    vkDestroyFence(context->device, fence, nullptr);
+                    fence = VK_NULL_HANDLE;
+                }
+                if (commandBuffer != VK_NULL_HANDLE)
+                {
+                    vkFreeCommandBuffers(context->device, context->commandPool, 1U, &commandBuffer);
+                    commandBuffer = VK_NULL_HANDLE;
+                }
+                if (descriptorPool != VK_NULL_HANDLE)
+                {
+                    vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
+                    descriptorPool = VK_NULL_HANDLE;
+                }
+            };
 
             try
             {
@@ -157,8 +289,8 @@ namespace Atlas
                                                            .maxSets = 1U,
                                                            .poolSizeCount = 1U,
                                                            .pPoolSizes = &poolSize };
-                Detail::throwIfFailed(vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool),
-                                      "vkCreateDescriptorPool");
+                context->checkDeviceResult(vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool),
+                                           "vkCreateDescriptorPool");
 
                 VkDescriptorSet descriptorSet{ VK_NULL_HANDLE };
                 const VkDescriptorSetAllocateInfo descriptorInfo{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -166,8 +298,8 @@ namespace Atlas
                                                                   .descriptorPool = descriptorPool,
                                                                   .descriptorSetCount = 1U,
                                                                   .pSetLayouts = &pipeline->descriptorSetLayout };
-                Detail::throwIfFailed(vkAllocateDescriptorSets(context->device, &descriptorInfo, &descriptorSet),
-                                      "vkAllocateDescriptorSets");
+                context->checkDeviceResult(vkAllocateDescriptorSets(context->device, &descriptorInfo, &descriptorSet),
+                                           "vkAllocateDescriptorSets");
 
                 std::vector<VkDescriptorBufferInfo> bufferInfos;
                 std::vector<VkWriteDescriptorSet> descriptorWrites;
@@ -199,16 +331,21 @@ namespace Atlas
                                                                .commandPool = context->commandPool,
                                                                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                                                                .commandBufferCount = 1U };
-                Detail::throwIfFailed(vkAllocateCommandBuffers(context->device, &commandInfo, &commandBuffer),
-                                      "vkAllocateCommandBuffers");
+                context->checkDeviceResult(vkAllocateCommandBuffers(context->device, &commandInfo, &commandBuffer),
+                                           "vkAllocateCommandBuffers");
                 const VkFenceCreateInfo fenceInfo{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = nullptr, .flags = 0U };
-                Detail::throwIfFailed(vkCreateFence(context->device, &fenceInfo, nullptr, &fence), "vkCreateFence");
+                context->checkDeviceResult(vkCreateFence(context->device, &fenceInfo, nullptr, &fence), "vkCreateFence");
 
                 const VkCommandBufferBeginInfo beginInfo{ .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                                                           .pNext = nullptr,
                                                           .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
                                                           .pInheritanceInfo = nullptr };
-                Detail::throwIfFailed(vkBeginCommandBuffer(commandBuffer, &beginInfo), "vkBeginCommandBuffer");
+                context->checkDeviceResult(vkBeginCommandBuffer(commandBuffer, &beginInfo), "vkBeginCommandBuffer");
+                if (timestampQueryPool != VK_NULL_HANDLE)
+                {
+                    vkCmdResetQueryPool(commandBuffer, timestampQueryPool, 0U, 2U);
+                    vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestampQueryPool, 0U);
+                }
 
                 std::vector<VkBufferMemoryBarrier> beforeBarriers;
                 beforeBarriers.reserve(dispatch.buffers().size());
@@ -269,7 +406,11 @@ namespace Atlas
                 }
                 vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0U, 0U,
                                      nullptr, static_cast<std::uint32_t>(afterBarriers.size()), afterBarriers.data(), 0U, nullptr);
-                Detail::throwIfFailed(vkEndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
+                if (timestampQueryPool != VK_NULL_HANDLE)
+                {
+                    vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampQueryPool, 1U);
+                }
+                context->checkDeviceResult(vkEndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
 
                 const VkSubmitInfo submitInfo{ .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                                                .pNext = nullptr,
@@ -280,30 +421,67 @@ namespace Atlas
                                                .pCommandBuffers = &commandBuffer,
                                                .signalSemaphoreCount = 0U,
                                                .pSignalSemaphores = nullptr };
-                Detail::throwIfFailed(vkQueueSubmit(context->queue, 1U, &submitInfo, fence), "vkQueueSubmit");
-                Detail::throwIfFailed(vkWaitForFences(context->device, 1U, &fence, VK_TRUE, std::numeric_limits<std::uint64_t>::max()),
-                                      "vkWaitForFences");
+                if (context->executorFaultInjector)
+                {
+                    context->executorFaultInjector(Detail::VulkanExecutorFaultPoint::BeforeQueueSubmit);
+                }
+                context->checkDeviceResult(vkQueueSubmit(context->queue, 1U, &submitInfo, fence), "vkQueueSubmit");
+                context->checkDeviceResult(
+                    vkWaitForFences(context->device, 1U, &fence, VK_TRUE, std::numeric_limits<std::uint64_t>::max()),
+                    "vkWaitForFences");
+                if (context->executorFaultInjector)
+                {
+                    context->executorFaultInjector(Detail::VulkanExecutorFaultPoint::AfterFenceWait);
+                }
             }
             catch (...)
             {
-                if (fence != VK_NULL_HANDLE)
-                {
-                    vkDestroyFence(context->device, fence, nullptr);
-                }
-                if (commandBuffer != VK_NULL_HANDLE)
-                {
-                    vkFreeCommandBuffers(context->device, context->commandPool, 1U, &commandBuffer);
-                }
-                if (descriptorPool != VK_NULL_HANDLE)
-                {
-                    vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
-                }
+                cleanup();
                 throw;
             }
 
-            vkDestroyFence(context->device, fence, nullptr);
-            vkFreeCommandBuffers(context->device, context->commandPool, 1U, &commandBuffer);
-            vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
+            std::optional<std::chrono::nanoseconds> deviceDuration;
+            try
+            {
+                if (timestampQueryPool != VK_NULL_HANDLE)
+                {
+                    if (context->executorFaultInjector)
+                    {
+                        context->executorFaultInjector(Detail::VulkanExecutorFaultPoint::BeforeTimestampReadback);
+                    }
+                    std::array<std::uint64_t, 4U> queryResults{};
+                    context->checkDeviceResult(vkGetQueryPoolResults(context->device, timestampQueryPool, 0U, 2U, sizeof(queryResults),
+                                                                     queryResults.data(), 2U * sizeof(std::uint64_t),
+                                                                     VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT |
+                                                                         VK_QUERY_RESULT_WITH_AVAILABILITY_BIT),
+                                               "vkGetQueryPoolResults");
+                    if (queryResults.at(1U) == 0U || queryResults.at(3U) == 0U)
+                    {
+                        throw std::runtime_error{ "Vulkan timestamp results were unavailable after fence completion" };
+                    }
+                    const std::uint32_t validBits{ context->timestampCapabilities.validBits };
+                    const std::uint64_t mask{ validBits >= 64U ? std::numeric_limits<std::uint64_t>::max()
+                                                               : (std::uint64_t{ 1U } << validBits) - 1U };
+                    const std::uint64_t startTimestamp{ queryResults.at(0U) & mask };
+                    const std::uint64_t endTimestamp{ queryResults.at(2U) & mask };
+                    const std::uint64_t ticks{ (endTimestamp - startTimestamp) & mask };
+                    const long double nanoseconds{ static_cast<long double>(ticks) *
+                                                   static_cast<long double>(context->timestampCapabilities.periodNanoseconds) };
+                    if (nanoseconds > static_cast<long double>(std::numeric_limits<std::int64_t>::max()))
+                    {
+                        throw std::overflow_error{ "Vulkan timestamp duration exceeds nanosecond representation" };
+                    }
+                    deviceDuration = std::chrono::nanoseconds{ static_cast<std::int64_t>(nanoseconds) };
+                }
+            }
+            catch (...)
+            {
+                cleanup();
+                throw;
+            }
+
+            cleanup();
+            return deviceDuration;
         }
 
         /// @brief Runtime context borrowed by all submitted resources.
@@ -320,6 +498,10 @@ namespace Atlas
         Lifecycle lifecycle{ Lifecycle::Running };
         /// @brief Single worker responsible for Vulkan queue execution.
         std::jthread worker;
+        /// @brief Reused timestamp queries when supported by the selected queue.
+        VkQueryPool timestampQueryPool{ VK_NULL_HANDLE };
+        /// @brief First permanent device-loss exception applied to queued accepted work.
+        std::exception_ptr terminalFailure;
     };
     /// @endcond
 

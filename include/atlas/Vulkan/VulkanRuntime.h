@@ -18,6 +18,11 @@
 
 namespace Atlas
 {
+    namespace Detail
+    {
+        struct VulkanTestingAccess;
+    }
+
     /**
      * @ingroup vulkan
      * @brief Device properties exposed to deterministic selection callbacks.
@@ -63,7 +68,25 @@ namespace Atlas
 
     /**
      * @ingroup vulkan
+     * @brief Timestamp-query properties of the selected compute queue.
+     */
+    struct VulkanTimestampCapabilities
+    {
+        /// @brief Whether the queue exposes usable device timestamps.
+        bool supported{ false };
+        /// @brief Number of valid low-order timestamp bits for the compute queue.
+        std::uint32_t validBits{ 0U };
+        /// @brief Nanoseconds represented by one device timestamp tick.
+        float periodNanoseconds{ 0.0F };
+    };
+
+    /**
+     * @ingroup vulkan
      * @brief Owns one compute-capable Vulkan device and queue.
+     *
+     * Device loss is permanent for the shared context retained by this runtime,
+     * its resources, and executors. Later device operations throw VulkanError
+     * with VK_ERROR_DEVICE_LOST; Atlas does not recreate the device or fall back.
      * @plantumlfile vulkan_runtime.puml
      */
     class VulkanRuntime final
@@ -89,14 +112,21 @@ namespace Atlas
         /// @brief Returns the selected physical-device description.
         const VulkanDeviceInfo& deviceInfo() const noexcept;
 
+        /// @brief Returns device-clock timestamp support for the selected compute queue.
+        VulkanTimestampCapabilities timestampCapabilities() const noexcept;
+
         /// @brief Allocates one persistent device-local storage buffer.
+        /// @throws VulkanError When the device is lost or allocation fails.
         VulkanBuffer createBuffer(std::size_t sizeInBytes) const;
         /// @brief Creates a reusable pipeline from validated SPIR-V and bindings.
+        /// @throws VulkanError When the device is lost or pipeline creation fails.
         VulkanComputePipeline createComputePipeline(const ComputeShader& shader) const;
 
         /// @brief Copies @p data into @p buffer through an internal staging allocation.
+        /// @throws VulkanError When the device is lost or transfer operations fail.
         void upload(const VulkanBuffer& buffer, std::span<const std::byte> data, std::size_t offset = 0U) const;
         /// @brief Copies bytes from @p buffer into @p destination through staging.
+        /// @throws VulkanError When the device is lost or transfer operations fail.
         void download(const VulkanBuffer& buffer, std::span<std::byte> destination, std::size_t offset = 0U) const;
 
         /// @brief Selects discrete, integrated, virtual, then CPU devices with stable ties.
@@ -109,6 +139,7 @@ namespace Atlas
         std::unique_ptr<Impl> implementation;
 
         friend class VulkanExecutor;
+        friend struct Detail::VulkanTestingAccess;
     };
 } // namespace Atlas
 

@@ -13,6 +13,10 @@ namespace Atlas
     /**
      * @ingroup executor
      * @brief Asynchronously executes one Vulkan compute dispatch at a time.
+     *
+     * VK_ERROR_DEVICE_LOST permanently fails the retained runtime context. Work
+     * accepted before loss receives one attributed failure completion; later
+     * submissions throw VulkanError rather than attempting device recovery.
      * @plantumlfile vulkan_executor.puml
      */
     class VulkanExecutor final : public VulkanDispatchExecutor
@@ -23,7 +27,10 @@ namespace Atlas
         /// @brief Drains accepted dispatches and joins the worker.
         ~VulkanExecutor() override;
 
-        /// @copydoc VulkanDispatchExecutor::submit(TaskHandle,VulkanDispatch,CompletionChannel&)
+        /**
+         * @copydoc VulkanDispatchExecutor::submit(TaskHandle,VulkanDispatch,CompletionChannel&)
+         * @throws VulkanError With VK_ERROR_DEVICE_LOST after the retained context is lost.
+         */
         bool submit(TaskHandle taskHandle, VulkanDispatch dispatch, CompletionChannel& completionChannel) override;
         /// @copydoc VulkanDispatchExecutor::shutdown()
         void shutdown() noexcept override;

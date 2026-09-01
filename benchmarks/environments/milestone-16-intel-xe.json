@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "environment_id": "milestone-16-intel-xe",
+  "cpu_model": "11th Gen Intel(R) Core(TM) i7-1185G7 @ 3.00GHz",
+  "physical_memory_bytes": 16479256576,
+  "os_version": "Arch Linux; Linux 7.2.2-arch1-1 x86_64",
+  "gpu_driver": "Mesa Intel Vulkan (ANV) 26.2.1",
+  "power_profile": "intel_pstate active; balance_performance",
+  "notes": "Milestone 16 physical Intel Iris Xe final evaluation; release build with profiling enabled"
+}

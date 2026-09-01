@@ -21,7 +21,7 @@ namespace Atlas
             workerThreads.reserve(maxThreads);
             for (std::uint32_t workerIndex{ 0 }; workerIndex < maxThreads; ++workerIndex)
             {
-                workerThreads.emplace_back([this] { workerLoop(); });
+                workerThreads.emplace_back([this, workerIndex] { workerLoop(workerIndex); });
             }
         }
         catch (...)
@@ -52,7 +52,7 @@ namespace Atlas
 
             taskQueue.emplace_back(WorkItem{
                 std::move(taskFunction), TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 }, ExecutionResource::CPU },
-                &completionChannel });
+                &completionChannel, completionChannel.traceSession() });
             ++unfinishedTasks;
         }
 
@@ -81,7 +81,7 @@ namespace Atlas
         }
     }
 
-    void WorkerpoolExecutor::workerLoop()
+    void WorkerpoolExecutor::workerLoop(const std::size_t workerIndex)
     {
         while (true)
         {
@@ -100,6 +100,21 @@ namespace Atlas
             }
 
             WorkItem& workItem{ executingWork.front() };
+            if constexpr (profilingEnabled)
+            {
+                if (workItem.traceSession != nullptr)
+                {
+                    workItem.traceSession->emit(TraceEvent{ .kind = TraceEventKind::BackendStarted,
+                                                            .source = TraceEventSource::CpuExecutor,
+                                                            .resource = ExecutionResource::CPU,
+                                                            .hasTask = true,
+                                                            .hasResource = true,
+                                                            .graphId = workItem.completion.handle.getGraphID().getValue(),
+                                                            .taskId = workItem.completion.handle.getTaskID().getValue(),
+                                                            .workUnitIndex = 0U,
+                                                            .workerIndex = workerIndex });
+                }
+            }
             const auto startTime{ std::chrono::steady_clock::now() };
 
             try
@@ -116,6 +131,25 @@ namespace Atlas
 
             workItem.completion.executionDuration =
                 std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
+
+            if constexpr (profilingEnabled)
+            {
+                if (workItem.traceSession != nullptr)
+                {
+                    workItem.traceSession->emit(TraceEvent{
+                        .kind = TraceEventKind::BackendFinished,
+                        .source = TraceEventSource::CpuExecutor,
+                        .resource = ExecutionResource::CPU,
+                        .hasTask = true,
+                        .hasResource = true,
+                        .graphId = workItem.completion.handle.getGraphID().getValue(),
+                        .taskId = workItem.completion.handle.getTaskID().getValue(),
+                        .workUnitIndex = 0U,
+                        .workerIndex = workerIndex,
+                        .hostDurationNanoseconds = static_cast<std::uint64_t>(
+                            std::chrono::duration_cast<std::chrono::nanoseconds>(workItem.completion.executionDuration).count()) });
+                }
+            }
 
             workItem.completionChannel->publish(std::move(workItem.completion));
             std::lock_guard lock{ stateMutex };

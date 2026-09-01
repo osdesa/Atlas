@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-trace-v1.schema.json",
+  "title": "Atlas execution trace JSON Lines record version 1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "trace_schema_version", "clock"],
+      "properties": {
+        "record_type": { "const": "header" },
+        "trace_schema_version": { "const": 1 },
+        "clock": { "const": "steady_nanoseconds" }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "sequence", "timestamp_ns", "kind", "source", "priority", "previous_state", "state", "host_duration_ns"],
+      "properties": {
+        "record_type": { "const": "event" },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "timestamp_ns": { "type": "integer", "minimum": 0 },
+        "kind": { "enum": ["scheduler_started", "scheduler_finished", "task_ready", "policy_decision", "task_selected", "task_resumed", "submission_requested", "submission_accepted", "submission_rejected", "backend_started", "backend_finished", "completion_observed", "task_paused", "cancellation_requested", "cancellation_applied", "task_succeeded", "task_failed", "policy_failed", "infrastructure_failed"] },
+        "source": { "enum": ["scheduler", "cpu_executor", "vulkan_executor"] },
+        "graph_id": { "type": "integer", "minimum": 0 },
+        "task_id": { "type": "integer", "minimum": 1 },
+        "resource": { "enum": ["cpu", "gpu"] },
+        "work_unit_index": { "type": "integer", "minimum": 0 },
+        "worker_index": { "type": "integer", "minimum": 0 },
+        "ready_count": { "type": "integer", "minimum": 0 },
+        "selected_index": { "type": "integer", "minimum": 0 },
+        "priority": { "type": "integer", "minimum": 0 },
+        "previous_state": { "$ref": "#/$defs/task_state" },
+        "state": { "$ref": "#/$defs/task_state" },
+        "host_duration_ns": { "type": "integer", "minimum": 0 },
+        "device_duration_ns": { "type": "integer", "minimum": 0 }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["record_type", "status", "accepted_events", "dropped_events", "complete"],
+      "properties": {
+        "record_type": { "const": "footer" },
+        "status": { "type": "string", "minLength": 1 },
+        "accepted_events": { "type": "integer", "minimum": 0 },
+        "dropped_events": { "type": "integer", "minimum": 0 },
+        "complete": { "const": true }
+      }
+    }
+  ],
+  "$defs": {
+    "task_state": { "enum": ["unknown", "blocked", "ready", "running", "paused", "success", "failure", "cancelled"] }
+  }
+}

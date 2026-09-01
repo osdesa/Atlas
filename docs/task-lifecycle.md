@@ -119,6 +119,18 @@ reported payload duration. Sliced tasks accumulate reported durations across
 successful units and include the reported duration of a unit that finishes with
 an exception. Progress counts only successful units.
 
+When profiling is compiled in and the selected compute queue supports timestamp
+queries, `deviceExecutionDuration` separately accumulates masked, availability-
+checked Vulkan device-clock duration. It is not queue wait time and does not
+replace the host-observed executor duration.
+
+An attached trace session observes readiness, policy choice, selection,
+submission, backend start/end, completion, pause/resume, cancellation, and
+terminal transitions. These events are diagnostic observations: best-effort
+publication never changes lifecycle state or scheduling decisions. Concurrent
+producers can serialize out of sequence-number order, and a trace footer's drop
+count must be checked before treating the event stream as exhaustive.
+
 ## Cancellation
 
 `KahnScheduler::requestCancellation()` accepts a graph-owned non-terminal task
@@ -147,6 +159,14 @@ completion-contract violations are executor infrastructure failures. A thrown
 scheduling policy or an invalid selected index is a policy error. Both stop new
 submissions and drain accepted work. Useful duration and progress recorded
 before a later failure are retained.
+
+`VK_ERROR_DEVICE_LOST` is always an executor infrastructure failure, including
+when a CPU callable or Vulkan worker reports it through an attributed task
+completion. That task enters `Failure`, its dependants remain blocked, the
+shared runtime context rejects later device work, and accepted work on either
+resource drains before `execute()` returns. The result retains the first task
+exception when one preceded the loss; otherwise it exposes the device-loss
+exception.
 
 Final status precedence is:
 
@@ -181,5 +201,5 @@ writer of `TaskExecutionInfo`.
   preempted.
 - Graphics, multiple queues, adaptive backend selection, and general
   cancellation tokens remain unavailable.
-- Full event tracing and Vulkan timestamp-query utilization remain unavailable;
-  benchmark GPU busy time is host observed.
+- Trace output is best-effort rather than a lossless general event log, and
+  Vulkan timestamp availability depends on the selected compute queue.

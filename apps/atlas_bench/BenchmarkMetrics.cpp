@@ -73,6 +73,9 @@ namespace Atlas::Benchmark
         std::vector<double> readyWaits;
         std::int64_t cpuExecution{ 0 };
         std::int64_t gpuExecution{ 0 };
+        std::int64_t gpuDeviceExecution{ 0 };
+        bool hasGpuTask{ false };
+        bool hasCompleteGpuDeviceTiming{ true };
         for (const TaskMeasurement& task : tasks)
         {
             readyWaits.push_back(static_cast<double>(task.readyWaitDuration.count()));
@@ -86,7 +89,16 @@ namespace Atlas::Benchmark
             }
             else
             {
+                hasGpuTask = true;
                 gpuExecution += task.executionDuration.count();
+                if (task.deviceExecutionDuration.has_value())
+                {
+                    gpuDeviceExecution += task.deviceExecutionDuration->count();
+                }
+                else
+                {
+                    hasCompleteGpuDeviceTiming = false;
+                }
             }
         }
         metrics.responseLatency = distribution(std::move(responses));
@@ -102,6 +114,10 @@ namespace Atlas::Benchmark
                                                         { return task.resource == ExecutionResource::GPU; }))
         {
             metrics.gpuHostBusyFraction = static_cast<double>(gpuExecution) / completionMicroseconds;
+        }
+        if (completionMicroseconds > 0.0 && hasGpuTask && hasCompleteGpuDeviceTiming)
+        {
+            metrics.gpuTimestampBusyFraction = static_cast<double>(gpuDeviceExecution) / (completionMicroseconds * 1'000.0);
         }
         if (result.immediateSliceSwitchCount != 0U)
         {

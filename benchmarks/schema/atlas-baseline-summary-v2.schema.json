@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://atlas.local/schema/atlas-baseline-summary-v1.schema.json",
-  "title": "Atlas baseline comparison summary version 1",
+  "$id": "https://atlas.local/schema/atlas-baseline-summary-v2.schema.json",
+  "title": "Atlas baseline comparison summary version 2",
   "type": "object",
   "additionalProperties": false,
   "required": ["summary_schema_version", "suite_id", "environment", "analysis", "cases"],
   "properties": {
-    "summary_schema_version": { "const": 1 },
+    "summary_schema_version": { "const": 2 },
     "suite_id": { "type": "string", "minLength": 1 },
-    "environment": { "$ref": "atlas-baseline-run-v1.schema.json#/$defs/environment" },
+    "environment": { "$ref": "atlas-baseline-run-v2.schema.json#/$defs/environment" },
     "analysis": {
       "type": "object",
       "additionalProperties": false,

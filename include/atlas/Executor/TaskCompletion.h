@@ -7,6 +7,8 @@
 #include <chrono>
 #include <cstddef>
 #include <exception>
+#include <optional>
+#include <utility>
 
 /**
  * @file TaskCompletion.h
@@ -27,6 +29,24 @@ namespace Atlas
      */
     struct TaskCompletion
     {
+        /**
+         * @brief Builds one attributed executor outcome.
+         * @param taskHandle Graph-scoped task identity.
+         * @param taskException Captured payload exception, if any.
+         * @param duration Host-observed payload execution duration.
+         * @param executionResource Backend that executed the payload.
+         * @param unitIndex Zero-based sliced work-unit index.
+         * @param deviceDuration Optional Vulkan device-clock duration.
+         */
+        TaskCompletion(TaskHandle taskHandle, std::exception_ptr taskException = nullptr,
+                       std::chrono::microseconds duration = std::chrono::microseconds{ 0 },
+                       ExecutionResource executionResource = ExecutionResource::CPU, std::size_t unitIndex = 0U,
+                       std::optional<std::chrono::nanoseconds> deviceDuration = std::nullopt) noexcept
+            : handle{ taskHandle }, exception{ std::move(taskException) }, executionDuration{ duration },
+              resource{ executionResource }, workUnitIndex{ unitIndex }, deviceExecutionDuration{ deviceDuration }
+        {
+        }
+
         /// @brief Identifies the task that completed.
         TaskHandle handle;
 
@@ -41,6 +61,9 @@ namespace Atlas
 
         /// @brief Zero-based work-unit index, or zero for an ordinary task payload.
         std::size_t workUnitIndex{ 0U };
+
+        /// @brief Optional Vulkan device-clock duration for this work unit.
+        std::optional<std::chrono::nanoseconds> deviceExecutionDuration;
 
         /**
          * @brief Reports whether backend execution completed without an exception.

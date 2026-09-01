@@ -60,10 +60,10 @@ TEST_CASE("Benchmark metrics calculate utilization and Jain fairness", "[BENCHMA
                                    .immediateSliceSwitchDuration = std::chrono::microseconds{ 8 },
                                    .immediateSliceSwitchCount = 2U };
     const std::vector<Atlas::Benchmark::TaskMeasurement> tasks{
-        { 0U, "first", Atlas::ExecutionResource::CPU, 0U, 0U, Atlas::TaskState::Success, std::chrono::microseconds{ 40 },
+        { 0U, "first", Atlas::ExecutionResource::CPU, 0U, 0U, Atlas::TaskState::Success, std::chrono::microseconds{ 40 }, std::nullopt,
           std::chrono::microseconds{ 10 }, std::chrono::microseconds{ 50 }, 0U, 1U, 1U },
         { 1U, "second", Atlas::ExecutionResource::CPU, 0U, 0U, Atlas::TaskState::Success, std::chrono::microseconds{ 40 },
-          std::chrono::microseconds{ 10 }, std::chrono::microseconds{ 50 }, 0U, 1U, 1U }
+          std::nullopt, std::chrono::microseconds{ 10 }, std::chrono::microseconds{ 50 }, 0U, 1U, 1U }
     };
 
     const Atlas::Benchmark::RunMetrics metrics{ Atlas::Benchmark::calculateMetrics(result, tasks, 2U) };
@@ -74,6 +74,37 @@ TEST_CASE("Benchmark metrics calculate utilization and Jain fairness", "[BENCHMA
     REQUIRE(metrics.cpuBusyFraction == Catch::Approx(0.4));
     REQUIRE(metrics.cpuJainFairness == Catch::Approx(1.0));
     REQUIRE_FALSE(metrics.gpuHostBusyFraction.has_value());
+}
+
+TEST_CASE("Benchmark metrics distinguish Vulkan host and device busy time", "[BENCHMARK]")
+{
+    const Atlas::SchedulerResult result{ .status = Atlas::SchedulerStatus::Success,
+                                         .executedTaskCount = 1U,
+                                         .exception = nullptr,
+                                         .executionTime = std::chrono::microseconds{ 100 },
+                                         .schedulerActiveDuration = {},
+                                         .immediateSliceSwitchDuration = {},
+                                         .immediateSliceSwitchCount = 0U };
+    const std::vector<Atlas::Benchmark::TaskMeasurement> timed{ { 0U,
+                                                                  "gpu",
+                                                                  Atlas::ExecutionResource::GPU,
+                                                                  0U,
+                                                                  0U,
+                                                                  Atlas::TaskState::Success,
+                                                                  std::chrono::microseconds{ 80 },
+                                                                  std::chrono::nanoseconds{ 50'000 },
+                                                                  {},
+                                                                  {},
+                                                                  0U,
+                                                                  1U,
+                                                                  1U } };
+    const Atlas::Benchmark::RunMetrics metrics{ Atlas::Benchmark::calculateMetrics(result, timed, 1U) };
+    REQUIRE(metrics.gpuHostBusyFraction == Catch::Approx(0.8));
+    REQUIRE(metrics.gpuTimestampBusyFraction == Catch::Approx(0.5));
+
+    auto unavailable{ timed };
+    unavailable.front().deviceExecutionDuration = std::nullopt;
+    REQUIRE_FALSE(Atlas::Benchmark::calculateMetrics(result, unavailable, 1U).gpuTimestampBusyFraction.has_value());
 }
 
 TEST_CASE("Baseline suite parser accepts checked smoke and canonical matrices", "[BENCHMARK]")
@@ -107,7 +138,7 @@ TEST_CASE("Checked benchmark schemas are syntactically valid JSON", "[BENCHMARK]
         REQUIRE(schema.is_object());
         ++count;
     }
-    REQUIRE(count == 4U);
+    REQUIRE(count == 8U);
 }
 
 TEST_CASE("Baseline environment metadata is strict and optional fields remain optional", "[BENCHMARK]")
@@ -130,6 +161,32 @@ TEST_CASE("Baseline environment metadata is strict and optional fields remain op
     REQUIRE_THROWS_AS(Atlas::Benchmark::loadEnvironmentMetadata(invalidPath), std::runtime_error);
     std::filesystem::remove(validPath);
     std::filesystem::remove(invalidPath);
+}
+
+TEST_CASE("Milestone 13 checked environments satisfy the strict metadata contract", "[BENCHMARK]")
+{
+    const Atlas::Benchmark::EnvironmentMetadata intel{ Atlas::Benchmark::loadEnvironmentMetadata(
+        std::filesystem::path{ ATLAS_MILESTONE_13_INTEL_ENVIRONMENT_PATH }) };
+    const Atlas::Benchmark::EnvironmentMetadata lavapipe{ Atlas::Benchmark::loadEnvironmentMetadata(
+        std::filesystem::path{ ATLAS_MILESTONE_13_LAVAPIPE_ENVIRONMENT_PATH }) };
+
+    REQUIRE(intel.environmentId == "milestone-13-intel-xe");
+    REQUIRE(intel.gpuDriver == "Mesa Intel Vulkan (ANV) 26.2.1");
+    REQUIRE(lavapipe.environmentId == "milestone-13-lavapipe");
+    REQUIRE(lavapipe.gpuDriver == "Mesa Lavapipe 26.2.1; LLVM 22.1.8");
+}
+
+TEST_CASE("Milestone 16 checked environments satisfy the strict metadata contract", "[BENCHMARK]")
+{
+    const Atlas::Benchmark::EnvironmentMetadata intel{ Atlas::Benchmark::loadEnvironmentMetadata(
+        std::filesystem::path{ ATLAS_MILESTONE_16_INTEL_ENVIRONMENT_PATH }) };
+    const Atlas::Benchmark::EnvironmentMetadata lavapipe{ Atlas::Benchmark::loadEnvironmentMetadata(
+        std::filesystem::path{ ATLAS_MILESTONE_16_LAVAPIPE_ENVIRONMENT_PATH }) };
+
+    REQUIRE(intel.environmentId == "milestone-16-intel-xe");
+    REQUIRE(intel.gpuDriver == "Mesa Intel Vulkan (ANV) 26.2.1");
+    REQUIRE(lavapipe.environmentId == "milestone-16-lavapipe");
+    REQUIRE(lavapipe.gpuDriver == "Mesa Lavapipe 26.2.1; LLVM 22.1.8");
 }
 
 TEST_CASE("Every baseline variant materializes identical generated logical work", "[BENCHMARK]")
@@ -212,7 +269,7 @@ TEST_CASE("Baseline bootstrap analysis is deterministic and paired by seed and r
                 Atlas::Benchmark::RunMetrics metrics;
                 metrics.throughputTasksPerSecond = direct ? 10'000.0 : 8'333.333333333334;
                 metrics.schedulerActiveFraction = direct ? 0.1 : (1.0 / 12.0);
-                Atlas::Benchmark::RunRecord run{ "analysis", seed, repetition, result, {}, metrics, {}, {}, {} };
+                Atlas::Benchmark::RunRecord run{ "analysis", seed, repetition, result, {}, metrics, {}, {}, {}, false };
                 records.push_back(Atlas::Benchmark::BaselineRunRecord{ suite.suiteId, comparisonCase.caseId, variant.variantId,
                                                                        variant.executionMode, 0U, std::move(run) });
             }
@@ -249,11 +306,19 @@ TEST_CASE("Baseline writer emits scalar optional values and all successful suite
     std::ifstream runs{ outputDirectory / "runs.jsonl" };
     nlohmann::json record;
     runs >> record;
+    REQUIRE(record.at("run_schema_version") == 2U);
     REQUIRE(record.at("environment").is_object());
     REQUIRE(record.at("metrics").at("cpu_busy_fraction").is_number());
     REQUIRE(record.at("metrics").at("gpu_host_busy_fraction").is_null());
+    REQUIRE(record.at("metrics").at("gpu_timestamp_supported") == false);
+    REQUIRE(record.at("metrics").at("gpu_timestamp_busy_fraction").is_null());
+    REQUIRE(record.at("tasks").front().at("device_execution_ns").is_null());
     REQUIRE(record.at("tasks").front().at("selection_bypasses").is_null());
     REQUIRE(std::filesystem::exists(outputDirectory / "comparisons.json"));
     REQUIRE(std::filesystem::exists(outputDirectory / "comparisons.csv"));
+    std::ifstream comparisons{ outputDirectory / "comparisons.json" };
+    nlohmann::json summary;
+    comparisons >> summary;
+    REQUIRE(summary.at("summary_schema_version") == 2U);
     std::filesystem::remove_all(outputDirectory);
 }
