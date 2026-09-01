@@ -59,7 +59,21 @@ jobs:
         run: ./build/ci-linux/apps/atlas/atlas
 
       - name: Run benchmark smoke suite
-        run: ./build/ci-linux/apps/atlas_bench/atlas_bench --suite benchmarks/manifests/smoke-v1.json --output-dir build/ci-linux/smoke-results
+        run: |
+          ./build/ci-linux/apps/atlas_bench/atlas_bench \
+            --suite benchmarks/manifests/smoke-v1.json \
+            --environment-file benchmarks/environments/ci-lavapipe.json \
+            --output-dir build/ci-linux/smoke-results
+
+      - name: Analyze benchmark smoke suite
+        run: |
+          python3 -m unittest discover -s tests/tools -p 'test_*.py'
+          python3 tools/atlas_evaluation.py analyze \
+            --study benchmarks/evaluation/smoke-v1/study.json \
+            --results build/ci-linux/smoke-results \
+            --output-dir build/ci-linux/smoke-evaluation
+          test -s build/ci-linux/smoke-evaluation/evaluation.json
+          test -s build/ci-linux/smoke-evaluation/plots/smoke.svg
 
       - name: Validate trace tooling
         run: |

@@ -225,6 +225,38 @@ below the practical threshold or inconclusive. Atlas therefore retains FIFO,
 fixed work-unit round-robin, and fixed static priority; it does not implement an
 adaptive scheduling policy.
 
+## Final evaluation tooling
+
+Milestone 16 keeps benchmark collection and research analysis separate. The
+version-one study at `benchmarks/evaluation/final-v1/study.json` predeclares the
+canonical suite digest, environments, research contrasts, 95% confidence
+method, and 5% practical-effect threshold. The benchmark's existing suite v1
+and run/summary v2 formats are unchanged.
+
+From a clean Git checkout, collect one complete environment with an explicitly
+selected installed ICD:
+
+```bash
+python3 tools/atlas_evaluation.py run \
+  --study benchmarks/evaluation/final-v1/study.json \
+  --environment-file benchmarks/environments/milestone-16-intel-xe.json \
+  --icd /absolute/path/to/intel_icd.json \
+  --output-dir build/final-intel
+```
+
+The command performs a clean release configure/build, runs all tests and the
+`atlas` example, executes the canonical suite, captures allowlisted provenance,
+and creates a compressed raw-data bundle. It does not delete or overwrite an
+existing output directory. Repeat with the Lavapipe environment and analyze
+the two `results` directories with `atlas_evaluation.py analyze`. The analysis
+emits version-one JSON, CSV, Markdown tables, and dependency-free SVG plots.
+
+Python 3.10 or newer is required only for evaluation and trace tooling. If
+`vulkaninfo` is installed, its summary is captured; otherwise the bundle records
+that it was unavailable while retaining the Vulkan metadata resolved by Atlas.
+See `benchmarks/evaluation/README.md` for the complete bundle layout and
+publication verification command.
+
 ## Common failures
 
 - **Vulkan unavailable or incompatible:** install a Vulkan 1.1 loader and a

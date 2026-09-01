@@ -55,6 +55,8 @@ python3 tools/atlas_trace.py summary build/atlas-trace.jsonl
 ./build/apps/atlas_bench/atlas_bench \
   --suite benchmarks/manifests/smoke-v1.json \
   --output-dir build/results
+
+python3 tools/atlas_evaluation.py --help
 ```
 
 Both executables fail early and return non-zero when required Vulkan

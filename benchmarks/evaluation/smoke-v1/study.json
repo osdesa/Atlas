@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "study_id": "atlas-evaluation-smoke-v1",
+  "suite_path": "../../manifests/smoke-v1.json",
+  "suite_sha256": "c65022ed38518119b70b08686bec006eaa7cba76847be17eb077e1ebc8122796",
+  "expected_environments": ["ci-lavapipe"],
+  "analysis": {
+    "confidence_level": 0.95,
+    "bootstrap_resamples": 100,
+    "practical_effect_percent": 5.0
+  },
+  "questions": [
+    {
+      "question_id": "smoke",
+      "title": "Evaluation tooling smoke",
+      "contrasts": [
+        {
+          "contrast_id": "mixed-quantum",
+          "case_id": "mixed-sliced",
+          "reference_variant": "rr-s3-q1",
+          "candidate_variant": "rr-s3-q2",
+          "metrics": ["completion_time_us", "response_p95_us", "gpu_timestamp_busy_fraction"]
+        }
+      ],
+      "absolute_groups": [
+        {
+          "group_id": "mixed-utilization",
+          "case_id": "mixed-sliced",
+          "variants": ["fifo-unsliced", "rr-s3-q1"],
+          "metrics": ["control_active_fraction", "cpu_busy_fraction", "gpu_host_busy_fraction"]
+        }
+      ]
+    }
+  ]
+}

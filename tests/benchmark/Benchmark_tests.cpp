@@ -138,7 +138,7 @@ TEST_CASE("Checked benchmark schemas are syntactically valid JSON", "[BENCHMARK]
         REQUIRE(schema.is_object());
         ++count;
     }
-    REQUIRE(count == 5U);
+    REQUIRE(count == 8U);
 }
 
 TEST_CASE("Baseline environment metadata is strict and optional fields remain optional", "[BENCHMARK]")
@@ -173,6 +173,19 @@ TEST_CASE("Milestone 13 checked environments satisfy the strict metadata contrac
     REQUIRE(intel.environmentId == "milestone-13-intel-xe");
     REQUIRE(intel.gpuDriver == "Mesa Intel Vulkan (ANV) 26.2.1");
     REQUIRE(lavapipe.environmentId == "milestone-13-lavapipe");
+    REQUIRE(lavapipe.gpuDriver == "Mesa Lavapipe 26.2.1; LLVM 22.1.8");
+}
+
+TEST_CASE("Milestone 16 checked environments satisfy the strict metadata contract", "[BENCHMARK]")
+{
+    const Atlas::Benchmark::EnvironmentMetadata intel{ Atlas::Benchmark::loadEnvironmentMetadata(
+        std::filesystem::path{ ATLAS_MILESTONE_16_INTEL_ENVIRONMENT_PATH }) };
+    const Atlas::Benchmark::EnvironmentMetadata lavapipe{ Atlas::Benchmark::loadEnvironmentMetadata(
+        std::filesystem::path{ ATLAS_MILESTONE_16_LAVAPIPE_ENVIRONMENT_PATH }) };
+
+    REQUIRE(intel.environmentId == "milestone-16-intel-xe");
+    REQUIRE(intel.gpuDriver == "Mesa Intel Vulkan (ANV) 26.2.1");
+    REQUIRE(lavapipe.environmentId == "milestone-16-lavapipe");
     REQUIRE(lavapipe.gpuDriver == "Mesa Lavapipe 26.2.1; LLVM 22.1.8");
 }
 

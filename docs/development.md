@@ -110,6 +110,26 @@ priority produced no material stable fairness gain to offset its response
 cost. Adaptive scheduling is consequently skipped; fixed policy behavior
 remains the comparison basis for robustness and final evaluation.
 
+## Final evaluation pipeline
+
+`atlas_bench` remains responsible for executing paired trials and writing suite
+v1 and result v2 records. The standard-library Python tool
+`tools/atlas_evaluation.py` owns the separate study-v1 contract: it validates
+complete raw directories, computes arbitrary predeclared paired contrasts, and
+generates the final machine-readable result, tables, and SVG plots. This keeps
+research interpretation outside the Atlas library and benchmark executor.
+
+Final collection requires a clean source revision, a new output directory, an
+explicit `VK_DRIVER_FILES` selection supplied through `--icd`, and checked
+environment metadata. Both declared environments must contain the exact
+planned successful run keys and the same embedded Git revision. GPU-bearing
+runs must contain capability-checked timestamp utilization. Any code, suite, or
+analysis change after collection invalidates both final bundles.
+
+Ordinary CI runs the Python contract tests and analyzes the small Lavapipe
+smoke suite. The 4,300-run canonical suite remains a controlled manual/release
+operation and does not create a shared-runner timing gate.
+
 ## Build and test
 
 The normal build always discovers Vulkan, compiles both shaders, builds
