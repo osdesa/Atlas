@@ -43,7 +43,8 @@ TEST_CASE("TaskExecutionInfo stores failure details", "[UNIT]")
     const Atlas::TaskExecutionInfo executionInfo{ .state = Atlas::TaskState::Failure,
                                                   .exception = exception,
                                                   .executionDuration = std::chrono::microseconds{ 12 },
-                                                  .responseDuration = std::nullopt };
+                                                  .responseDuration = std::nullopt,
+                                                  .deviceExecutionDuration = std::nullopt };
 
     REQUIRE(executionInfo.state == Atlas::TaskState::Failure);
     REQUIRE(executionInfo.executionDuration == std::chrono::microseconds{ 12 });
@@ -66,7 +67,8 @@ TEST_CASE("TaskExecutionInfo stores accumulated ready-wait and bypass measuremen
 {
     const Atlas::TaskExecutionInfo executionInfo{ .readyWaitDuration = std::chrono::microseconds{ 37 },
                                                   .selectionBypassCount = 4U,
-                                                  .responseDuration = std::chrono::microseconds{ 61 } };
+                                                  .responseDuration = std::chrono::microseconds{ 61 },
+                                                  .deviceExecutionDuration = std::nullopt };
 
     REQUIRE(executionInfo.readyWaitDuration == std::chrono::microseconds{ 37 });
     REQUIRE(executionInfo.selectionBypassCount == 4U);

@@ -142,6 +142,7 @@ namespace Atlas
                             const VkMemoryPropertyFlags preferred, VkBuffer& buffer, VkDeviceMemory& memory,
                             bool* const hostCoherent = nullptr)
         {
+            context->requireDeviceAvailable("allocate Vulkan buffer");
             const VkBufferCreateInfo bufferInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                                                  .pNext = nullptr,
                                                  .flags = 0U,
@@ -150,7 +151,7 @@ namespace Atlas
                                                  .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                                                  .queueFamilyIndexCount = 0U,
                                                  .pQueueFamilyIndices = nullptr };
-            Detail::throwIfFailed(vkCreateBuffer(context->device, &bufferInfo, nullptr, &buffer), "vkCreateBuffer");
+            context->checkDeviceResult(vkCreateBuffer(context->device, &bufferInfo, nullptr, &buffer), "vkCreateBuffer");
 
             try
             {
@@ -161,8 +162,8 @@ namespace Atlas
                                                            .pNext = nullptr,
                                                            .allocationSize = requirements.size,
                                                            .memoryTypeIndex = memoryType };
-                Detail::throwIfFailed(vkAllocateMemory(context->device, &allocationInfo, nullptr, &memory), "vkAllocateMemory");
-                Detail::throwIfFailed(vkBindBufferMemory(context->device, buffer, memory, 0U), "vkBindBufferMemory");
+                context->checkDeviceResult(vkAllocateMemory(context->device, &allocationInfo, nullptr, &memory), "vkAllocateMemory");
+                context->checkDeviceResult(vkBindBufferMemory(context->device, buffer, memory, 0U), "vkBindBufferMemory");
 
                 if (hostCoherent != nullptr)
                 {
@@ -199,18 +200,19 @@ namespace Atlas
             /// @brief Allocates one command buffer and unsignalled fence.
             explicit CommandResources(std::shared_ptr<Detail::VulkanContext> owner) : context{ std::move(owner) }
             {
+                context->requireDeviceAvailable("allocate Vulkan command resources");
                 const VkCommandBufferAllocateInfo allocationInfo{ .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                                                                   .pNext = nullptr,
                                                                   .commandPool = context->commandPool,
                                                                   .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                                                                   .commandBufferCount = 1U };
-                Detail::throwIfFailed(vkAllocateCommandBuffers(context->device, &allocationInfo, &commandBuffer),
-                                      "vkAllocateCommandBuffers");
+                context->checkDeviceResult(vkAllocateCommandBuffers(context->device, &allocationInfo, &commandBuffer),
+                                           "vkAllocateCommandBuffers");
 
                 const VkFenceCreateInfo fenceInfo{ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .pNext = nullptr, .flags = 0U };
                 try
                 {
-                    Detail::throwIfFailed(vkCreateFence(context->device, &fenceInfo, nullptr, &fence), "vkCreateFence");
+                    context->checkDeviceResult(vkCreateFence(context->device, &fenceInfo, nullptr, &fence), "vkCreateFence");
                 }
                 catch (...)
                 {
@@ -295,6 +297,23 @@ namespace Atlas
             {
                 vkDestroyInstance(instance, nullptr);
             }
+        }
+
+        void VulkanContext::requireDeviceAvailable(const char* const operation) const
+        {
+            if (deviceLost.load(std::memory_order_acquire))
+            {
+                throw VulkanError{ VK_ERROR_DEVICE_LOST, operation };
+            }
+        }
+
+        void VulkanContext::checkDeviceResult(const VkResult result, const char* const operation)
+        {
+            if (result == VK_ERROR_DEVICE_LOST)
+            {
+                deviceLost.store(true, std::memory_order_release);
+            }
+            throwIfFailed(result, operation);
         }
 
         void throwIfFailed(const VkResult result, const char* const operation)
@@ -476,6 +495,14 @@ namespace Atlas
         context->queueFamilyIndex = selectQueueFamily(context->physicalDevice, context->deviceDescription.computeQueueFamilies);
         vkGetPhysicalDeviceProperties(context->physicalDevice, &context->properties);
         vkGetPhysicalDeviceMemoryProperties(context->physicalDevice, &context->memoryProperties);
+        std::uint32_t selectedQueuePropertyCount{ 0U };
+        vkGetPhysicalDeviceQueueFamilyProperties(context->physicalDevice, &selectedQueuePropertyCount, nullptr);
+        std::vector<VkQueueFamilyProperties> selectedQueueProperties(selectedQueuePropertyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(context->physicalDevice, &selectedQueuePropertyCount, selectedQueueProperties.data());
+        const std::uint32_t timestampValidBits{ selectedQueueProperties.at(context->queueFamilyIndex).timestampValidBits };
+        context->timestampCapabilities =
+            VulkanTimestampCapabilities{ timestampValidBits != 0U && context->properties.limits.timestampPeriod > 0.0F,
+                                         timestampValidBits, context->properties.limits.timestampPeriod };
 
         constexpr float queuePriority{ 1.0F };
         const VkDeviceQueueCreateInfo queueInfo{ .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -501,8 +528,8 @@ namespace Atlas
                                                        .pNext = nullptr,
                                                        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
                                                        .queueFamilyIndex = context->queueFamilyIndex };
-        Detail::throwIfFailed(vkCreateCommandPool(context->device, &commandPoolInfo, nullptr, &context->commandPool),
-                              "vkCreateCommandPool");
+        context->checkDeviceResult(vkCreateCommandPool(context->device, &commandPoolInfo, nullptr, &context->commandPool),
+                                   "vkCreateCommandPool");
         implementation->context = std::move(context);
     }
 
@@ -513,6 +540,11 @@ namespace Atlas
     const VulkanDeviceInfo& VulkanRuntime::deviceInfo() const noexcept
     {
         return implementation->context->deviceDescription;
+    }
+
+    VulkanTimestampCapabilities VulkanRuntime::timestampCapabilities() const noexcept
+    {
+        return implementation->context->timestampCapabilities;
     }
 
     VulkanBuffer VulkanRuntime::createBuffer(const std::size_t sizeInBytes) const
@@ -533,6 +565,7 @@ namespace Atlas
 
     VulkanComputePipeline VulkanRuntime::createComputePipeline(const ComputeShader& shader) const
     {
+        implementation->context->requireDeviceAvailable("create Vulkan compute pipeline");
         if (!shader.isValid())
         {
             throw std::invalid_argument{ "ComputeShader is empty, malformed, or has invalid storage-buffer bindings" };
@@ -564,7 +597,7 @@ namespace Atlas
                                                               .flags = 0U,
                                                               .bindingCount = static_cast<std::uint32_t>(layoutBindings.size()),
                                                               .pBindings = layoutBindings.data() };
-            Detail::throwIfFailed(
+            resource->context->checkDeviceResult(
                 vkCreateDescriptorSetLayout(resource->context->device, &layoutInfo, nullptr, &resource->descriptorSetLayout),
                 "vkCreateDescriptorSetLayout");
 
@@ -575,7 +608,7 @@ namespace Atlas
                                                                  .pSetLayouts = &resource->descriptorSetLayout,
                                                                  .pushConstantRangeCount = 0U,
                                                                  .pPushConstantRanges = nullptr };
-            Detail::throwIfFailed(
+            resource->context->checkDeviceResult(
                 vkCreatePipelineLayout(resource->context->device, &pipelineLayoutInfo, nullptr, &resource->pipelineLayout),
                 "vkCreatePipelineLayout");
 
@@ -584,8 +617,8 @@ namespace Atlas
                                                        .flags = 0U,
                                                        .codeSize = shader.spirv.size() * sizeof(std::uint32_t),
                                                        .pCode = shader.spirv.data() };
-            Detail::throwIfFailed(vkCreateShaderModule(resource->context->device, &shaderInfo, nullptr, &shaderModule),
-                                  "vkCreateShaderModule");
+            resource->context->checkDeviceResult(vkCreateShaderModule(resource->context->device, &shaderInfo, nullptr, &shaderModule),
+                                                 "vkCreateShaderModule");
 
             const VkPipelineShaderStageCreateInfo stageInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
                                                              .pNext = nullptr,
@@ -601,7 +634,7 @@ namespace Atlas
                                                             .layout = resource->pipelineLayout,
                                                             .basePipelineHandle = VK_NULL_HANDLE,
                                                             .basePipelineIndex = -1 };
-            Detail::throwIfFailed(
+            resource->context->checkDeviceResult(
                 vkCreateComputePipelines(resource->context->device, VK_NULL_HANDLE, 1U, &pipelineInfo, nullptr, &resource->pipeline),
                 "vkCreateComputePipelines");
         }
@@ -619,6 +652,7 @@ namespace Atlas
 
     void VulkanRuntime::upload(const VulkanBuffer& buffer, const std::span<const std::byte> data, const std::size_t offset) const
     {
+        implementation->context->requireDeviceAvailable("upload Vulkan buffer data");
         if (!buffer.isValid() || buffer.implementation->context != implementation->context || offset > buffer.size() ||
             data.size() > buffer.size() - offset)
         {
@@ -631,8 +665,8 @@ namespace Atlas
 
         TemporaryBuffer staging{ createStagingBuffer(implementation->context, static_cast<VkDeviceSize>(data.size())) };
         void* mapped{ nullptr };
-        Detail::throwIfFailed(vkMapMemory(implementation->context->device, staging.memory, 0U, VK_WHOLE_SIZE, 0U, &mapped),
-                              "vkMapMemory");
+        implementation->context->checkDeviceResult(
+            vkMapMemory(implementation->context->device, staging.memory, 0U, VK_WHOLE_SIZE, 0U, &mapped), "vkMapMemory");
         std::memcpy(mapped, data.data(), data.size());
         VkResult flushResult{ VK_SUCCESS };
         if (!staging.hostCoherent)
@@ -645,7 +679,7 @@ namespace Atlas
             flushResult = vkFlushMappedMemoryRanges(implementation->context->device, 1U, &range);
         }
         vkUnmapMemory(implementation->context->device, staging.memory);
-        Detail::throwIfFailed(flushResult, "vkFlushMappedMemoryRanges");
+        implementation->context->checkDeviceResult(flushResult, "vkFlushMappedMemoryRanges");
 
         std::lock_guard lock{ implementation->context->queueMutex };
         CommandResources commands{ implementation->context };
@@ -653,7 +687,7 @@ namespace Atlas
                                                   .pNext = nullptr,
                                                   .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
                                                   .pInheritanceInfo = nullptr };
-        Detail::throwIfFailed(vkBeginCommandBuffer(commands.commandBuffer, &beginInfo), "vkBeginCommandBuffer");
+        implementation->context->checkDeviceResult(vkBeginCommandBuffer(commands.commandBuffer, &beginInfo), "vkBeginCommandBuffer");
         const VkBufferCopy region{ .srcOffset = 0U, .dstOffset = static_cast<VkDeviceSize>(offset), .size = data.size() };
         vkCmdCopyBuffer(commands.commandBuffer, staging.buffer, buffer.implementation->buffer, 1U, &region);
         const VkBufferMemoryBarrier barrier{ .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -667,7 +701,7 @@ namespace Atlas
                                              .size = data.size() };
         vkCmdPipelineBarrier(commands.commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0U, 0U,
                              nullptr, 1U, &barrier, 0U, nullptr);
-        Detail::throwIfFailed(vkEndCommandBuffer(commands.commandBuffer), "vkEndCommandBuffer");
+        implementation->context->checkDeviceResult(vkEndCommandBuffer(commands.commandBuffer), "vkEndCommandBuffer");
         const VkSubmitInfo submitInfo{ .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                                        .pNext = nullptr,
                                        .waitSemaphoreCount = 0U,
@@ -677,14 +711,16 @@ namespace Atlas
                                        .pCommandBuffers = &commands.commandBuffer,
                                        .signalSemaphoreCount = 0U,
                                        .pSignalSemaphores = nullptr };
-        Detail::throwIfFailed(vkQueueSubmit(implementation->context->queue, 1U, &submitInfo, commands.fence), "vkQueueSubmit");
-        Detail::throwIfFailed(
+        implementation->context->checkDeviceResult(vkQueueSubmit(implementation->context->queue, 1U, &submitInfo, commands.fence),
+                                                   "vkQueueSubmit");
+        implementation->context->checkDeviceResult(
             vkWaitForFences(implementation->context->device, 1U, &commands.fence, VK_TRUE, std::numeric_limits<std::uint64_t>::max()),
             "vkWaitForFences");
     }
 
     void VulkanRuntime::download(const VulkanBuffer& buffer, const std::span<std::byte> destination, const std::size_t offset) const
     {
+        implementation->context->requireDeviceAvailable("download Vulkan buffer data");
         if (!buffer.isValid() || buffer.implementation->context != implementation->context || offset > buffer.size() ||
             destination.size() > buffer.size() - offset)
         {
@@ -703,7 +739,8 @@ namespace Atlas
                                                       .pNext = nullptr,
                                                       .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
                                                       .pInheritanceInfo = nullptr };
-            Detail::throwIfFailed(vkBeginCommandBuffer(commands.commandBuffer, &beginInfo), "vkBeginCommandBuffer");
+            implementation->context->checkDeviceResult(vkBeginCommandBuffer(commands.commandBuffer, &beginInfo),
+                                                       "vkBeginCommandBuffer");
             const VkBufferMemoryBarrier barrier{ .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
                                                  .pNext = nullptr,
                                                  .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
@@ -717,7 +754,7 @@ namespace Atlas
                                  nullptr, 1U, &barrier, 0U, nullptr);
             const VkBufferCopy region{ .srcOffset = static_cast<VkDeviceSize>(offset), .dstOffset = 0U, .size = destination.size() };
             vkCmdCopyBuffer(commands.commandBuffer, buffer.implementation->buffer, staging.buffer, 1U, &region);
-            Detail::throwIfFailed(vkEndCommandBuffer(commands.commandBuffer), "vkEndCommandBuffer");
+            implementation->context->checkDeviceResult(vkEndCommandBuffer(commands.commandBuffer), "vkEndCommandBuffer");
             const VkSubmitInfo submitInfo{ .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                                            .pNext = nullptr,
                                            .waitSemaphoreCount = 0U,
@@ -727,15 +764,16 @@ namespace Atlas
                                            .pCommandBuffers = &commands.commandBuffer,
                                            .signalSemaphoreCount = 0U,
                                            .pSignalSemaphores = nullptr };
-            Detail::throwIfFailed(vkQueueSubmit(implementation->context->queue, 1U, &submitInfo, commands.fence), "vkQueueSubmit");
-            Detail::throwIfFailed(vkWaitForFences(implementation->context->device, 1U, &commands.fence, VK_TRUE,
-                                                  std::numeric_limits<std::uint64_t>::max()),
-                                  "vkWaitForFences");
+            implementation->context->checkDeviceResult(vkQueueSubmit(implementation->context->queue, 1U, &submitInfo, commands.fence),
+                                                       "vkQueueSubmit");
+            implementation->context->checkDeviceResult(vkWaitForFences(implementation->context->device, 1U, &commands.fence, VK_TRUE,
+                                                                       std::numeric_limits<std::uint64_t>::max()),
+                                                       "vkWaitForFences");
         }
 
         void* mapped{ nullptr };
-        Detail::throwIfFailed(vkMapMemory(implementation->context->device, staging.memory, 0U, VK_WHOLE_SIZE, 0U, &mapped),
-                              "vkMapMemory");
+        implementation->context->checkDeviceResult(
+            vkMapMemory(implementation->context->device, staging.memory, 0U, VK_WHOLE_SIZE, 0U, &mapped), "vkMapMemory");
         VkResult invalidateResult{ VK_SUCCESS };
         if (!staging.hostCoherent)
         {
@@ -751,7 +789,7 @@ namespace Atlas
             std::memcpy(destination.data(), mapped, destination.size());
         }
         vkUnmapMemory(implementation->context->device, staging.memory);
-        Detail::throwIfFailed(invalidateResult, "vkInvalidateMappedMemoryRanges");
+        implementation->context->checkDeviceResult(invalidateResult, "vkInvalidateMappedMemoryRanges");
     }
 
     std::optional<std::size_t> VulkanRuntime::selectDefaultDevice(const std::span<const VulkanDeviceInfo> devices) noexcept

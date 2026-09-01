@@ -7,7 +7,8 @@
 
 namespace Atlas
 {
-    CompletionChannel::CompletionChannel(const std::size_t capacity) : completionStorage(capacity)
+    CompletionChannel::CompletionChannel(const std::size_t capacity, TraceSession* const traceSession)
+        : completionStorage(capacity), tracing{ traceSession }
     {
         if (capacity == 0U)
         {

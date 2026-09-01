@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://atlas.local/schema/atlas-baseline-run-v1.schema.json",
-  "title": "Atlas normalized baseline run version 1",
+  "$id": "https://atlas.local/schema/atlas-baseline-run-v2.schema.json",
+  "title": "Atlas normalized baseline run version 2",
   "type": "object",
   "additionalProperties": false,
   "required": ["run_schema_version", "suite_id", "case_id", "variant_id", "execution", "seed", "repetition", "execution_order", "environment", "result", "metrics", "tasks"],
   "properties": {
-    "run_schema_version": { "const": 1 },
+    "run_schema_version": { "const": 2 },
     "suite_id": { "type": "string", "minLength": 1 },
     "case_id": { "type": "string", "minLength": 1 },
     "variant_id": { "type": "string", "minLength": 1 },
@@ -40,8 +40,8 @@
         "immediate_slice_switch_mean_us": { "$ref": "#/$defs/optional_nonnegative" },
         "cpu_busy_fraction": { "$ref": "#/$defs/optional_nonnegative" },
         "gpu_host_busy_fraction": { "$ref": "#/$defs/optional_nonnegative" },
-        "gpu_timestamp_supported": { "const": false },
-        "gpu_timestamp_busy_fraction": { "type": "null" },
+        "gpu_timestamp_supported": { "type": "boolean" },
+        "gpu_timestamp_busy_fraction": { "$ref": "#/$defs/optional_nonnegative" },
         "cpu_jain_fairness": { "$ref": "#/$defs/optional_nonnegative" },
         "gpu_jain_fairness": { "$ref": "#/$defs/optional_nonnegative" }
       }
@@ -51,7 +51,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["index", "name", "resource", "priority", "burst", "state", "execution_us", "ready_wait_us", "response_us", "selection_bypasses", "completed_work_units", "total_work_units"],
+        "required": ["index", "name", "resource", "priority", "burst", "state", "execution_us", "device_execution_ns", "ready_wait_us", "response_us", "selection_bypasses", "completed_work_units", "total_work_units"],
         "properties": {
           "index": { "type": "integer", "minimum": 0 },
           "name": { "type": "string" },
@@ -60,6 +60,7 @@
           "burst": { "type": "integer", "minimum": 0 },
           "state": { "type": "string" },
           "execution_us": { "type": "integer", "minimum": 0 },
+          "device_execution_ns": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
           "ready_wait_us": { "type": "integer", "minimum": 0 },
           "response_us": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
           "selection_bypasses": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },

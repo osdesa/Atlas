@@ -220,6 +220,8 @@ namespace Atlas::Benchmark
                          { "burst", task.burstIndex },
                          { "state", taskStateName(task.state) },
                          { "execution_us", task.executionDuration.count() },
+                         { "device_execution_ns",
+                           task.deviceExecutionDuration.has_value() ? Json(task.deviceExecutionDuration->count()) : Json(nullptr) },
                          { "ready_wait_us", task.readyWaitDuration.count() },
                          { "response_us", task.responseDuration.has_value() ? Json(task.responseDuration->count()) : Json(nullptr) },
                          { "selection_bypasses", mode == ExecutionMode::Scheduled ? Json(task.selectionBypassCount) : Json(nullptr) },
@@ -261,7 +263,7 @@ namespace Atlas::Benchmark
                 tasks.push_back(taskJson(task, record.executionMode));
             }
             return Json{
-                { "run_schema_version", 1U },
+                { "run_schema_version", 2U },
                 { "suite_id", record.suiteId },
                 { "case_id", record.caseId },
                 { "variant_id", record.variantId },
@@ -285,8 +287,8 @@ namespace Atlas::Benchmark
                     { "immediate_slice_switch_mean_us", optionalNumber(record.run.metrics.immediateSliceSwitchMeanMicroseconds) },
                     { "cpu_busy_fraction", optionalNumber(record.run.metrics.cpuBusyFraction) },
                     { "gpu_host_busy_fraction", optionalNumber(record.run.metrics.gpuHostBusyFraction) },
-                    { "gpu_timestamp_supported", false },
-                    { "gpu_timestamp_busy_fraction", nullptr },
+                    { "gpu_timestamp_supported", record.run.gpuTimestampSupported },
+                    { "gpu_timestamp_busy_fraction", optionalNumber(record.run.metrics.gpuTimestampBusyFraction) },
                     { "cpu_jain_fairness", optionalNumber(record.run.metrics.cpuJainFairness) },
                     { "gpu_jain_fairness", optionalNumber(record.run.metrics.gpuJainFairness) } } },
                 { "tasks", std::move(tasks) }
@@ -345,7 +347,7 @@ namespace Atlas::Benchmark
                                       { "variants", std::move(variants) },
                                       { "comparisons", std::move(comparisons) } });
             }
-            return Json{ { "summary_schema_version", 1U },
+            return Json{ { "summary_schema_version", 2U },
                          { "suite_id", summary.suiteId },
                          { "environment", environment },
                          { "analysis",
@@ -437,14 +439,15 @@ namespace Atlas::Benchmark
                   "control_active_fraction,immediate_slice_switch_mean_us,cpu_busy_fraction,gpu_host_busy_fraction,"
                   "gpu_timestamp_supported,gpu_timestamp_busy_fraction,cpu_jain_fairness,gpu_jain_fairness\n";
         taskCsv << "run_schema_version,suite_id,case_id,variant_id,execution,seed,repetition,task_index,name,resource,priority,"
-                   "burst,state,execution_us,ready_wait_us,response_us,selection_bypasses,completed_work_units,total_work_units\n";
+                   "burst,state,execution_us,device_execution_ns,ready_wait_us,response_us,selection_bypasses,completed_work_units,"
+                   "total_work_units\n";
     }
 
     void BaselineWriter::append(const BaselineRunRecord& record)
     {
         const Json environmentValue = Json::parse(resolvedEnvironmentJson);
         jsonLines << runJson(record, environmentValue).dump() << '\n';
-        runCsv << "1," << csvEscape(record.suiteId) << ',' << csvEscape(record.caseId) << ',' << csvEscape(record.variantId) << ','
+        runCsv << "2," << csvEscape(record.suiteId) << ',' << csvEscape(record.caseId) << ',' << csvEscape(record.variantId) << ','
                << toString(record.executionMode) << ',' << record.run.seed << ',' << record.run.repetition << ','
                << record.executionOrder << ',' << toString(record.run.schedulerResult.status) << ','
                << record.run.schedulerResult.executedTaskCount << ',' << record.run.schedulerResult.executionTime.count() << ','
@@ -455,17 +458,20 @@ namespace Atlas::Benchmark
                << record.run.schedulerResult.schedulerActiveDuration.count() << ','
                << csvOptional(record.run.metrics.schedulerActiveFraction) << ','
                << csvOptional(record.run.metrics.immediateSliceSwitchMeanMicroseconds) << ','
-               << csvOptional(record.run.metrics.cpuBusyFraction) << ',' << csvOptional(record.run.metrics.gpuHostBusyFraction)
-               << ",false,," << csvOptional(record.run.metrics.cpuJainFairness) << ','
-               << csvOptional(record.run.metrics.gpuJainFairness) << '\n';
+               << csvOptional(record.run.metrics.cpuBusyFraction) << ',' << csvOptional(record.run.metrics.gpuHostBusyFraction) << ','
+               << (record.run.gpuTimestampSupported ? "true" : "false") << ','
+               << csvOptional(record.run.metrics.gpuTimestampBusyFraction) << ',' << csvOptional(record.run.metrics.cpuJainFairness)
+               << ',' << csvOptional(record.run.metrics.gpuJainFairness) << '\n';
 
         for (const TaskMeasurement& task : record.run.tasks)
         {
-            taskCsv << "1," << csvEscape(record.suiteId) << ',' << csvEscape(record.caseId) << ',' << csvEscape(record.variantId)
+            taskCsv << "2," << csvEscape(record.suiteId) << ',' << csvEscape(record.caseId) << ',' << csvEscape(record.variantId)
                     << ',' << toString(record.executionMode) << ',' << record.run.seed << ',' << record.run.repetition << ','
                     << task.index << ',' << csvEscape(task.name) << ',' << resourceName(task.resource) << ',' << task.priority << ','
                     << task.burstIndex << ',' << taskStateName(task.state) << ',' << task.executionDuration.count() << ','
-                    << task.readyWaitDuration.count() << ','
+                    << (task.deviceExecutionDuration.has_value() ? std::to_string(task.deviceExecutionDuration->count())
+                                                                 : std::string{})
+                    << ',' << task.readyWaitDuration.count() << ','
                     << (task.responseDuration.has_value() ? std::to_string(task.responseDuration->count()) : std::string{}) << ',';
             if (record.executionMode == ExecutionMode::Scheduled)
             {
@@ -500,7 +506,7 @@ namespace Atlas::Benchmark
             {
                 for (const VariantMetricSummary& metric : variant.metrics)
                 {
-                    comparisonCsv << "1,absolute," << csvEscape(summary.suiteId) << ',' << csvEscape(comparisonCase.caseId) << ','
+                    comparisonCsv << "2,absolute," << csvEscape(summary.suiteId) << ',' << csvEscape(comparisonCase.caseId) << ','
                                   << csvEscape(variant.variantId) << ",," << metric.metric << ',' << toString(metric.direction) << ','
                                   << metric.sampleCount << ',' << csvOptional(metric.mean) << ','
                                   << csvOptional(metric.confidenceInterval.lower) << ','
@@ -511,7 +517,7 @@ namespace Atlas::Benchmark
             {
                 for (const ComparisonMetricSummary& metric : comparison.metrics)
                 {
-                    comparisonCsv << "1,paired," << csvEscape(summary.suiteId) << ',' << csvEscape(comparisonCase.caseId) << ','
+                    comparisonCsv << "2,paired," << csvEscape(summary.suiteId) << ',' << csvEscape(comparisonCase.caseId) << ','
                                   << csvEscape(comparison.variantId) << ',' << csvEscape(comparison.referenceVariantId) << ','
                                   << metric.metric << ',' << toString(metric.direction) << ",,,,," << metric.pairedSampleCount << ','
                                   << csvOptional(metric.meanDifference) << ','

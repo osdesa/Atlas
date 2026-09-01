@@ -224,9 +224,9 @@ namespace Atlas::Benchmark
                 }
                 const TaskExecutionInfo& info{ task.value()->executionInfo };
                 tasks.push_back(TaskMeasurement{ descriptor.index, descriptor.name, descriptor.resource, descriptor.priority,
-                                                 descriptor.burstIndex, info.state, info.executionDuration, info.readyWaitDuration,
-                                                 info.responseDuration, info.selectionBypassCount, info.completedWorkUnitCount,
-                                                 info.totalWorkUnitCount });
+                                                 descriptor.burstIndex, info.state, info.executionDuration,
+                                                 info.deviceExecutionDuration, info.readyWaitDuration, info.responseDuration,
+                                                 info.selectionBypassCount, info.completedWorkUnitCount, info.totalWorkUnitCount });
             }
 
             if (result.status == SchedulerStatus::Success)
@@ -249,13 +249,14 @@ namespace Atlas::Benchmark
                 }
             }
 
-            RunRecord record{ manifest.experimentId, seed,         repetition,  result, std::move(tasks), {},
-                              std::nullopt,          std::nullopt, std::nullopt };
+            RunRecord record{ manifest.experimentId, seed,         repetition,   result, std::move(tasks), {},
+                              std::nullopt,          std::nullopt, std::nullopt, false };
             if (gpuResources != nullptr)
             {
                 record.gpuDeviceName = gpuResources->runtime.deviceInfo().name;
                 record.gpuApiVersion = gpuResources->runtime.deviceInfo().apiVersion;
                 record.gpuDeviceType = static_cast<std::uint32_t>(gpuResources->runtime.deviceInfo().type);
+                record.gpuTimestampSupported = gpuResources->runtime.timestampCapabilities().supported;
             }
             record.metrics = calculateMetrics(record.schedulerResult, record.tasks, manifest.workerCount);
             return record;

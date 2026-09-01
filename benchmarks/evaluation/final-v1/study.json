@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "study_id": "atlas-final-evaluation-v1",
+  "suite_path": "../../manifests/baseline-canonical-v1.json",
+  "suite_sha256": "a8635ad20b83cfc44f4c5bc93c32d1ac658bb717ce9a10d1fbf054b57835f1a8",
+  "expected_environments": [
+    "milestone-16-intel-xe",
+    "milestone-16-lavapipe"
+  ],
+  "analysis": {
+    "confidence_level": 0.95,
+    "bootstrap_resamples": 10000,
+    "practical_effect_percent": 5.0
+  },
+  "questions": [
+    {
+      "question_id": "rq1",
+      "title": "Scheduler coordination cost",
+      "contrasts": [
+        { "contrast_id": "cpu-short-fifo", "case_id": "cpu-short-independent", "reference_variant": "direct", "candidate_variant": "fifo-unsliced", "metrics": ["completion_time_us", "throughput_tasks_per_second", "response_p95_us"] },
+        { "contrast_id": "cpu-long-fifo", "case_id": "cpu-long-priority-bursty", "reference_variant": "direct", "candidate_variant": "fifo-unsliced", "metrics": ["completion_time_us", "throughput_tasks_per_second", "response_p95_us"] },
+        { "contrast_id": "gpu-short-fifo", "case_id": "gpu-short-independent", "reference_variant": "direct", "candidate_variant": "fifo-unsliced", "metrics": ["completion_time_us", "throughput_tasks_per_second", "response_p95_us"] },
+        { "contrast_id": "gpu-long-fifo", "case_id": "gpu-long-contention", "reference_variant": "direct", "candidate_variant": "fifo-unsliced", "metrics": ["completion_time_us", "throughput_tasks_per_second", "response_p95_us"] },
+        { "contrast_id": "mixed-balanced-fifo", "case_id": "mixed-balanced-layered", "reference_variant": "direct", "candidate_variant": "fifo-unsliced", "metrics": ["completion_time_us", "throughput_tasks_per_second", "response_p95_us"] },
+        { "contrast_id": "mixed-priority-fifo", "case_id": "mixed-priority-bursty", "reference_variant": "direct", "candidate_variant": "fifo-unsliced", "metrics": ["completion_time_us", "throughput_tasks_per_second", "response_p95_us"] }
+      ],
+      "absolute_groups": [
+        { "group_id": "scheduler-active", "case_id": "cpu-short-independent", "variants": ["fifo-unsliced"], "metrics": ["control_active_fraction"] }
+      ]
+    },
+    {
+      "question_id": "rq2",
+      "title": "Fixed round-robin quantum effects",
+      "contrasts": [
+        { "contrast_id": "gpu-short-s1024-q2", "case_id": "gpu-short-independent", "reference_variant": "rr-s1024-q1", "candidate_variant": "rr-s1024-q2", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-short-s1024-q4", "case_id": "gpu-short-independent", "reference_variant": "rr-s1024-q1", "candidate_variant": "rr-s1024-q4", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-short-s256-q2", "case_id": "gpu-short-independent", "reference_variant": "rr-s256-q1", "candidate_variant": "rr-s256-q2", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-short-s256-q4", "case_id": "gpu-short-independent", "reference_variant": "rr-s256-q1", "candidate_variant": "rr-s256-q4", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-long-s16384-q2", "case_id": "gpu-long-contention", "reference_variant": "rr-s16384x4-q1", "candidate_variant": "rr-s16384x4-q2", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-long-s16384-q4", "case_id": "gpu-long-contention", "reference_variant": "rr-s16384x4-q1", "candidate_variant": "rr-s16384x4-q4", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-long-s4096-q2", "case_id": "gpu-long-contention", "reference_variant": "rr-s4096x2-q1", "candidate_variant": "rr-s4096x2-q2", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-long-s4096-q4", "case_id": "gpu-long-contention", "reference_variant": "rr-s4096x2-q1", "candidate_variant": "rr-s4096x2-q4", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-balanced-s4096-q2", "case_id": "mixed-balanced-layered", "reference_variant": "rr-s4096x2-q1", "candidate_variant": "rr-s4096x2-q2", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-balanced-s4096-q4", "case_id": "mixed-balanced-layered", "reference_variant": "rr-s4096x2-q1", "candidate_variant": "rr-s4096x2-q4", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-balanced-s1024-q2", "case_id": "mixed-balanced-layered", "reference_variant": "rr-s1024-q1", "candidate_variant": "rr-s1024-q2", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-balanced-s1024-q4", "case_id": "mixed-balanced-layered", "reference_variant": "rr-s1024-q1", "candidate_variant": "rr-s1024-q4", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-priority-s4096-q2", "case_id": "mixed-priority-bursty", "reference_variant": "rr-s4096x2-q1", "candidate_variant": "rr-s4096x2-q2", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-priority-s4096-q4", "case_id": "mixed-priority-bursty", "reference_variant": "rr-s4096x2-q1", "candidate_variant": "rr-s4096x2-q4", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-priority-s1024-q2", "case_id": "mixed-priority-bursty", "reference_variant": "rr-s1024-q1", "candidate_variant": "rr-s1024-q2", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-priority-s1024-q4", "case_id": "mixed-priority-bursty", "reference_variant": "rr-s1024-q1", "candidate_variant": "rr-s1024-q4", "metrics": ["response_p95_us", "completion_time_us", "throughput_tasks_per_second", "cpu_jain_fairness", "gpu_jain_fairness"] }
+      ],
+      "absolute_groups": []
+    },
+    {
+      "question_id": "rq3",
+      "title": "Static-priority response and fairness effects",
+      "contrasts": [
+        { "contrast_id": "cpu-long-priority", "case_id": "cpu-long-priority-bursty", "reference_variant": "fifo-unsliced", "candidate_variant": "priority-unsliced", "metrics": ["response_p95_us", "completion_time_us", "ready_wait_p95_us", "selection_bypass_max", "cpu_jain_fairness"] },
+        { "contrast_id": "gpu-long-priority", "case_id": "gpu-long-contention", "reference_variant": "fifo-unsliced", "candidate_variant": "priority-unsliced", "metrics": ["response_p95_us", "completion_time_us", "ready_wait_p95_us", "selection_bypass_max", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-long-s16384-priority", "case_id": "gpu-long-contention", "reference_variant": "rr-s16384x4-q1", "candidate_variant": "priority-s16384x4", "metrics": ["response_p95_us", "completion_time_us", "ready_wait_p95_us", "selection_bypass_max", "gpu_jain_fairness"] },
+        { "contrast_id": "gpu-long-s4096-priority", "case_id": "gpu-long-contention", "reference_variant": "rr-s4096x2-q1", "candidate_variant": "priority-s4096x2", "metrics": ["response_p95_us", "completion_time_us", "ready_wait_p95_us", "selection_bypass_max", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-priority-unsliced", "case_id": "mixed-priority-bursty", "reference_variant": "fifo-unsliced", "candidate_variant": "priority-unsliced", "metrics": ["response_p95_us", "completion_time_us", "ready_wait_p95_us", "selection_bypass_max", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-s4096-priority", "case_id": "mixed-priority-bursty", "reference_variant": "rr-s4096x2-q1", "candidate_variant": "priority-s4096x2", "metrics": ["response_p95_us", "completion_time_us", "ready_wait_p95_us", "selection_bypass_max", "cpu_jain_fairness", "gpu_jain_fairness"] },
+        { "contrast_id": "mixed-s1024-priority", "case_id": "mixed-priority-bursty", "reference_variant": "rr-s1024-q1", "candidate_variant": "priority-s1024", "metrics": ["response_p95_us", "completion_time_us", "ready_wait_p95_us", "selection_bypass_max", "cpu_jain_fairness", "gpu_jain_fairness"] }
+      ],
+      "absolute_groups": []
+    },
+    {
+      "question_id": "rq4",
+      "title": "Cooperative slicing cost and utilization",
+      "contrasts": [
+        { "contrast_id": "gpu-short-s1024-slicing", "case_id": "gpu-short-independent", "reference_variant": "fifo-unsliced", "candidate_variant": "rr-s1024-q1", "metrics": ["completion_time_us", "response_p95_us", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] },
+        { "contrast_id": "gpu-short-s256-slicing", "case_id": "gpu-short-independent", "reference_variant": "fifo-unsliced", "candidate_variant": "rr-s256-q1", "metrics": ["completion_time_us", "response_p95_us", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] },
+        { "contrast_id": "gpu-long-s16384-slicing", "case_id": "gpu-long-contention", "reference_variant": "fifo-unsliced", "candidate_variant": "rr-s16384x4-q1", "metrics": ["completion_time_us", "response_p95_us", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] },
+        { "contrast_id": "gpu-long-s4096-slicing", "case_id": "gpu-long-contention", "reference_variant": "fifo-unsliced", "candidate_variant": "rr-s4096x2-q1", "metrics": ["completion_time_us", "response_p95_us", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] },
+        { "contrast_id": "mixed-balanced-s4096-slicing", "case_id": "mixed-balanced-layered", "reference_variant": "fifo-unsliced", "candidate_variant": "rr-s4096x2-q1", "metrics": ["completion_time_us", "response_p95_us", "cpu_busy_fraction", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] },
+        { "contrast_id": "mixed-balanced-s1024-slicing", "case_id": "mixed-balanced-layered", "reference_variant": "fifo-unsliced", "candidate_variant": "rr-s1024-q1", "metrics": ["completion_time_us", "response_p95_us", "cpu_busy_fraction", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] },
+        { "contrast_id": "mixed-priority-s4096-slicing", "case_id": "mixed-priority-bursty", "reference_variant": "fifo-unsliced", "candidate_variant": "rr-s4096x2-q1", "metrics": ["completion_time_us", "response_p95_us", "cpu_busy_fraction", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] },
+        { "contrast_id": "mixed-priority-s1024-slicing", "case_id": "mixed-priority-bursty", "reference_variant": "fifo-unsliced", "candidate_variant": "rr-s1024-q1", "metrics": ["completion_time_us", "response_p95_us", "cpu_busy_fraction", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] }
+      ],
+      "absolute_groups": [
+        { "group_id": "gpu-long-slice-cost", "case_id": "gpu-long-contention", "variants": ["rr-s16384x4-q1", "rr-s4096x2-q1"], "metrics": ["immediate_slice_switch_mean_us", "control_active_fraction", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] },
+        { "group_id": "mixed-balanced-utilization", "case_id": "mixed-balanced-layered", "variants": ["fifo-unsliced", "rr-s4096x2-q1", "rr-s1024-q1"], "metrics": ["control_active_fraction", "cpu_busy_fraction", "gpu_host_busy_fraction", "gpu_timestamp_busy_fraction"] }
+      ]
+    }
+  ]
+}

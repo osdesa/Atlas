@@ -1,5 +1,6 @@
 #if defined(ATLAS_VECTOR_ADD_SPIRV_PATH)
 
+#include "../../../src/Vulkan/VulkanInternal.h"
 #include "../../support/StandaloneExecutorHarness.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Executor/VulkanExecutor.h"
@@ -8,9 +9,11 @@
 #include "atlas/Scheduler/RoundRobinSchedulingPolicy.h"
 #include "atlas/Scheduler/StaticPrioritySchedulingPolicy.h"
 #include "atlas/Tasking/TaskGraph.h"
+#include "atlas/Vulkan/VulkanError.h"
 #include "atlas/Vulkan/VulkanRuntime.h"
 
 #include <algorithm>
+#include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -19,7 +22,9 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <semaphore>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -134,6 +139,14 @@ TEST_CASE("VulkanExecutor executes and reuses persistent compute resources", "[F
     REQUIRE(secondCompletion->succeeded());
     REQUIRE(firstCompletion->workUnitIndex == 0U);
     REQUIRE(secondCompletion->workUnitIndex == 0U);
+    const bool timestampSupported{ Atlas::profilingEnabled && fixture.runtime.timestampCapabilities().supported };
+    REQUIRE(firstCompletion->deviceExecutionDuration.has_value() == timestampSupported);
+    REQUIRE(secondCompletion->deviceExecutionDuration.has_value() == timestampSupported);
+    if (timestampSupported)
+    {
+        REQUIRE(firstCompletion->deviceExecutionDuration->count() > 0);
+        REQUIRE(secondCompletion->deviceExecutionDuration->count() > 0);
+    }
     REQUIRE_FALSE(executor.waitForCompletion().has_value());
 
     fixture.runtime.download(fixture.output, writableBytesOf(output));
@@ -321,6 +334,120 @@ TEST_CASE("VulkanExecutor isolates a rejected-runtime dispatch and continues", "
     REQUIRE(validCompletion->succeeded());
     REQUIRE(fixture.validationErrors->empty());
     REQUIRE(foreignFixture.validationErrors->empty());
+}
+
+TEST_CASE("VulkanExecutor latches device loss and drains accepted dispatches", "[FEATURE][VULKAN_INTEGRATION][CONCURRENCY]")
+{
+    ComputeFixture fixture;
+    const std::shared_ptr<Atlas::Detail::VulkanContext> context{ Atlas::Detail::VulkanTestingAccess::context(fixture.runtime) };
+    std::binary_semaphore faultReached{ 0 };
+    std::binary_semaphore releaseFault{ 0 };
+    std::atomic_bool injected{ false };
+    Atlas::Detail::VulkanContext* const contextPointer{ context.get() };
+    context->executorFaultInjector = [&, contextPointer](const Atlas::Detail::VulkanExecutorFaultPoint point)
+    {
+        if (point == Atlas::Detail::VulkanExecutorFaultPoint::BeforeExecution && !injected.exchange(true))
+        {
+            faultReached.release();
+            releaseFault.acquire();
+            contextPointer->checkDeviceResult(VK_ERROR_DEVICE_LOST, "injected Vulkan dispatch");
+        }
+    };
+
+    VulkanExecutorHarness executor{ fixture.runtime };
+    const Atlas::GraphId graphId{ Atlas::GraphId::create() };
+    const Atlas::TaskHandle first{ Atlas::TaskId{ 1U }, graphId };
+    const Atlas::TaskHandle second{ Atlas::TaskId{ 2U }, graphId };
+    const Atlas::TaskHandle later{ Atlas::TaskId{ 3U }, graphId };
+
+    REQUIRE(executor.submit(first, fixture.dispatch()));
+    faultReached.acquire();
+    REQUIRE(executor.submit(second, fixture.dispatch()));
+    releaseFault.release();
+
+    const std::optional<Atlas::TaskCompletion> firstCompletion{ executor.waitForCompletion() };
+    const std::optional<Atlas::TaskCompletion> secondCompletion{ executor.waitForCompletion() };
+    REQUIRE(firstCompletion.has_value());
+    REQUIRE(secondCompletion.has_value());
+    REQUIRE(firstCompletion->handle == first);
+    REQUIRE(secondCompletion->handle == second);
+    REQUIRE_FALSE(firstCompletion->succeeded());
+    REQUIRE_FALSE(secondCompletion->succeeded());
+
+    const auto requireDeviceLoss = [](const std::exception_ptr& exception)
+    {
+        REQUIRE(exception != nullptr);
+        try
+        {
+            std::rethrow_exception(exception);
+        }
+        catch (const Atlas::VulkanError& error)
+        {
+            REQUIRE(error.result() == VK_ERROR_DEVICE_LOST);
+            return;
+        }
+        catch (...)
+        {
+        }
+        FAIL("Expected VulkanError carrying VK_ERROR_DEVICE_LOST");
+    };
+    requireDeviceLoss(firstCompletion->exception);
+    requireDeviceLoss(secondCompletion->exception);
+    REQUIRE_THROWS_AS(executor.submit(later, fixture.dispatch()), Atlas::VulkanError);
+    REQUIRE_THROWS_AS(fixture.runtime.createBuffer(sizeof(std::uint32_t)), Atlas::VulkanError);
+    executor.shutdown();
+    context->executorFaultInjector = {};
+    REQUIRE(fixture.validationErrors->empty());
+}
+
+TEST_CASE("VulkanExecutor isolates transient failures at every injected boundary", "[FEATURE][VULKAN_INTEGRATION]")
+{
+    ComputeFixture fixture;
+    const std::shared_ptr<Atlas::Detail::VulkanContext> context{ Atlas::Detail::VulkanTestingAccess::context(fixture.runtime) };
+    const Atlas::GraphId graphId{ Atlas::GraphId::create() };
+    std::uint32_t taskId{ 1U };
+
+    const auto exerciseBoundary = [&](const Atlas::Detail::VulkanExecutorFaultPoint boundary)
+    {
+        std::atomic_bool injected{ false };
+        context->executorFaultInjector = [&](const Atlas::Detail::VulkanExecutorFaultPoint point)
+        {
+            if (point == boundary && !injected.exchange(true))
+            {
+                throw std::runtime_error{ "injected transient Vulkan executor failure" };
+            }
+        };
+
+        VulkanExecutorHarness executor{ fixture.runtime };
+        const Atlas::TaskHandle failed{ Atlas::TaskId{ taskId++ }, graphId };
+        const Atlas::TaskHandle recovered{ Atlas::TaskId{ taskId++ }, graphId };
+        REQUIRE(executor.submit(failed, fixture.dispatch()));
+        const std::optional<Atlas::TaskCompletion> failedCompletion{ executor.waitForCompletion() };
+        REQUIRE(failedCompletion.has_value());
+        REQUIRE(failedCompletion->handle == failed);
+        REQUIRE_FALSE(failedCompletion->succeeded());
+        REQUIRE(injected.load());
+
+        context->executorFaultInjector = {};
+        REQUIRE(executor.submit(recovered, fixture.dispatch()));
+        const std::optional<Atlas::TaskCompletion> recoveredCompletion{ executor.waitForCompletion() };
+        REQUIRE(recoveredCompletion.has_value());
+        REQUIRE(recoveredCompletion->handle == recovered);
+        REQUIRE(recoveredCompletion->succeeded());
+    };
+
+    exerciseBoundary(Atlas::Detail::VulkanExecutorFaultPoint::BeforeExecution);
+    exerciseBoundary(Atlas::Detail::VulkanExecutorFaultPoint::BeforeQueueSubmit);
+    exerciseBoundary(Atlas::Detail::VulkanExecutorFaultPoint::AfterFenceWait);
+    if constexpr (Atlas::profilingEnabled)
+    {
+        if (fixture.runtime.timestampCapabilities().supported)
+        {
+            exerciseBoundary(Atlas::Detail::VulkanExecutorFaultPoint::BeforeTimestampReadback);
+        }
+    }
+    context->executorFaultInjector = {};
+    REQUIRE(fixture.validationErrors->empty());
 }
 
 TEST_CASE("KahnScheduler executes a real CPU Vulkan CPU dependency chain", "[FEATURE][VULKAN_INTEGRATION]")

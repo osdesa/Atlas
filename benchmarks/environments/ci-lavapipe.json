@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "environment_id": "ci-lavapipe",
+  "notes": "Contract-only evaluation smoke on the GitHub-hosted Lavapipe runner"
+}

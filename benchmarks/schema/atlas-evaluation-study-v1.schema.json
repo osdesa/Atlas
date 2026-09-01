@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-evaluation-study-v1.schema.json",
+  "title": "Atlas evaluation study version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "study_id", "suite_path", "suite_sha256", "expected_environments", "analysis", "questions"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "study_id": { "type": "string", "minLength": 1 },
+    "suite_path": { "type": "string", "minLength": 1 },
+    "suite_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "expected_environments": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confidence_level", "bootstrap_resamples", "practical_effect_percent"],
+      "properties": {
+        "confidence_level": { "const": 0.95 },
+        "bootstrap_resamples": { "type": "integer", "minimum": 1 },
+        "practical_effect_percent": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "questions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/question" } }
+  },
+  "$defs": {
+    "metrics": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "contrast": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contrast_id", "case_id", "reference_variant", "candidate_variant", "metrics"],
+      "properties": {
+        "contrast_id": { "type": "string", "minLength": 1 },
+        "case_id": { "type": "string", "minLength": 1 },
+        "reference_variant": { "type": "string", "minLength": 1 },
+        "candidate_variant": { "type": "string", "minLength": 1 },
+        "metrics": { "$ref": "#/$defs/metrics" }
+      }
+    },
+    "absolute_group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group_id", "case_id", "variants", "metrics"],
+      "properties": {
+        "group_id": { "type": "string", "minLength": 1 },
+        "case_id": { "type": "string", "minLength": 1 },
+        "variants": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "metrics": { "$ref": "#/$defs/metrics" }
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "title", "contrasts", "absolute_groups"],
+      "properties": {
+        "question_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "contrasts": { "type": "array", "items": { "$ref": "#/$defs/contrast" } },
+        "absolute_groups": { "type": "array", "items": { "$ref": "#/$defs/absolute_group" } }
+      }
+    }
+  }
+}

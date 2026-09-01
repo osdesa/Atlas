@@ -1,0 +1,236 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="2218" viewBox="0 0 1200 2218">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="24" y="32" font-family="sans-serif" font-size="20" fill="#0f172a">Static-priority response and fairness effects</text>
+<text x="24" y="56" font-family="sans-serif" font-size="12" fill="#475569">Paired mean percent change with 95% confidence interval</text>
+<line x1="612.15" y1="70" x2="612.15" y2="2190" stroke="#94a3b8" stroke-width="1"/>
+<text x="24" y="92" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · cpu-long-priority · response_p95_us</text>
+<line x1="625.02" y1="88" x2="649.56" y2="88" stroke="#0369a1" stroke-width="2"/>
+<circle cx="636.87" cy="88" r="4" fill="#0369a1"/>
+<text x="24" y="120" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · cpu-long-priority · completion_time_us</text>
+<line x1="610.06" y1="116" x2="619.32" y2="116" stroke="#64748b" stroke-width="2"/>
+<circle cx="614.40" cy="116" r="4" fill="#64748b"/>
+<text x="24" y="148" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · cpu-long-priority · ready_wait_p95_us</text>
+<line x1="638.49" y1="144" x2="684.08" y2="144" stroke="#0369a1" stroke-width="2"/>
+<circle cx="660.06" cy="144" r="4" fill="#0369a1"/>
+<text x="24" y="176" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · cpu-long-priority · selection_bypass_max</text>
+<line x1="670.29" y1="172" x2="715.07" y2="172" stroke="#0369a1" stroke-width="2"/>
+<circle cx="691.03" cy="172" r="4" fill="#0369a1"/>
+<text x="24" y="204" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · cpu-long-priority · cpu_jain_fairness</text>
+<line x1="613.64" y1="200" x2="615.28" y2="200" stroke="#64748b" stroke-width="2"/>
+<circle cx="614.43" cy="200" r="4" fill="#64748b"/>
+<text x="24" y="232" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · cpu-long-priority · response_p95_us</text>
+<line x1="620.21" y1="228" x2="639.73" y2="228" stroke="#0369a1" stroke-width="2"/>
+<circle cx="629.91" cy="228" r="4" fill="#0369a1"/>
+<text x="24" y="260" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · cpu-long-priority · completion_time_us</text>
+<line x1="609.54" y1="256" x2="617.24" y2="256" stroke="#64748b" stroke-width="2"/>
+<circle cx="613.39" cy="256" r="4" fill="#64748b"/>
+<text x="24" y="288" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · cpu-long-priority · ready_wait_p95_us</text>
+<line x1="635.39" y1="284" x2="670.29" y2="284" stroke="#0369a1" stroke-width="2"/>
+<circle cx="652.64" cy="284" r="4" fill="#0369a1"/>
+<text x="24" y="316" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · cpu-long-priority · selection_bypass_max</text>
+<line x1="674.39" y1="312" x2="711.99" y2="312" stroke="#0369a1" stroke-width="2"/>
+<circle cx="691.05" cy="312" r="4" fill="#0369a1"/>
+<text x="24" y="344" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · cpu-long-priority · cpu_jain_fairness</text>
+<line x1="613.58" y1="340" x2="614.84" y2="340" stroke="#64748b" stroke-width="2"/>
+<circle cx="614.16" cy="340" r="4" fill="#64748b"/>
+<text x="24" y="372" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-priority · response_p95_us</text>
+<line x1="656.06" y1="368" x2="701.92" y2="368" stroke="#0369a1" stroke-width="2"/>
+<circle cx="679.24" cy="368" r="4" fill="#0369a1"/>
+<text x="24" y="400" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-priority · completion_time_us</text>
+<line x1="603.65" y1="396" x2="620.82" y2="396" stroke="#64748b" stroke-width="2"/>
+<circle cx="611.80" cy="396" r="4" fill="#64748b"/>
+<text x="24" y="428" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-priority · ready_wait_p95_us</text>
+<line x1="664.94" y1="424" x2="720.83" y2="424" stroke="#0369a1" stroke-width="2"/>
+<circle cx="693.47" cy="424" r="4" fill="#0369a1"/>
+<text x="24" y="456" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-priority · selection_bypass_max</text>
+<line x1="666.55" y1="452" x2="733.02" y2="452" stroke="#0369a1" stroke-width="2"/>
+<circle cx="699.78" cy="452" r="4" fill="#0369a1"/>
+<text x="24" y="484" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-priority · gpu_jain_fairness</text>
+<line x1="600.22" y1="480" x2="613.91" y2="480" stroke="#64748b" stroke-width="2"/>
+<circle cx="606.88" cy="480" r="4" fill="#64748b"/>
+<text x="24" y="512" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-priority · response_p95_us</text>
+<line x1="649.12" y1="508" x2="711.07" y2="508" stroke="#0369a1" stroke-width="2"/>
+<circle cx="680.01" cy="508" r="4" fill="#0369a1"/>
+<text x="24" y="540" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-priority · completion_time_us</text>
+<line x1="610.80" y1="536" x2="622.75" y2="536" stroke="#64748b" stroke-width="2"/>
+<circle cx="615.55" cy="536" r="4" fill="#64748b"/>
+<text x="24" y="568" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-priority · ready_wait_p95_us</text>
+<line x1="659.46" y1="564" x2="734.93" y2="564" stroke="#0369a1" stroke-width="2"/>
+<circle cx="696.96" cy="564" r="4" fill="#0369a1"/>
+<text x="24" y="596" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-priority · selection_bypass_max</text>
+<line x1="663.52" y1="592" x2="733.02" y2="592" stroke="#0369a1" stroke-width="2"/>
+<circle cx="699.78" cy="592" r="4" fill="#0369a1"/>
+<text x="24" y="624" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-priority · gpu_jain_fairness</text>
+<line x1="598.32" y1="620" x2="611.12" y2="620" stroke="#0369a1" stroke-width="2"/>
+<circle cx="604.66" cy="620" r="4" fill="#0369a1"/>
+<text x="24" y="652" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s16384-priority · response_p95_us</text>
+<line x1="762.94" y1="648" x2="981.44" y2="648" stroke="#0369a1" stroke-width="2"/>
+<circle cx="860.77" cy="648" r="4" fill="#0369a1"/>
+<text x="24" y="680" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s16384-priority · completion_time_us</text>
+<line x1="633.61" y1="676" x2="689.83" y2="676" stroke="#0369a1" stroke-width="2"/>
+<circle cx="659.62" cy="676" r="4" fill="#0369a1"/>
+<text x="24" y="708" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s16384-priority · ready_wait_p95_us</text>
+<line x1="823.62" y1="704" x2="1141.36" y2="704" stroke="#0369a1" stroke-width="2"/>
+<circle cx="963.78" cy="704" r="4" fill="#0369a1"/>
+<text x="24" y="736" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s16384-priority · selection_bypass_max</text>
+<line x1="848.92" y1="732" x2="1008.53" y2="732" stroke="#0369a1" stroke-width="2"/>
+<circle cx="931.04" cy="732" r="4" fill="#0369a1"/>
+<text x="24" y="764" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s16384-priority · gpu_jain_fairness</text>
+<line x1="568.64" y1="760" x2="580.63" y2="760" stroke="#0369a1" stroke-width="2"/>
+<circle cx="574.61" cy="760" r="4" fill="#0369a1"/>
+<text x="24" y="792" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s16384-priority · response_p95_us</text>
+<line x1="735.81" y1="788" x2="843.82" y2="788" stroke="#0369a1" stroke-width="2"/>
+<circle cx="790.16" cy="788" r="4" fill="#0369a1"/>
+<text x="24" y="820" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s16384-priority · completion_time_us</text>
+<line x1="599.37" y1="816" x2="613.82" y2="816" stroke="#64748b" stroke-width="2"/>
+<circle cx="606.40" cy="816" r="4" fill="#64748b"/>
+<text x="24" y="848" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s16384-priority · ready_wait_p95_us</text>
+<line x1="800.78" y1="844" x2="956.13" y2="844" stroke="#0369a1" stroke-width="2"/>
+<circle cx="877.60" cy="844" r="4" fill="#0369a1"/>
+<text x="24" y="876" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s16384-priority · selection_bypass_max</text>
+<line x1="849.27" y1="872" x2="1008.89" y2="872" stroke="#0369a1" stroke-width="2"/>
+<circle cx="931.04" cy="872" r="4" fill="#0369a1"/>
+<text x="24" y="904" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s16384-priority · gpu_jain_fairness</text>
+<line x1="569.81" y1="900" x2="580.54" y2="900" stroke="#0369a1" stroke-width="2"/>
+<circle cx="575.02" cy="900" r="4" fill="#0369a1"/>
+<text x="24" y="932" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s4096-priority · response_p95_us</text>
+<line x1="729.72" y1="928" x2="837.75" y2="928" stroke="#0369a1" stroke-width="2"/>
+<circle cx="781.97" cy="928" r="4" fill="#0369a1"/>
+<text x="24" y="960" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s4096-priority · completion_time_us</text>
+<line x1="607.78" y1="956" x2="633.36" y2="956" stroke="#64748b" stroke-width="2"/>
+<circle cx="620.31" cy="956" r="4" fill="#64748b"/>
+<text x="24" y="988" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s4096-priority · ready_wait_p95_us</text>
+<line x1="789.38" y1="984" x2="939.52" y2="984" stroke="#0369a1" stroke-width="2"/>
+<circle cx="863.57" cy="984" r="4" fill="#0369a1"/>
+<text x="24" y="1016" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s4096-priority · selection_bypass_max</text>
+<line x1="868.93" y1="1012" x2="1042.41" y2="1012" stroke="#0369a1" stroke-width="2"/>
+<circle cx="958.51" cy="1012" r="4" fill="#0369a1"/>
+<text x="24" y="1044" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · gpu-long-s4096-priority · gpu_jain_fairness</text>
+<line x1="568.81" y1="1040" x2="579.74" y2="1040" stroke="#0369a1" stroke-width="2"/>
+<circle cx="574.20" cy="1040" r="4" fill="#0369a1"/>
+<text x="24" y="1072" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s4096-priority · response_p95_us</text>
+<line x1="756.44" y1="1068" x2="851.83" y2="1068" stroke="#0369a1" stroke-width="2"/>
+<circle cx="804.26" cy="1068" r="4" fill="#0369a1"/>
+<text x="24" y="1100" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s4096-priority · completion_time_us</text>
+<line x1="604.14" y1="1096" x2="617.35" y2="1096" stroke="#64748b" stroke-width="2"/>
+<circle cx="610.60" cy="1096" r="4" fill="#64748b"/>
+<text x="24" y="1128" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s4096-priority · ready_wait_p95_us</text>
+<line x1="823.26" y1="1124" x2="965.56" y2="1124" stroke="#0369a1" stroke-width="2"/>
+<circle cx="895.96" cy="1124" r="4" fill="#0369a1"/>
+<text x="24" y="1156" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s4096-priority · selection_bypass_max</text>
+<line x1="874.41" y1="1152" x2="1042.27" y2="1152" stroke="#0369a1" stroke-width="2"/>
+<circle cx="958.51" cy="1152" r="4" fill="#0369a1"/>
+<text x="24" y="1184" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · gpu-long-s4096-priority · gpu_jain_fairness</text>
+<line x1="568.99" y1="1180" x2="580.08" y2="1180" stroke="#0369a1" stroke-width="2"/>
+<circle cx="574.48" cy="1180" r="4" fill="#0369a1"/>
+<text x="24" y="1212" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-priority-unsliced · response_p95_us</text>
+<line x1="620.68" y1="1208" x2="655.90" y2="1208" stroke="#0369a1" stroke-width="2"/>
+<circle cx="635.98" cy="1208" r="4" fill="#0369a1"/>
+<text x="24" y="1240" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-priority-unsliced · completion_time_us</text>
+<line x1="611.08" y1="1236" x2="624.89" y2="1236" stroke="#64748b" stroke-width="2"/>
+<circle cx="617.71" cy="1236" r="4" fill="#64748b"/>
+<text x="24" y="1268" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-priority-unsliced · ready_wait_p95_us</text>
+<line x1="627.33" y1="1264" x2="677.17" y2="1264" stroke="#0369a1" stroke-width="2"/>
+<circle cx="648.84" cy="1264" r="4" fill="#0369a1"/>
+<text x="24" y="1296" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-priority-unsliced · selection_bypass_max</text>
+<line x1="639.97" y1="1292" x2="688.30" y2="1292" stroke="#0369a1" stroke-width="2"/>
+<circle cx="662.31" cy="1292" r="4" fill="#0369a1"/>
+<text x="24" y="1324" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-priority-unsliced · cpu_jain_fairness</text>
+<line x1="610.18" y1="1320" x2="613.80" y2="1320" stroke="#64748b" stroke-width="2"/>
+<circle cx="611.79" cy="1320" r="4" fill="#64748b"/>
+<text x="24" y="1352" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-priority-unsliced · gpu_jain_fairness</text>
+<line x1="609.52" y1="1348" x2="616.83" y2="1348" stroke="#64748b" stroke-width="2"/>
+<circle cx="613.21" cy="1348" r="4" fill="#64748b"/>
+<text x="24" y="1380" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-priority-unsliced · response_p95_us</text>
+<line x1="618.19" y1="1376" x2="646.11" y2="1376" stroke="#0369a1" stroke-width="2"/>
+<circle cx="630.64" cy="1376" r="4" fill="#0369a1"/>
+<text x="24" y="1408" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-priority-unsliced · completion_time_us</text>
+<line x1="609.42" y1="1404" x2="618.83" y2="1404" stroke="#64748b" stroke-width="2"/>
+<circle cx="614.01" cy="1404" r="4" fill="#64748b"/>
+<text x="24" y="1436" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-priority-unsliced · ready_wait_p95_us</text>
+<line x1="625.32" y1="1432" x2="666.13" y2="1432" stroke="#0369a1" stroke-width="2"/>
+<circle cx="643.84" cy="1432" r="4" fill="#0369a1"/>
+<text x="24" y="1464" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-priority-unsliced · selection_bypass_max</text>
+<line x1="644.15" y1="1460" x2="697.57" y2="1460" stroke="#0369a1" stroke-width="2"/>
+<circle cx="669.12" cy="1460" r="4" fill="#0369a1"/>
+<text x="24" y="1492" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-priority-unsliced · cpu_jain_fairness</text>
+<line x1="610.42" y1="1488" x2="614.25" y2="1488" stroke="#64748b" stroke-width="2"/>
+<circle cx="612.21" cy="1488" r="4" fill="#64748b"/>
+<text x="24" y="1520" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-priority-unsliced · gpu_jain_fairness</text>
+<line x1="608.83" y1="1516" x2="616.49" y2="1516" stroke="#64748b" stroke-width="2"/>
+<circle cx="612.66" cy="1516" r="4" fill="#64748b"/>
+<text x="24" y="1548" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s4096-priority · response_p95_us</text>
+<line x1="621.98" y1="1544" x2="664.64" y2="1544" stroke="#0369a1" stroke-width="2"/>
+<circle cx="641.94" cy="1544" r="4" fill="#0369a1"/>
+<text x="24" y="1576" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s4096-priority · completion_time_us</text>
+<line x1="604.66" y1="1572" x2="620.23" y2="1572" stroke="#64748b" stroke-width="2"/>
+<circle cx="612.08" cy="1572" r="4" fill="#64748b"/>
+<text x="24" y="1604" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s4096-priority · ready_wait_p95_us</text>
+<line x1="639.07" y1="1600" x2="703.19" y2="1600" stroke="#0369a1" stroke-width="2"/>
+<circle cx="669.79" cy="1600" r="4" fill="#0369a1"/>
+<text x="24" y="1632" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s4096-priority · selection_bypass_max</text>
+<line x1="663.36" y1="1628" x2="773.11" y2="1628" stroke="#0369a1" stroke-width="2"/>
+<circle cx="715.47" cy="1628" r="4" fill="#0369a1"/>
+<text x="24" y="1660" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s4096-priority · cpu_jain_fairness</text>
+<line x1="610.06" y1="1656" x2="612.84" y2="1656" stroke="#64748b" stroke-width="2"/>
+<circle cx="611.46" cy="1656" r="4" fill="#64748b"/>
+<text x="24" y="1688" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s4096-priority · gpu_jain_fairness</text>
+<line x1="596.08" y1="1684" x2="612.86" y2="1684" stroke="#64748b" stroke-width="2"/>
+<circle cx="604.65" cy="1684" r="4" fill="#64748b"/>
+<text x="24" y="1716" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s4096-priority · response_p95_us</text>
+<line x1="639.31" y1="1712" x2="750.01" y2="1712" stroke="#0369a1" stroke-width="2"/>
+<circle cx="684.34" cy="1712" r="4" fill="#0369a1"/>
+<text x="24" y="1744" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s4096-priority · completion_time_us</text>
+<line x1="618.67" y1="1740" x2="633.55" y2="1740" stroke="#0369a1" stroke-width="2"/>
+<circle cx="625.76" cy="1740" r="4" fill="#0369a1"/>
+<text x="24" y="1772" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s4096-priority · ready_wait_p95_us</text>
+<line x1="649.97" y1="1768" x2="791.64" y2="1768" stroke="#0369a1" stroke-width="2"/>
+<circle cx="709.89" cy="1768" r="4" fill="#0369a1"/>
+<text x="24" y="1800" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s4096-priority · selection_bypass_max</text>
+<line x1="669.78" y1="1796" x2="783.49" y2="1796" stroke="#0369a1" stroke-width="2"/>
+<circle cx="725.47" cy="1796" r="4" fill="#0369a1"/>
+<text x="24" y="1828" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s4096-priority · cpu_jain_fairness</text>
+<line x1="610.91" y1="1824" x2="613.20" y2="1824" stroke="#64748b" stroke-width="2"/>
+<circle cx="612.10" cy="1824" r="4" fill="#64748b"/>
+<text x="24" y="1856" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s4096-priority · gpu_jain_fairness</text>
+<line x1="591.88" y1="1852" x2="610.16" y2="1852" stroke="#0369a1" stroke-width="2"/>
+<circle cx="600.93" cy="1852" r="4" fill="#0369a1"/>
+<text x="24" y="1884" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s1024-priority · response_p95_us</text>
+<line x1="634.77" y1="1880" x2="782.02" y2="1880" stroke="#0369a1" stroke-width="2"/>
+<circle cx="694.59" cy="1880" r="4" fill="#0369a1"/>
+<text x="24" y="1912" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s1024-priority · completion_time_us</text>
+<line x1="607.09" y1="1908" x2="637.66" y2="1908" stroke="#64748b" stroke-width="2"/>
+<circle cx="620.68" cy="1908" r="4" fill="#64748b"/>
+<text x="24" y="1940" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s1024-priority · ready_wait_p95_us</text>
+<line x1="639.65" y1="1936" x2="830.96" y2="1936" stroke="#0369a1" stroke-width="2"/>
+<circle cx="717.03" cy="1936" r="4" fill="#0369a1"/>
+<text x="24" y="1968" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s1024-priority · selection_bypass_max</text>
+<line x1="658.25" y1="1964" x2="789.97" y2="1964" stroke="#0369a1" stroke-width="2"/>
+<circle cx="720.32" cy="1964" r="4" fill="#0369a1"/>
+<text x="24" y="1996" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s1024-priority · cpu_jain_fairness</text>
+<line x1="611.47" y1="1992" x2="613.53" y2="1992" stroke="#64748b" stroke-width="2"/>
+<circle cx="612.46" cy="1992" r="4" fill="#64748b"/>
+<text x="24" y="2024" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-intel-xe · mixed-s1024-priority · gpu_jain_fairness</text>
+<line x1="579.39" y1="2020" x2="595.47" y2="2020" stroke="#0369a1" stroke-width="2"/>
+<circle cx="587.77" cy="2020" r="4" fill="#0369a1"/>
+<text x="24" y="2052" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s1024-priority · response_p95_us</text>
+<line x1="626.78" y1="2048" x2="725.07" y2="2048" stroke="#0369a1" stroke-width="2"/>
+<circle cx="670.54" cy="2048" r="4" fill="#0369a1"/>
+<text x="24" y="2080" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s1024-priority · completion_time_us</text>
+<line x1="608.27" y1="2076" x2="621.38" y2="2076" stroke="#64748b" stroke-width="2"/>
+<circle cx="614.89" cy="2076" r="4" fill="#64748b"/>
+<text x="24" y="2108" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s1024-priority · ready_wait_p95_us</text>
+<line x1="628.33" y1="2104" x2="765.24" y2="2104" stroke="#0369a1" stroke-width="2"/>
+<circle cx="688.96" cy="2104" r="4" fill="#0369a1"/>
+<text x="24" y="2136" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s1024-priority · selection_bypass_max</text>
+<line x1="654.18" y1="2132" x2="780.95" y2="2132" stroke="#0369a1" stroke-width="2"/>
+<circle cx="713.69" cy="2132" r="4" fill="#0369a1"/>
+<text x="24" y="2164" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s1024-priority · cpu_jain_fairness</text>
+<line x1="611.74" y1="2160" x2="612.89" y2="2160" stroke="#64748b" stroke-width="2"/>
+<circle cx="612.33" cy="2160" r="4" fill="#64748b"/>
+<text x="24" y="2192" font-family="sans-serif" font-size="11" fill="#0f172a">milestone-16-lavapipe · mixed-s1024-priority · gpu_jain_fairness</text>
+<line x1="577.48" y1="2188" x2="596.23" y2="2188" stroke="#0369a1" stroke-width="2"/>
+<circle cx="586.70" cy="2188" r="4" fill="#0369a1"/>
+<text x="540" y="2210" font-family="sans-serif" font-size="11">-59.7%</text>
+<text x="1136" y="2210" font-family="sans-serif" font-size="11">462%</text>
+</svg>

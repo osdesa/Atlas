@@ -70,6 +70,8 @@ rules.ninja
 # Analysis and coverage output
 /.cache/
 /coverage/
+__pycache__/
+*.pyc
 /docs/repository-review.md
 *.gcda
 *.gcno

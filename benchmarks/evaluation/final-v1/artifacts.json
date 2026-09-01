@@ -1,0 +1,23 @@
+{
+  "artifact_index_schema_version": 1,
+  "study_id": "atlas-final-evaluation-v1",
+  "release_tag": "milestone-16-evaluation-v1",
+  "artifacts": [
+    {
+      "environment_id": "milestone-16-intel-xe",
+      "url": "https://github.com/osdesa/Atlas/releases/download/milestone-16-evaluation-v1/atlas-final-evaluation-v1-milestone-16-intel-xe.tar.gz",
+      "size_bytes": 4571041,
+      "sha256": "56d62f939dc95f73e21dd7d423b6433ed70e691926b3daf85c736a737bfb2706",
+      "source_revision": "49da375e5670",
+      "suite_sha256": "a8635ad20b83cfc44f4c5bc93c32d1ac658bb717ce9a10d1fbf054b57835f1a8"
+    },
+    {
+      "environment_id": "milestone-16-lavapipe",
+      "url": "https://github.com/osdesa/Atlas/releases/download/milestone-16-evaluation-v1/atlas-final-evaluation-v1-milestone-16-lavapipe.tar.gz",
+      "size_bytes": 4678919,
+      "sha256": "22a2a5e35738272735438cde670879628ec653ff31336efa0b3b3db07405d92b",
+      "source_revision": "49da375e5670",
+      "suite_sha256": "a8635ad20b83cfc44f4c5bc93c32d1ac658bb717ce9a10d1fbf054b57835f1a8"
+    }
+  ]
+}
