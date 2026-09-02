@@ -20,6 +20,37 @@ namespace Atlas
         /// @brief Khronos validation layer requested by validation-enabled runtimes.
         constexpr const char* validationLayerName{ "VK_LAYER_KHRONOS_validation" };
 
+        /**
+         * @brief Enumerates a Vulkan list while tolerating count changes reported as VK_INCOMPLETE.
+         * @tparam Value Vulkan enumeration value type.
+         * @tparam Enumerate Callable matching the Vulkan count/data enumeration convention.
+         * @param enumerate Enumeration operation.
+         * @param operation Operation name used in Vulkan errors.
+         * @return A complete enumeration snapshot.
+         */
+        template <typename Value, typename Enumerate>
+        std::vector<Value> enumerateVulkan(Enumerate&& enumerate, const char* const operation)
+        {
+            constexpr std::size_t maximumAttempts{ 4U };
+            for (std::size_t attempt{ 0U }; attempt < maximumAttempts; ++attempt)
+            {
+                std::uint32_t count{ 0U };
+                Detail::throwIfFailed(enumerate(&count, nullptr), operation);
+                std::vector<Value> values(count);
+                const VkResult result{ enumerate(&count, values.data()) };
+                if (result == VK_SUCCESS)
+                {
+                    values.resize(count);
+                    return values;
+                }
+                if (result != VK_INCOMPLETE)
+                {
+                    Detail::throwIfFailed(result, operation);
+                }
+            }
+            throw VulkanError{ VK_INCOMPLETE, operation };
+        }
+
         /// @brief Forwards validation-layer errors to the runtime callback.
         VKAPI_ATTR VkBool32 VKAPI_CALL validationCallback(VkDebugUtilsMessageSeverityFlagBitsEXT,
                                                           const VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -44,10 +75,8 @@ namespace Atlas
         /// @brief Reports whether an instance layer is available.
         bool hasLayer(const char* const requestedLayer)
         {
-            std::uint32_t count{ 0U };
-            Detail::throwIfFailed(vkEnumerateInstanceLayerProperties(&count, nullptr), "vkEnumerateInstanceLayerProperties");
-            std::vector<VkLayerProperties> layers(count);
-            Detail::throwIfFailed(vkEnumerateInstanceLayerProperties(&count, layers.data()), "vkEnumerateInstanceLayerProperties");
+            const std::vector<VkLayerProperties> layers{ enumerateVulkan<VkLayerProperties>(vkEnumerateInstanceLayerProperties,
+                                                                                            "vkEnumerateInstanceLayerProperties") };
             return std::any_of(layers.begin(), layers.end(), [requestedLayer](const VkLayerProperties& layer)
                                { return std::strcmp(layer.layerName, requestedLayer) == 0; });
         }
@@ -55,12 +84,10 @@ namespace Atlas
         /// @brief Reports whether an instance extension is available.
         bool hasInstanceExtension(const char* const requestedExtension)
         {
-            std::uint32_t count{ 0U };
-            Detail::throwIfFailed(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr),
-                                  "vkEnumerateInstanceExtensionProperties");
-            std::vector<VkExtensionProperties> extensions(count);
-            Detail::throwIfFailed(vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data()),
-                                  "vkEnumerateInstanceExtensionProperties");
+            const std::vector<VkExtensionProperties> extensions{ enumerateVulkan<VkExtensionProperties>(
+                [](std::uint32_t* const count, VkExtensionProperties* const values)
+                { return vkEnumerateInstanceExtensionProperties(nullptr, count, values); },
+                "vkEnumerateInstanceExtensionProperties") };
             return std::any_of(extensions.begin(), extensions.end(), [requestedExtension](const VkExtensionProperties& extension)
                                { return std::strcmp(extension.extensionName, requestedExtension) == 0; });
         }
@@ -452,20 +479,16 @@ namespace Atlas
                                   "vkCreateDebugUtilsMessengerEXT");
         }
 
-        std::uint32_t physicalDeviceCount{ 0U };
-        Detail::throwIfFailed(vkEnumeratePhysicalDevices(context->instance, &physicalDeviceCount, nullptr),
-                              "vkEnumeratePhysicalDevices");
-        if (physicalDeviceCount == 0U)
+        const std::vector<VkPhysicalDevice> physicalDevices{ enumerateVulkan<VkPhysicalDevice>(
+            [instance = context->instance](std::uint32_t* const count, VkPhysicalDevice* const values)
+            { return vkEnumeratePhysicalDevices(instance, count, values); }, "vkEnumeratePhysicalDevices") };
+        if (physicalDevices.empty())
         {
             throw VulkanError{ VK_ERROR_INITIALIZATION_FAILED, "find a Vulkan physical device" };
         }
-
-        std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
-        Detail::throwIfFailed(vkEnumeratePhysicalDevices(context->instance, &physicalDeviceCount, physicalDevices.data()),
-                              "vkEnumeratePhysicalDevices");
         std::vector<VkPhysicalDevice> compatibleDevices;
         std::vector<VulkanDeviceInfo> deviceDescriptions;
-        for (std::uint32_t index{ 0U }; index < physicalDeviceCount; ++index)
+        for (std::size_t index{ 0U }; index < physicalDevices.size(); ++index)
         {
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(physicalDevices.at(index), &properties);
@@ -473,8 +496,8 @@ namespace Atlas
             if (properties.apiVersion >= VK_API_VERSION_1_1 && !queues.empty())
             {
                 compatibleDevices.emplace_back(physicalDevices.at(index));
-                deviceDescriptions.emplace_back(
-                    VulkanDeviceInfo{ index, properties.deviceName, properties.deviceType, properties.apiVersion, std::move(queues) });
+                deviceDescriptions.emplace_back(VulkanDeviceInfo{ static_cast<std::uint32_t>(index), properties.deviceName,
+                                                                  properties.deviceType, properties.apiVersion, std::move(queues) });
             }
         }
 

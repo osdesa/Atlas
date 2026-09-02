@@ -62,11 +62,11 @@ namespace Atlas::Benchmark
                                 const std::uint32_t workerCount)
     {
         RunMetrics metrics;
-        const double completionMicroseconds{ static_cast<double>(result.executionTime.count()) };
-        if (completionMicroseconds > 0.0)
+        const double completionNanoseconds{ static_cast<double>(result.executionTime.count()) };
+        if (completionNanoseconds > 0.0)
         {
-            metrics.throughputTasksPerSecond = static_cast<double>(result.executedTaskCount) * 1'000'000.0 / completionMicroseconds;
-            metrics.schedulerActiveFraction = static_cast<double>(result.schedulerActiveDuration.count()) / completionMicroseconds;
+            metrics.throughputTasksPerSecond = static_cast<double>(result.executedTaskCount) * 1'000'000'000.0 / completionNanoseconds;
+            metrics.schedulerActiveFraction = static_cast<double>(result.schedulerActiveDuration.count()) / completionNanoseconds;
         }
 
         std::vector<double> responses;
@@ -78,10 +78,10 @@ namespace Atlas::Benchmark
         bool hasCompleteGpuDeviceTiming{ true };
         for (const TaskMeasurement& task : tasks)
         {
-            readyWaits.push_back(static_cast<double>(task.readyWaitDuration.count()));
+            readyWaits.push_back(static_cast<double>(task.readyWaitDuration.count()) / 1'000.0);
             if (task.responseDuration.has_value())
             {
-                responses.push_back(static_cast<double>(task.responseDuration->count()));
+                responses.push_back(static_cast<double>(task.responseDuration->count()) / 1'000.0);
             }
             if (task.resource == ExecutionResource::CPU)
             {
@@ -104,25 +104,25 @@ namespace Atlas::Benchmark
         metrics.responseLatency = distribution(std::move(responses));
         metrics.readyWait = distribution(std::move(readyWaits));
 
-        if (completionMicroseconds > 0.0 && workerCount != 0U &&
+        if (completionNanoseconds > 0.0 && workerCount != 0U &&
             std::any_of(tasks.begin(), tasks.end(),
                         [](const TaskMeasurement& task) { return task.resource == ExecutionResource::CPU; }))
         {
-            metrics.cpuBusyFraction = static_cast<double>(cpuExecution) / (completionMicroseconds * static_cast<double>(workerCount));
+            metrics.cpuBusyFraction = static_cast<double>(cpuExecution) / (completionNanoseconds * static_cast<double>(workerCount));
         }
-        if (completionMicroseconds > 0.0 && std::any_of(tasks.begin(), tasks.end(), [](const TaskMeasurement& task)
-                                                        { return task.resource == ExecutionResource::GPU; }))
+        if (completionNanoseconds > 0.0 && std::any_of(tasks.begin(), tasks.end(), [](const TaskMeasurement& task)
+                                                       { return task.resource == ExecutionResource::GPU; }))
         {
-            metrics.gpuHostBusyFraction = static_cast<double>(gpuExecution) / completionMicroseconds;
+            metrics.gpuHostBusyFraction = static_cast<double>(gpuExecution) / completionNanoseconds;
         }
-        if (completionMicroseconds > 0.0 && hasGpuTask && hasCompleteGpuDeviceTiming)
+        if (completionNanoseconds > 0.0 && hasGpuTask && hasCompleteGpuDeviceTiming)
         {
-            metrics.gpuTimestampBusyFraction = static_cast<double>(gpuDeviceExecution) / (completionMicroseconds * 1'000.0);
+            metrics.gpuTimestampBusyFraction = static_cast<double>(gpuDeviceExecution) / completionNanoseconds;
         }
         if (result.immediateSliceSwitchCount != 0U)
         {
             metrics.immediateSliceSwitchMeanMicroseconds = static_cast<double>(result.immediateSliceSwitchDuration.count()) /
-                                                           static_cast<double>(result.immediateSliceSwitchCount);
+                                                           (1'000.0 * static_cast<double>(result.immediateSliceSwitchCount));
         }
         metrics.cpuJainFairness = jainFairness(tasks, ExecutionResource::CPU);
         metrics.gpuJainFairness = jainFairness(tasks, ExecutionResource::GPU);

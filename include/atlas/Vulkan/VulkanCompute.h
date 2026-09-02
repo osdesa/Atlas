@@ -102,7 +102,7 @@ namespace Atlas
         /// @brief Unique descriptor bindings expected in set zero.
         std::vector<std::uint32_t> storageBufferBindings;
 
-        /// @brief Validates the module header, entry point, and binding uniqueness.
+        /// @brief Validates a complete SPIR-V header, entry point, and binding uniqueness.
         bool isValid() const noexcept;
     };
 

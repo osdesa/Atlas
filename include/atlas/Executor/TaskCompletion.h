@@ -39,7 +39,7 @@ namespace Atlas
          * @param deviceDuration Optional Vulkan device-clock duration.
          */
         TaskCompletion(TaskHandle taskHandle, std::exception_ptr taskException = nullptr,
-                       std::chrono::microseconds duration = std::chrono::microseconds{ 0 },
+                       std::chrono::nanoseconds duration = std::chrono::nanoseconds{ 0 },
                        ExecutionResource executionResource = ExecutionResource::CPU, std::size_t unitIndex = 0U,
                        std::optional<std::chrono::nanoseconds> deviceDuration = std::nullopt) noexcept
             : handle{ taskHandle }, exception{ std::move(taskException) }, executionDuration{ duration },
@@ -54,7 +54,7 @@ namespace Atlas
         std::exception_ptr exception{ nullptr };
 
         /// @brief Time spent executing the task payload, excluding executor queue wait time.
-        std::chrono::microseconds executionDuration{ 0 };
+        std::chrono::nanoseconds executionDuration{ 0 };
 
         /// @brief Backend resource that produced this completion.
         ExecutionResource resource{ ExecutionResource::CPU };

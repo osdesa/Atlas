@@ -12,6 +12,10 @@
  * @file SchedulingPolicy.h
  * @brief Declares backend-neutral ready-task selection contracts.
  */
+/**
+ * @defgroup scheduling Scheduling
+ * @brief Dependency-aware resource scheduling and ready-task policies.
+ */
 
 namespace Atlas
 {

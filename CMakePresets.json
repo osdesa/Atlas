@@ -207,6 +207,41 @@
                 "lhs": "${hostSystemName}",
                 "rhs": "Linux"
             }
+        },
+        {
+            "name": "coverage-linux",
+            "displayName": "Linux source coverage",
+            "description": "GCC debug build with gcov-compatible coverage instrumentation",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ATLAS_ENABLE_COVERAGE": "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
+        },
+        {
+            "name": "fuzz-linux",
+            "displayName": "Linux libFuzzer harnesses",
+            "description": "Clang ASan/UBSan build of bounded parser and graph fuzz targets",
+            "inherits": "base",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "ATLAS_BUILD_TESTS": "OFF",
+                "ATLAS_BUILD_FUZZERS": "ON",
+                "ATLAS_ENABLE_SANITIZERS": "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            }
         }
     ],
     "buildPresets": [
@@ -270,6 +305,19 @@
             "name": "tsan-linux",
             "configurePreset": "tsan-linux",
             "configuration": "Debug"
+        },
+        {
+            "name": "coverage-linux",
+            "configurePreset": "coverage-linux",
+            "configuration": "Debug"
+        },
+        {
+            "name": "fuzz-linux",
+            "configurePreset": "fuzz-linux",
+            "configuration": "Debug",
+            "targets": [
+                "TaskGraph_fuzz"
+            ]
         }
     ],
     "testPresets": [
@@ -366,6 +414,17 @@
                     "label": "CONCURRENCY"
                 }
             },
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            }
+        },
+        {
+            "name": "coverage-linux",
+            "configurePreset": "coverage-linux",
+            "configuration": "Debug",
             "output": {
                 "outputOnFailure": true
             },

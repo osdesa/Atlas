@@ -1,13 +1,17 @@
 #ifndef ATLAS_TASK_GRAPH
 #define ATLAS_TASK_GRAPH
 
-#include "Task.h"
-#include "TaskIdGenerator.h"
+#include "TaskFunction.h"
+#include "TaskSnapshot.h"
+#include "atlas/Vulkan/VulkanCompute.h"
 
+#include <atomic>
 #include <cstddef>
-#include <memory>
+#include <cstdint>
 #include <optional>
-#include <unordered_map>
+#include <span>
+#include <utility>
+#include <variant>
 #include <vector>
 
 /**
@@ -24,6 +28,12 @@
 
 namespace Atlas
 {
+    class KahnScheduler;
+    namespace Detail
+    {
+        class ReadyTaskAccounting;
+    }
+
     /**
      * @ingroup tasking
      * @brief Represents a graph of tasks and their dependencies.
@@ -40,7 +50,7 @@ namespace Atlas
         /**
          * @brief Constructs a new TaskGraph with a process-unique ID.
          */
-        TaskGraph() noexcept : graphID{ GraphId::create() }, taskIdGenerator{ graphID }, isFinalised{ false } {}
+        TaskGraph() noexcept : graphID{ GraphId::create() } {}
 
         /**
          * @brief Adds explicit CPU callable work to the graph.
@@ -75,11 +85,11 @@ namespace Atlas
         std::vector<TaskHandle> getTaskHandles() const;
 
         /**
-         * @brief Finds a task owned by this graph.
-         * @param taskHandle The identity of the task to find.
-         * @return The matching read-only task, or an empty optional when it is not in this graph.
+         * @brief Copies a task's observable metadata and execution state.
+         * @param taskHandle Identity to inspect.
+         * @return A detached snapshot, or empty when the task is not graph-owned.
          */
-        std::optional<std::shared_ptr<const Task>> findTask(TaskHandle taskHandle) const noexcept;
+        std::optional<TaskSnapshot> snapshotTask(TaskHandle taskHandle) const;
 
         /**
          * @brief Adds a dependency between two tasks in the graph.
@@ -87,9 +97,18 @@ namespace Atlas
          * @param dependent The task that depends on the other task.
          * @param dependency The task that must be completed before the dependent task can execute.
          * @return True when a new edge was added; false for invalid, cross-graph,
-         * self, missing, duplicate, or cyclic dependencies.
+         * self, missing, or duplicate dependencies. Cycle validation is deferred
+         * to @ref finishTaskGraph so bulk graph construction remains linear.
          */
         bool addDependency(TaskHandle dependent, TaskHandle dependency);
+
+        /**
+         * @brief Removes one dependency edge before graph finalisation.
+         * @param dependent The task that no longer depends on @p dependency.
+         * @param dependency The prerequisite to remove.
+         * @return True when the existing edge was removed; false otherwise.
+         */
+        bool removeDependency(TaskHandle dependent, TaskHandle dependency);
 
         /**
          * @brief Finalises a graph that contains no cycles and has at least one root task.
@@ -106,7 +125,7 @@ namespace Atlas
          */
         bool isFinalisedGraph() const noexcept
         {
-            return isFinalised;
+            return lifecycle.load(std::memory_order_acquire) != Lifecycle::Building;
         }
 
         /**
@@ -143,6 +162,49 @@ namespace Atlas
         TaskGraph& operator=(TaskGraph&&) = delete;
 
       private:
+        /** @brief Single-submission lifecycle for graph structure and execution. */
+        enum class Lifecycle : std::uint8_t
+        {
+            Building,
+            Finalised,
+            Executing,
+            Executed
+        };
+
+        /// @brief Exactly one graph-owned CPU or Vulkan payload.
+        using TaskWork = std::variant<TaskFunction, VulkanDispatch, SlicedVulkanDispatch>;
+
+        /** @brief Contiguous graph-private task storage and scheduler state. */
+        struct TaskRecord final
+        {
+            TaskRecord(TaskHandle taskHandle, TaskWork taskWork, TaskOptions taskOptions) noexcept
+                : handle{ taskHandle }, options{ std::move(taskOptions) }, work{ std::move(taskWork) }
+            {
+                if (const auto* sliced{ std::get_if<SlicedVulkanDispatch>(&work) }; sliced != nullptr)
+                {
+                    executionInfo.totalWorkUnitCount = sliced->sliceCount();
+                }
+            }
+
+            bool isValid() const noexcept;
+            const TaskFunction* cpuFunction() const noexcept;
+            const VulkanDispatch* gpuDispatch() const noexcept;
+            const SlicedVulkanDispatch* slicedGpuDispatch() const noexcept;
+            std::span<const TaskHandle> getDependencies() const noexcept;
+            std::span<const TaskHandle> getDependents() const noexcept;
+            bool addDependency(TaskHandle dependency);
+            bool addDependent(TaskHandle dependent);
+            void removeDependency(TaskHandle dependency) noexcept;
+            void removeDependent(TaskHandle dependent) noexcept;
+
+            TaskHandle handle;
+            TaskOptions options;
+            mutable TaskExecutionInfo executionInfo;
+            TaskWork work;
+            std::vector<TaskHandle> dependencies;
+            std::vector<TaskHandle> dependents;
+        };
+
         std::optional<TaskHandle> addTaskWork(TaskWork work, TaskOptions taskOptions);
 
         /**
@@ -152,7 +214,8 @@ namespace Atlas
          * @return The matching mutable task, or an empty
          * optional when it is not in this graph.
          */
-        std::optional<std::shared_ptr<Task>> findMutableTask(TaskHandle taskHandle) noexcept;
+        TaskRecord* findTaskRecord(TaskHandle taskHandle) noexcept;
+        const TaskRecord* findTaskRecord(TaskHandle taskHandle) const noexcept;
 
         /**
          * @brief Validates if the dependent and dependency tasks are valid and belong to this graph.
@@ -176,36 +239,32 @@ namespace Atlas
          * @return True when both tasks record the new edge; false when either record already
          * exists.
          */
-        bool addTaskLink(const std::shared_ptr<Task>& dependentTask, TaskHandle dependent, const std::shared_ptr<Task>& dependencyTask,
-                         TaskHandle dependency);
-
-        /**
-         * @brief Checks if adding a dependency edge would create a cycle in the graph.
-         * @param dependent The task that depends on the other task.
-         * @param dependency The task that must be completed before the dependent task can execute.
-         * @return True when a cycle would be created; false otherwise.
-         */
-        bool checkForCycles(TaskHandle dependent, TaskHandle dependency) const;
+        bool addTaskLink(TaskRecord& dependentTask, TaskHandle dependent, TaskRecord& dependencyTask, TaskHandle dependency);
 
         /**
          * @brief Sets the initial state of all tasks in the graph to Ready or Blocked based on their dependencies.
          */
         void setInitialStateForTasks() noexcept;
 
-        /// @brief The collection of tasks owned by this graph.
-        std::vector<std::shared_ptr<Task>> tasks;
+        /// @brief Atomically claims this finalised graph for its only execution.
+        bool tryBeginExecution() const noexcept;
+        /// @brief Records that the graph's single execution attempt has ended.
+        void markExecutionFinished() const noexcept;
 
-        /// @brief Constant-time task lookup while @ref tasks preserves insertion order.
-        std::unordered_map<TaskHandle, std::shared_ptr<Task>, TaskHandle::Hash> taskIndex;
+        /// @brief The collection of tasks owned by this graph.
+        std::vector<TaskRecord> tasks;
 
         /// @brief The process-unique ID of this graph.
         GraphId graphID;
 
-        /// @brief Allocates task handles for this graph.
-        TaskIdGenerator taskIdGenerator;
+        /// @brief Next graph-local task identifier; zero is reserved as invalid.
+        std::uint32_t nextTaskId{ 1U };
 
-        /// @brief Indicates the graph has been finalised and no more tasks can be added.
-        bool isFinalised;
+        /// @brief Enforces immutable structure and exactly one scheduler execution.
+        mutable std::atomic<Lifecycle> lifecycle{ Lifecycle::Building };
+
+        friend class KahnScheduler;
+        friend class Detail::ReadyTaskAccounting;
     };
 } // namespace Atlas
 

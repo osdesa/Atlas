@@ -14,7 +14,12 @@ namespace Atlas
     bool ComputeShader::isValid() const noexcept
     {
         constexpr std::uint32_t spirvMagic{ 0x07230203U };
-        if (spirv.empty() || spirv.front() != spirvMagic || entryPoint.empty() || storageBufferBindings.empty())
+        constexpr std::size_t spirvHeaderWords{ 5U };
+        constexpr std::uint32_t minimumSupportedSpirvVersion{ 0x00010000U };
+        constexpr std::uint32_t maximumSupportedSpirvVersion{ 0x00010600U };
+        if (spirv.size() < spirvHeaderWords || spirv.front() != spirvMagic || spirv.at(1U) < minimumSupportedSpirvVersion ||
+            spirv.at(1U) > maximumSupportedSpirvVersion || (spirv.at(1U) & 0x000000FFU) != 0U || spirv.at(3U) == 0U ||
+            spirv.at(4U) != 0U || entryPoint.empty() || entryPoint.find('\0') != std::string::npos || storageBufferBindings.empty())
         {
             return false;
         }

@@ -189,7 +189,7 @@ TEST_CASE("KahnScheduler executes uneven Vulkan dispatch-base slices", "[FEATURE
     fixture.runtime.download(fixture.output, writableBytesOf(output));
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 1U);
-    const Atlas::TaskExecutionInfo& progress{ graph.findTask(compute.value()).value()->executionInfo };
+    const Atlas::TaskExecutionInfo progress{ graph.snapshotTask(compute.value()).value().executionInfo };
     REQUIRE(progress.state == Atlas::TaskState::Success);
     REQUIRE(progress.completedWorkUnitCount == 3U);
     REQUIRE(progress.totalWorkUnitCount == 3U);
@@ -232,7 +232,7 @@ TEST_CASE("KahnScheduler executes real sliced Vulkan work with every built-in po
         fixture.runtime.download(fixture.output, writableBytesOf(output));
         REQUIRE(result.status == Atlas::SchedulerStatus::Success);
         REQUIRE(result.executedTaskCount == 1U);
-        const Atlas::TaskExecutionInfo& progress{ graph.findTask(compute.value()).value()->executionInfo };
+        const Atlas::TaskExecutionInfo progress{ graph.snapshotTask(compute.value()).value().executionInfo };
         REQUIRE(progress.state == Atlas::TaskState::Success);
         REQUIRE(progress.completedWorkUnitCount == 3U);
         REQUIRE(progress.totalWorkUnitCount == 3U);
@@ -301,7 +301,7 @@ TEST_CASE("KahnScheduler applies real Vulkan priority intervention at slice boun
     REQUIRE(result.executedTaskCount == 3U);
     REQUIRE(gpuExecutor.submittedWorkUnits == std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{
                                                   { lower.value(), 0U }, { higher.value(), 0U }, { lower.value(), 1U } });
-    const Atlas::TaskExecutionInfo& lowerInfo{ graph.findTask(lower.value()).value()->executionInfo };
+    const Atlas::TaskExecutionInfo lowerInfo{ graph.snapshotTask(lower.value()).value().executionInfo };
     REQUIRE(lowerInfo.completedWorkUnitCount == 2U);
     REQUIRE(lowerInfo.selectionBypassCount == 1U);
     REQUIRE(lowerInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });

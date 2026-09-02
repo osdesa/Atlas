@@ -28,7 +28,7 @@ namespace Atlas
         std::exception_ptr exception{ nullptr };
 
         /// @brief Accumulated payload execution time, excluding executor queue waiting.
-        std::chrono::microseconds executionDuration{ 0 };
+        std::chrono::nanoseconds executionDuration{ 0 };
 
         /// @brief Number of successfully completed payload work units.
         std::size_t completedWorkUnitCount{ 0U };
@@ -43,7 +43,7 @@ namespace Atlas
          * execution. Sliced tasks accumulate a new interval after every incomplete
          * work unit is returned to the GPU ready set.
          */
-        std::chrono::microseconds readyWaitDuration{ 0 };
+        std::chrono::nanoseconds readyWaitDuration{ 0 };
 
         /**
          * @brief Number of same-resource selections that bypassed this ready task.
@@ -61,7 +61,7 @@ namespace Atlas
          * the task first becomes ready and remains empty when the task never reaches
          * a terminal state after becoming ready.
          */
-        std::optional<std::chrono::microseconds> responseDuration;
+        std::optional<std::chrono::nanoseconds> responseDuration;
 
         /// @brief Accumulated Vulkan device-clock duration when timestamp queries are supported.
         std::optional<std::chrono::nanoseconds> deviceExecutionDuration;

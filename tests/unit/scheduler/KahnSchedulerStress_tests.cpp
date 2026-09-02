@@ -155,7 +155,9 @@ namespace
             REQUIRE(generated.graph.addDependency(generated.handles.at(2U), generated.handles.at(1U)));
             generated.dependencies.at(1U).emplace_back(0U);
             generated.dependencies.at(2U).emplace_back(1U);
-            REQUIRE_FALSE(generated.graph.addDependency(generated.handles.at(0U), generated.handles.at(2U)));
+            REQUIRE(generated.graph.addDependency(generated.handles.at(0U), generated.handles.at(2U)));
+            REQUIRE_FALSE(generated.graph.finishTaskGraph());
+            REQUIRE(generated.graph.removeDependency(generated.handles.at(0U), generated.handles.at(2U)));
         }
 
         for (std::size_t dependent{ 3U }; dependent < taskCount; ++dependent)
@@ -237,10 +239,10 @@ namespace
         requireDependencyOrder(generated, submissions);
         for (const Atlas::TaskHandle handle : generated.handles)
         {
-            const auto task{ generated.graph.findTask(handle) };
+            const auto task{ generated.graph.snapshotTask(handle) };
             REQUIRE(task.has_value());
-            REQUIRE(task.value()->executionInfo.state == Atlas::TaskState::Success);
-            REQUIRE(task.value()->executionInfo.completedWorkUnitCount == task.value()->executionInfo.totalWorkUnitCount);
+            REQUIRE(task.value().executionInfo.state == Atlas::TaskState::Success);
+            REQUIRE(task.value().executionInfo.completedWorkUnitCount == task.value().executionInfo.totalWorkUnitCount);
         }
     }
 } // namespace

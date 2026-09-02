@@ -1,6 +1,7 @@
 # Task lifecycle
 
-Atlas stores lifecycle and progress directly on each graph-owned `Task`. The
+Atlas stores lifecycle and progress directly on each graph-private contiguous
+task record and exposes detached `TaskSnapshot` values for inspection. The
 scheduler control thread owns every transition even when CPU and Vulkan workers
 run concurrently.
 
@@ -33,9 +34,11 @@ Running sliced --unit succeeds, units remain> Cancelled (when requested)
 ```
 
 `Success`, `Failure`, and `Cancelled` are terminal for one scheduler execution.
-The stable ready sets contain backend-neutral handle/priority candidates and may
-retain stale entries; selection always rechecks task state and execution
-resource. An incomplete sliced GPU task is placed at the GPU tail. FIFO and
+The stable ready sets contain backend-neutral handle/priority candidates.
+Selection removes the chosen entry and rechecks task state and execution
+resource. FIFO head removal is constant-time, and storage is compacted only
+when consumed prefixes would otherwise grow the queue. An incomplete sliced
+GPU task is placed at the GPU tail. FIFO and
 round-robin quantum one therefore interleave logical tasks at work-unit
 boundaries, while larger round-robin quanta may retain one task for consecutive
 units.
@@ -114,7 +117,9 @@ Every completion must match an in-flight task handle, declared resource,
 stale, skipped, resource-mismatched, or index-mismatched completions are
 infrastructure failures and never release dependants.
 
-`executionDuration` excludes executor queue waiting. Ordinary tasks retain the
+Host-side execution, ready-wait, response, scheduler-active, and graph elapsed
+durations are retained internally at nanosecond resolution. `executionDuration`
+excludes executor queue waiting. Ordinary tasks retain the
 reported payload duration. Sliced tasks accumulate reported durations across
 successful units and include the reported duration of a unit that finishes with
 an exception. Progress counts only successful units.
@@ -193,7 +198,7 @@ writer of `TaskExecutionInfo`.
 
 ## Current limitations
 
-- A graph is intended for one execution; runtime submission and repeated
+- A graph permits exactly one atomically claimed execution; runtime submission and repeated
   execution are unavailable.
 - Priorities are static; dynamic changes and starvation mitigation are unavailable.
 - Vulkan uses one compute queue and one active dispatch.

@@ -204,6 +204,41 @@ class AtlasEvaluationTests(unittest.TestCase):
         with self.assertRaisesRegex(evaluation.EvaluationError, "unsafe path"):
             evaluation._safe_extract(archive, destination)
 
+    def test_archive_extraction_rejects_links_and_duplicate_members(self):
+        archive = self.root / "unsafe-link.tar.gz"
+        with tarfile.open(archive, "w:gz") as stream:
+            link = tarfile.TarInfo("link")
+            link.type = tarfile.SYMTYPE
+            link.linkname = "target"
+            stream.addfile(link)
+        destination = self.root / "extract-link"
+        destination.mkdir()
+        with self.assertRaisesRegex(evaluation.EvaluationError, "unsafe member"):
+            evaluation._safe_extract(archive, destination)
+
+    def test_artifact_index_requires_allowlisted_https_url(self):
+        study = evaluation.load_study(self.study_path)
+        index = {
+            "artifact_index_schema_version": 1,
+            "study_id": study.study_id,
+            "release_tag": "fixture",
+            "artifacts": [
+                {
+                    "environment_id": environment_id,
+                    "url": "http://example.invalid/result.tar.gz",
+                    "size_bytes": 1,
+                    "sha256": "0" * 64,
+                    "source_revision": "abc123",
+                    "suite_sha256": study.value["suite_sha256"],
+                }
+                for environment_id in study.environments
+            ],
+        }
+        path = self.root / "artifacts.json"
+        path.write_text(json.dumps(index), encoding="utf-8")
+        with self.assertRaisesRegex(evaluation.EvaluationError, "HTTPS"):
+            evaluation._load_artifact_index(path, study)
+
     def test_bundle_manifest_detects_tampering(self):
         study = evaluation.load_study(self.study_path)
         results = self._results("one")

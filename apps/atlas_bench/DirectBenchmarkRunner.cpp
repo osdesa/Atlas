@@ -1,5 +1,6 @@
 #include "DirectBenchmarkRunner.h"
 
+#include "BenchmarkWork.h"
 #include "WorkloadGenerator.h"
 #include "atlas/Executor/CompletionChannel.h"
 #include "atlas/Executor/VulkanExecutor.h"
@@ -14,10 +15,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <deque>
-#include <fstream>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -37,116 +35,23 @@ namespace Atlas::Benchmark
     {
         using Clock = std::chrono::steady_clock;
 
-        std::uint64_t cpuKernel(std::uint64_t value, const std::uint64_t iterations) noexcept
-        {
-            for (std::uint64_t iteration{ 0U }; iteration < iterations; ++iteration)
-            {
-                value ^= value >> 12U;
-                value ^= value << 25U;
-                value ^= value >> 27U;
-                value *= 2'685'821'657'736'338'717ULL;
-            }
-            return value;
-        }
-
-        std::size_t checkedElementCount(const DispatchDimensions dimensions)
-        {
-            const std::size_t x{ dimensions.x };
-            const std::size_t y{ dimensions.y };
-            const std::size_t z{ dimensions.z };
-            if (x > std::numeric_limits<std::size_t>::max() / y || x * y > std::numeric_limits<std::size_t>::max() / z)
-            {
-                throw std::runtime_error{ "GPU benchmark workgroup product overflows size_t" };
-            }
-            return x * y * z;
-        }
-
-        std::vector<std::uint32_t> readShader()
-        {
-            std::ifstream stream{ ATLAS_BENCHMARK_SPIRV_PATH, std::ios::binary };
-            if (!stream)
-            {
-                throw std::runtime_error{ "Unable to open the compiled benchmark shader" };
-            }
-            const std::vector<char> bytes{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
-            if (stream.bad() || bytes.empty() || bytes.size() % sizeof(std::uint32_t) != 0U)
-            {
-                throw std::runtime_error{ "The compiled benchmark shader is malformed" };
-            }
-            std::vector<std::uint32_t> words(bytes.size() / sizeof(std::uint32_t));
-            std::memcpy(words.data(), bytes.data(), bytes.size());
-            return words;
-        }
-
-        struct GpuResources final
-        {
-            GpuResources(VulkanRuntime& runtimeContext, const GpuWorkloadConfig& config)
-                : elementCount{ checkedElementCount(config.workgroups) }, runtime{ runtimeContext },
-                  dimensionsBuffer{ runtime.createBuffer(4U * sizeof(std::uint32_t)) },
-                  outputBuffer{ runtime.createBuffer(elementCount * sizeof(std::uint32_t)) },
-                  pipeline{ runtime.createComputePipeline(ComputeShader{ readShader(), "main", { 0U, 1U } }) },
-                  dispatch{ pipeline,
-                            { { 0U, dimensionsBuffer, BufferAccess::ReadOnly }, { 1U, outputBuffer, BufferAccess::ReadWrite } },
-                            config.workgroups }
-            {
-                const std::vector<std::uint32_t> dimensions{ config.workgroups.x, config.workgroups.y, config.workgroups.z, 0U };
-                runtime.upload(dimensionsBuffer, std::as_bytes(std::span{ dimensions }));
-            }
-
-            void reset(const std::uint64_t seed)
-            {
-                initialValues.resize(elementCount);
-                for (std::size_t index{ 0U }; index < elementCount; ++index)
-                {
-                    initialValues.at(index) = static_cast<std::uint32_t>(seed) ^ static_cast<std::uint32_t>(index + 1U);
-                }
-                runtime.upload(outputBuffer, std::as_bytes(std::span{ initialValues }));
-            }
-
-            void verify(const std::size_t gpuTaskCount) const
-            {
-                std::vector<std::uint32_t> actual(elementCount);
-                runtime.download(outputBuffer, std::as_writable_bytes(std::span{ actual }));
-                for (std::size_t index{ 0U }; index < elementCount; ++index)
-                {
-                    std::uint32_t expected{ initialValues.at(index) };
-                    for (std::size_t task{ 0U }; task < gpuTaskCount; ++task)
-                    {
-                        expected = expected * 1'664'525U + 1'013'904'223U;
-                    }
-                    if (actual.at(index) != expected)
-                    {
-                        throw std::runtime_error{ "Direct GPU benchmark output validation failed" };
-                    }
-                }
-            }
-
-            std::size_t elementCount{ 0U };
-            VulkanRuntime& runtime;
-            VulkanBuffer dimensionsBuffer;
-            VulkanBuffer outputBuffer;
-            VulkanComputePipeline pipeline;
-            VulkanDispatch dispatch;
-            std::vector<std::uint32_t> initialValues;
-        };
-
         struct DirectTaskState final
         {
             TaskState state{ TaskState::Blocked };
             std::size_t remainingDependencies{ 0U };
             std::vector<std::size_t> dependants;
-            std::chrono::microseconds executionDuration{ 0 };
+            std::chrono::nanoseconds executionDuration{ 0 };
             std::optional<std::chrono::nanoseconds> deviceExecutionDuration;
-            std::chrono::microseconds readyWaitDuration{ 0 };
-            std::optional<std::chrono::microseconds> responseDuration;
+            std::chrono::nanoseconds readyWaitDuration{ 0 };
+            std::optional<std::chrono::nanoseconds> responseDuration;
             Clock::time_point readyEntered;
             Clock::time_point firstReady;
             bool observedReady{ false };
         };
 
-        std::chrono::microseconds elapsed(const Clock::time_point start, const Clock::time_point end)
+        std::chrono::nanoseconds elapsed(const Clock::time_point start, const Clock::time_point end)
         {
-            return std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+            return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
         }
     } // namespace
 
@@ -157,7 +62,7 @@ namespace Atlas::Benchmark
         {
             if (manifest.gpu.taskCount != 0U)
             {
-                gpuResources = std::make_unique<GpuResources>(runtime, manifest.gpu);
+                gpuResources = std::make_unique<Detail::GpuResources>(runtime, manifest.gpu);
             }
         }
 
@@ -197,7 +102,7 @@ namespace Atlas::Benchmark
             std::size_t completedTasks{ 0U };
             SchedulerStatus status{ SchedulerStatus::Success };
             std::exception_ptr firstException;
-            std::chrono::microseconds controlActive{ 0 };
+            std::chrono::nanoseconds controlActive{ 0 };
 
             const Clock::time_point runStart{ Clock::now() };
             Clock::time_point activeStart{ runStart };
@@ -247,13 +152,13 @@ namespace Atlas::Benchmark
                             [cpuResults, index, seed, iterations = manifest.cpu.iterations]
                             {
                                 const std::uint64_t initial{ seed ^ (static_cast<std::uint64_t>(index) + 0x9E3779B97F4A7C15ULL) };
-                                cpuResults->at(index) = cpuKernel(initial, iterations);
+                                cpuResults->at(index) = Detail::runCpuKernel(initial, iterations);
                             },
                             channel);
                     }
                     else
                     {
-                        accepted = gpuResources != nullptr && gpuExecutor.submit(handles.at(index), gpuResources->dispatch, channel);
+                        accepted = gpuResources != nullptr && gpuExecutor.submit(handles.at(index), gpuResources->dispatch(), channel);
                     }
                 }
                 catch (...)
@@ -422,7 +327,7 @@ namespace Atlas::Benchmark
                 }
             }
             controlActive += elapsed(activeStart, Clock::now());
-            const std::chrono::microseconds executionTime{ elapsed(runStart, Clock::now()) };
+            const std::chrono::nanoseconds executionTime{ elapsed(runStart, Clock::now()) };
 
             if (status == SchedulerStatus::Success && completedTasks != descriptors.size())
             {
@@ -437,7 +342,7 @@ namespace Atlas::Benchmark
                         continue;
                     }
                     const std::uint64_t initial{ seed ^ (static_cast<std::uint64_t>(descriptor.index) + 0x9E3779B97F4A7C15ULL) };
-                    if (cpuResults->at(descriptor.index) != cpuKernel(initial, manifest.cpu.iterations))
+                    if (cpuResults->at(descriptor.index) != Detail::runCpuKernel(initial, manifest.cpu.iterations))
                     {
                         throw std::runtime_error{ "Direct CPU benchmark output validation failed" };
                     }
@@ -464,10 +369,10 @@ namespace Atlas::Benchmark
                               std::nullopt,          std::nullopt, std::nullopt, false };
             if (gpuResources != nullptr)
             {
-                record.gpuDeviceName = gpuResources->runtime.deviceInfo().name;
-                record.gpuApiVersion = gpuResources->runtime.deviceInfo().apiVersion;
-                record.gpuDeviceType = static_cast<std::uint32_t>(gpuResources->runtime.deviceInfo().type);
-                record.gpuTimestampSupported = gpuResources->runtime.timestampCapabilities().supported;
+                record.gpuDeviceName = runtime.deviceInfo().name;
+                record.gpuApiVersion = runtime.deviceInfo().apiVersion;
+                record.gpuDeviceType = static_cast<std::uint32_t>(runtime.deviceInfo().type);
+                record.gpuTimestampSupported = runtime.timestampCapabilities().supported;
             }
             record.metrics = calculateMetrics(record.schedulerResult, record.tasks, manifest.workerCount);
             return record;
@@ -477,7 +382,7 @@ namespace Atlas::Benchmark
         WorkerpoolExecutor cpuExecutor;
         VulkanRuntime runtime;
         VulkanExecutor gpuExecutor;
-        std::unique_ptr<GpuResources> gpuResources;
+        std::unique_ptr<Detail::GpuResources> gpuResources;
     };
 
     DirectBenchmarkRunner::DirectBenchmarkRunner(ExperimentManifest experiment)

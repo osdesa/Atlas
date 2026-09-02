@@ -169,24 +169,21 @@ TEST_CASE("KahnScheduler validates cancellation requests", "[UNIT]")
     Atlas::TaskGraph graph;
     Atlas::TaskGraph otherGraph;
     const Atlas::TaskHandle target{ requireHandle(graph.addCpuTask([] {})) };
-    const Atlas::TaskHandle terminal{ requireHandle(graph.addCpuTask([] {})) };
     const Atlas::TaskHandle crossGraph{ requireHandle(otherGraph.addCpuTask([] {})) };
     const Atlas::TaskHandle unknown{ Atlas::TaskId{ 99U }, graph.getGraphID() };
     REQUIRE(graph.finishTaskGraph());
-    graph.findTask(terminal).value()->executionInfo.state = Atlas::TaskState::Success;
 
     Atlas::SynchronousCpuExecutor executor;
     Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
 
     REQUIRE_FALSE(scheduler.requestCancellation(crossGraph));
     REQUIRE_FALSE(scheduler.requestCancellation(unknown));
-    REQUIRE_FALSE(scheduler.requestCancellation(terminal));
     REQUIRE(scheduler.requestCancellation(target));
     REQUIRE_FALSE(scheduler.requestCancellation(target));
 
     const Atlas::SchedulerResult result{ scheduler.execute() };
     REQUIRE(result.status == Atlas::SchedulerStatus::Cancelled);
-    REQUIRE(graph.findTask(target).value()->executionInfo.state == Atlas::TaskState::Cancelled);
+    REQUIRE(graph.snapshotTask(target).value().executionInfo.state == Atlas::TaskState::Cancelled);
     REQUIRE_FALSE(scheduler.requestCancellation(target));
 }
 
@@ -215,10 +212,10 @@ TEST_CASE("KahnScheduler cancels ready and blocked work before submission", "[UN
     REQUIRE(result.executedTaskCount == 0U);
     REQUIRE_FALSE(cpuExecuted);
     REQUIRE(gpuExecutor.submissionCount.load() == 0U);
-    REQUIRE(graph.findTask(cpu).value()->executionInfo.state == Atlas::TaskState::Cancelled);
-    REQUIRE(graph.findTask(gpu).value()->executionInfo.state == Atlas::TaskState::Cancelled);
-    REQUIRE(graph.findTask(sliced).value()->executionInfo.state == Atlas::TaskState::Cancelled);
-    REQUIRE(graph.findTask(blocked).value()->executionInfo.state == Atlas::TaskState::Cancelled);
+    REQUIRE(graph.snapshotTask(cpu).value().executionInfo.state == Atlas::TaskState::Cancelled);
+    REQUIRE(graph.snapshotTask(gpu).value().executionInfo.state == Atlas::TaskState::Cancelled);
+    REQUIRE(graph.snapshotTask(sliced).value().executionInfo.state == Atlas::TaskState::Cancelled);
+    REQUIRE(graph.snapshotTask(blocked).value().executionInfo.state == Atlas::TaskState::Cancelled);
 }
 
 TEST_CASE("KahnScheduler lets running CPU completion win cancellation", "[UNIT][CONCURRENCY]")
@@ -238,7 +235,7 @@ TEST_CASE("KahnScheduler lets running CPU completion win cancellation", "[UNIT][
 
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 1U);
-    REQUIRE(graph.findTask(task).value()->executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.snapshotTask(task).value().executionInfo.state == Atlas::TaskState::Success);
 }
 
 TEST_CASE("KahnScheduler lets running ordinary GPU completion win cancellation", "[UNIT][CONCURRENCY]")
@@ -259,7 +256,7 @@ TEST_CASE("KahnScheduler lets running ordinary GPU completion win cancellation",
 
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 1U);
-    REQUIRE(graph.findTask(task).value()->executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.snapshotTask(task).value().executionInfo.state == Atlas::TaskState::Success);
 }
 
 TEST_CASE("KahnScheduler cancels running sliced GPU work at a completed boundary", "[UNIT][CONCURRENCY]")
@@ -282,13 +279,13 @@ TEST_CASE("KahnScheduler cancels running sliced GPU work at a completed boundary
 
     REQUIRE(result.status == Atlas::SchedulerStatus::Cancelled);
     REQUIRE(result.executedTaskCount == 0U);
-    const Atlas::TaskExecutionInfo& progress{ graph.findTask(task).value()->executionInfo };
+    const Atlas::TaskExecutionInfo progress{ graph.snapshotTask(task).value().executionInfo };
     REQUIRE(progress.state == Atlas::TaskState::Cancelled);
     REQUIRE(progress.completedWorkUnitCount == 1U);
     REQUIRE(progress.totalWorkUnitCount == 2U);
     REQUIRE(progress.executionDuration == std::chrono::microseconds{ 7 });
     REQUIRE(gpuExecutor.submissionCount.load() == 1U);
-    REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(dependent).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler lets a final sliced GPU work unit win cancellation", "[UNIT][CONCURRENCY]")
@@ -309,8 +306,8 @@ TEST_CASE("KahnScheduler lets a final sliced GPU work unit win cancellation", "[
 
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 1U);
-    REQUIRE(graph.findTask(task).value()->executionInfo.state == Atlas::TaskState::Success);
-    REQUIRE(graph.findTask(task).value()->executionInfo.completedWorkUnitCount == 1U);
+    REQUIRE(graph.snapshotTask(task).value().executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.snapshotTask(task).value().executionInfo.completedWorkUnitCount == 1U);
 }
 
 TEST_CASE("KahnScheduler drains accepted work after sliced cancellation", "[UNIT][CONCURRENCY]")
@@ -336,9 +333,9 @@ TEST_CASE("KahnScheduler drains accepted work after sliced cancellation", "[UNIT
 
     REQUIRE(result.status == Atlas::SchedulerStatus::Cancelled);
     REQUIRE(result.executedTaskCount == 1U);
-    REQUIRE(graph.findTask(cpu).value()->executionInfo.state == Atlas::TaskState::Success);
-    REQUIRE(graph.findTask(sliced).value()->executionInfo.state == Atlas::TaskState::Cancelled);
-    REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(cpu).value().executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.snapshotTask(sliced).value().executionInfo.state == Atlas::TaskState::Cancelled);
+    REQUIRE(graph.snapshotTask(dependent).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler applies task failure before cancellation", "[UNIT][CONCURRENCY]")
@@ -363,8 +360,8 @@ TEST_CASE("KahnScheduler applies task failure before cancellation", "[UNIT][CONC
 
     REQUIRE(result.status == Atlas::SchedulerStatus::TaskFailed);
     REQUIRE(result.exception == taskFailure);
-    REQUIRE(graph.findTask(cpu).value()->executionInfo.state == Atlas::TaskState::Failure);
-    REQUIRE(graph.findTask(sliced).value()->executionInfo.state == Atlas::TaskState::Cancelled);
+    REQUIRE(graph.snapshotTask(cpu).value().executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(sliced).value().executionInfo.state == Atlas::TaskState::Cancelled);
 }
 
 TEST_CASE("KahnScheduler applies executor failure before task failure and cancellation", "[UNIT][CONCURRENCY]")
@@ -390,6 +387,6 @@ TEST_CASE("KahnScheduler applies executor failure before task failure and cancel
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.exception == taskFailure);
-    REQUIRE(graph.findTask(cpu).value()->executionInfo.state == Atlas::TaskState::Failure);
-    REQUIRE(graph.findTask(sliced).value()->executionInfo.state == Atlas::TaskState::Cancelled);
+    REQUIRE(graph.snapshotTask(cpu).value().executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(sliced).value().executionInfo.state == Atlas::TaskState::Cancelled);
 }

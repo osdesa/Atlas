@@ -1,5 +1,6 @@
 #include "BenchmarkRunner.h"
 
+#include "BenchmarkWork.h"
 #include "WorkloadGenerator.h"
 #include "atlas/Executor/VulkanExecutor.h"
 #include "atlas/Executor/WorkerpoolExecutor.h"
@@ -13,10 +14,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
-#include <fstream>
-#include <iterator>
-#include <limits>
 #include <memory>
 #include <span>
 #include <stdexcept>
@@ -32,18 +29,6 @@ namespace Atlas::Benchmark
 {
     namespace
     {
-        std::uint64_t cpuKernel(std::uint64_t value, const std::uint64_t iterations) noexcept
-        {
-            for (std::uint64_t iteration{ 0U }; iteration < iterations; ++iteration)
-            {
-                value ^= value >> 12U;
-                value ^= value << 25U;
-                value ^= value >> 27U;
-                value *= 2'685'821'657'736'338'717ULL;
-            }
-            return value;
-        }
-
         std::unique_ptr<SchedulingPolicy> createPolicy(const PolicyConfig& config)
         {
             switch (config.kind)
@@ -58,86 +43,6 @@ namespace Atlas::Benchmark
             throw std::logic_error{ "Unknown benchmark policy kind" };
         }
 
-        std::size_t checkedElementCount(const DispatchDimensions dimensions)
-        {
-            const std::size_t x{ dimensions.x };
-            const std::size_t y{ dimensions.y };
-            const std::size_t z{ dimensions.z };
-            if (x > std::numeric_limits<std::size_t>::max() / y || x * y > std::numeric_limits<std::size_t>::max() / z)
-            {
-                throw std::runtime_error{ "GPU benchmark workgroup product overflows size_t" };
-            }
-            return x * y * z;
-        }
-
-        std::vector<std::uint32_t> readShader()
-        {
-            std::ifstream stream{ ATLAS_BENCHMARK_SPIRV_PATH, std::ios::binary };
-            if (!stream)
-            {
-                throw std::runtime_error{ "Unable to open the compiled benchmark shader" };
-            }
-            const std::vector<char> bytes{ std::istreambuf_iterator<char>{ stream }, std::istreambuf_iterator<char>{} };
-            if (stream.bad() || bytes.empty() || bytes.size() % sizeof(std::uint32_t) != 0U)
-            {
-                throw std::runtime_error{ "The compiled benchmark shader is malformed" };
-            }
-            std::vector<std::uint32_t> words(bytes.size() / sizeof(std::uint32_t));
-            std::memcpy(words.data(), bytes.data(), bytes.size());
-            return words;
-        }
-
-        struct GpuResources final
-        {
-            GpuResources(VulkanRuntime& runtimeContext, const GpuWorkloadConfig& config)
-                : elementCount{ checkedElementCount(config.workgroups) }, runtime{ runtimeContext },
-                  dimensionsBuffer{ runtime.createBuffer(4U * sizeof(std::uint32_t)) },
-                  outputBuffer{ runtime.createBuffer(elementCount * sizeof(std::uint32_t)) },
-                  pipeline{ runtime.createComputePipeline(ComputeShader{ readShader(), "main", { 0U, 1U } }) },
-                  dispatch{ pipeline,
-                            { { 0U, dimensionsBuffer, BufferAccess::ReadOnly }, { 1U, outputBuffer, BufferAccess::ReadWrite } },
-                            config.workgroups }
-            {
-                const std::vector<std::uint32_t> dimensions{ config.workgroups.x, config.workgroups.y, config.workgroups.z, 0U };
-                runtime.upload(dimensionsBuffer, std::as_bytes(std::span{ dimensions }));
-            }
-
-            void reset(const std::uint64_t seed)
-            {
-                initialValues.resize(elementCount);
-                for (std::size_t index{ 0U }; index < elementCount; ++index)
-                {
-                    initialValues.at(index) = static_cast<std::uint32_t>(seed) ^ static_cast<std::uint32_t>(index + 1U);
-                }
-                runtime.upload(outputBuffer, std::as_bytes(std::span{ initialValues }));
-            }
-
-            void verify(const std::size_t gpuTaskCount) const
-            {
-                std::vector<std::uint32_t> actual(elementCount);
-                runtime.download(outputBuffer, std::as_writable_bytes(std::span{ actual }));
-                for (std::size_t index{ 0U }; index < elementCount; ++index)
-                {
-                    std::uint32_t expected{ initialValues.at(index) };
-                    for (std::size_t task{ 0U }; task < gpuTaskCount; ++task)
-                    {
-                        expected = expected * 1'664'525U + 1'013'904'223U;
-                    }
-                    if (actual.at(index) != expected)
-                    {
-                        throw std::runtime_error{ "GPU benchmark output validation failed" };
-                    }
-                }
-            }
-
-            std::size_t elementCount{ 0U };
-            VulkanRuntime& runtime;
-            VulkanBuffer dimensionsBuffer;
-            VulkanBuffer outputBuffer;
-            VulkanComputePipeline pipeline;
-            VulkanDispatch dispatch;
-            std::vector<std::uint32_t> initialValues;
-        };
     } // namespace
 
     struct BenchmarkRunner::Impl final
@@ -147,7 +52,7 @@ namespace Atlas::Benchmark
         {
             if (manifest.gpu.taskCount != 0U)
             {
-                gpuResources = std::make_unique<GpuResources>(runtime, manifest.gpu);
+                gpuResources = std::make_unique<Detail::GpuResources>(runtime, manifest.gpu);
             }
         }
 
@@ -171,7 +76,7 @@ namespace Atlas::Benchmark
                         [cpuResults, index = descriptor.index, seed, iterations = manifest.cpu.iterations]
                         {
                             const std::uint64_t initial{ seed ^ (static_cast<std::uint64_t>(index) + 0x9E3779B97F4A7C15ULL) };
-                            cpuResults->at(index) = cpuKernel(initial, iterations);
+                            cpuResults->at(index) = Detail::runCpuKernel(initial, iterations);
                         },
                         options);
                 }
@@ -180,11 +85,11 @@ namespace Atlas::Benchmark
                     if (manifest.gpu.sliced)
                     {
                         handle =
-                            graph.addGpuTask(SlicedVulkanDispatch{ gpuResources->dispatch, manifest.gpu.sliceWorkgroups }, options);
+                            graph.addGpuTask(SlicedVulkanDispatch{ gpuResources->dispatch(), manifest.gpu.sliceWorkgroups }, options);
                     }
                     else
                     {
-                        handle = graph.addGpuTask(gpuResources->dispatch, options);
+                        handle = graph.addGpuTask(gpuResources->dispatch(), options);
                     }
                 }
                 if (!handle.has_value())
@@ -217,12 +122,12 @@ namespace Atlas::Benchmark
             tasks.reserve(descriptors.size());
             for (const TaskDescriptor& descriptor : descriptors)
             {
-                const auto task{ graph.findTask(handles.at(descriptor.index)) };
+                const auto task{ graph.snapshotTask(handles.at(descriptor.index)) };
                 if (!task.has_value())
                 {
                     throw std::runtime_error{ "Generated task disappeared from its graph" };
                 }
-                const TaskExecutionInfo& info{ task.value()->executionInfo };
+                const TaskExecutionInfo& info{ task.value().executionInfo };
                 tasks.push_back(TaskMeasurement{ descriptor.index, descriptor.name, descriptor.resource, descriptor.priority,
                                                  descriptor.burstIndex, info.state, info.executionDuration,
                                                  info.deviceExecutionDuration, info.readyWaitDuration, info.responseDuration,
@@ -238,7 +143,7 @@ namespace Atlas::Benchmark
                         continue;
                     }
                     const std::uint64_t initial{ seed ^ (static_cast<std::uint64_t>(descriptor.index) + 0x9E3779B97F4A7C15ULL) };
-                    if (cpuResults->at(descriptor.index) != cpuKernel(initial, manifest.cpu.iterations))
+                    if (cpuResults->at(descriptor.index) != Detail::runCpuKernel(initial, manifest.cpu.iterations))
                     {
                         throw std::runtime_error{ "CPU benchmark output validation failed" };
                     }
@@ -253,10 +158,10 @@ namespace Atlas::Benchmark
                               std::nullopt,          std::nullopt, std::nullopt, false };
             if (gpuResources != nullptr)
             {
-                record.gpuDeviceName = gpuResources->runtime.deviceInfo().name;
-                record.gpuApiVersion = gpuResources->runtime.deviceInfo().apiVersion;
-                record.gpuDeviceType = static_cast<std::uint32_t>(gpuResources->runtime.deviceInfo().type);
-                record.gpuTimestampSupported = gpuResources->runtime.timestampCapabilities().supported;
+                record.gpuDeviceName = runtime.deviceInfo().name;
+                record.gpuApiVersion = runtime.deviceInfo().apiVersion;
+                record.gpuDeviceType = static_cast<std::uint32_t>(runtime.deviceInfo().type);
+                record.gpuTimestampSupported = runtime.timestampCapabilities().supported;
             }
             record.metrics = calculateMetrics(record.schedulerResult, record.tasks, manifest.workerCount);
             return record;
@@ -293,7 +198,7 @@ namespace Atlas::Benchmark
         WorkerpoolExecutor cpuExecutor;
         VulkanRuntime runtime;
         VulkanExecutor gpuExecutor;
-        std::unique_ptr<GpuResources> gpuResources;
+        std::unique_ptr<Detail::GpuResources> gpuResources;
     };
 
     BenchmarkRunner::BenchmarkRunner(ExperimentManifest experiment) : implementation{ std::make_unique<Impl>(std::move(experiment)) }
