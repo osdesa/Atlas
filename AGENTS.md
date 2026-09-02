@@ -21,13 +21,15 @@ material trade-off or workload-dependent fixed quantum optimum. Adaptive
 scheduling is therefore skipped. Milestone 15 adds deterministic generated-DAG
 and large-graph validation, fault matrices, sanitizer/soak workflows, and
 fail-stop Vulkan device-loss handling. Milestone 16 completes an 8,600-run
-physical Intel and Lavapipe final evaluation; the optional local studio is the
-next work.
+physical Intel and Lavapipe final evaluation. Milestone 17 adds the optional
+PySide6 desktop studio and its strict built-in-kernel graph runner.
 
 The supported executables are:
 
 - `atlas`: a verified CPU -> sliced Vulkan -> CPU example;
-- `atlas_bench`: the suite-based benchmark harness.
+- `atlas_bench`: the suite-based benchmark harness;
+- `atlas_studio_runner`: the JSONL process boundary used by the optional
+  `python -m atlas_studio` desktop application.
 
 ## Compatibility and scope
 

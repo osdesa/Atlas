@@ -16,6 +16,7 @@
 
 namespace Atlas::Benchmark
 {
+    class BenchmarkProgressWriter;
     /// @brief One normalized scheduled or direct measured run.
     struct BaselineRunRecord
     {
@@ -41,7 +42,7 @@ namespace Atlas::Benchmark
     {
       public:
         /// @brief Stores a validated suite for later execution.
-        explicit BaselineSuiteRunner(BaselineSuite suite);
+        explicit BaselineSuiteRunner(BaselineSuite suite, BenchmarkProgressWriter* progress = nullptr);
         /// @brief Destroys any retained suite resources after draining.
         ~BaselineSuiteRunner();
 

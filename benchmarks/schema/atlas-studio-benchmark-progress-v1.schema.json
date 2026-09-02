@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-studio-benchmark-progress-v1.schema.json",
+  "title": "Atlas Studio benchmark progress stream version 1",
+  "oneOf": [
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_type", "benchmark_stream_version", "suite_id", "total_run_count", "measured_run_count", "trace_capacity"],
+      "properties": {
+        "record_type": { "const": "header" }, "benchmark_stream_version": { "const": 1 },
+        "suite_id": { "type": "string", "minLength": 1 }, "total_run_count": { "type": "integer", "minimum": 1 },
+        "measured_run_count": { "type": "integer", "minimum": 1 }, "trace_capacity": { "type": "integer", "minimum": 1 }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_type", "run_id", "run_number", "total_run_count", "case_id", "variant_id", "execution", "seed", "repetition", "warmup", "execution_order"],
+      "properties": {
+        "record_type": { "const": "run_started" }, "run_id": { "type": "integer", "minimum": 0 },
+        "run_number": { "type": "integer", "minimum": 1 }, "total_run_count": { "type": "integer", "minimum": 1 },
+        "case_id": { "type": "string", "minLength": 1 }, "variant_id": { "type": "string", "minLength": 1 },
+        "execution": { "enum": ["direct", "scheduled"] }, "seed": { "type": "integer", "minimum": 0 },
+        "repetition": { "type": "integer", "minimum": 0 }, "warmup": { "type": "boolean" },
+        "execution_order": { "type": "integer", "minimum": 0 }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_type", "run_id", "task_id", "name", "resource", "priority", "burst", "state"],
+      "properties": {
+        "record_type": { "const": "task" }, "run_id": { "type": "integer", "minimum": 0 },
+        "task_id": { "type": "integer", "minimum": 1 }, "name": { "type": "string", "minLength": 1 },
+        "resource": { "enum": ["cpu", "gpu"] }, "priority": { "type": "integer", "minimum": 0 },
+        "burst": { "type": "integer", "minimum": 0 }, "state": { "$ref": "#/$defs/task_state" }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_type", "run_id", "sequence", "timestamp_ns", "kind", "source", "priority", "previous_state", "state", "host_duration_ns"],
+      "properties": {
+        "record_type": { "const": "event" }, "run_id": { "type": "integer", "minimum": 0 },
+        "sequence": { "type": "integer", "minimum": 0 }, "timestamp_ns": { "type": "integer", "minimum": 0 },
+        "kind": { "$ref": "#/$defs/event_kind" },
+        "source": { "enum": ["scheduler", "direct_coordinator", "cpu_executor", "vulkan_executor"] },
+        "task_id": { "type": "integer", "minimum": 1 }, "resource": { "enum": ["cpu", "gpu"] },
+        "work_unit_index": { "type": "integer", "minimum": 0 }, "worker_index": { "type": "integer", "minimum": 0 },
+        "ready_count": { "type": "integer", "minimum": 0 }, "selected_index": { "type": "integer", "minimum": 0 },
+        "priority": { "type": "integer", "minimum": 0 }, "previous_state": { "$ref": "#/$defs/task_state" },
+        "state": { "$ref": "#/$defs/task_state" }, "host_duration_ns": { "type": "integer", "minimum": 0 },
+        "device_duration_ns": { "type": "integer", "minimum": 0 }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_type", "run_id", "run_number", "total_run_count", "case_id", "variant_id", "execution", "seed", "repetition", "warmup", "execution_order", "status", "executed_task_count", "execution_time_ns", "control_active_ns", "throughput_tasks_per_second", "device", "timestamp_supported", "accepted_events", "dropped_events", "tasks"],
+      "properties": {
+        "record_type": { "const": "run_finished" }, "run_id": { "type": "integer", "minimum": 0 },
+        "run_number": { "type": "integer", "minimum": 1 }, "total_run_count": { "type": "integer", "minimum": 1 },
+        "case_id": { "type": "string", "minLength": 1 }, "variant_id": { "type": "string", "minLength": 1 },
+        "execution": { "enum": ["direct", "scheduled"] }, "seed": { "type": "integer", "minimum": 0 },
+        "repetition": { "type": "integer", "minimum": 0 }, "warmup": { "type": "boolean" },
+        "execution_order": { "type": "integer", "minimum": 0 },
+        "status": { "type": "string", "minLength": 1 }, "executed_task_count": { "type": "integer", "minimum": 0 },
+        "execution_time_ns": { "type": "integer", "minimum": 0 }, "control_active_ns": { "type": "integer", "minimum": 0 },
+        "throughput_tasks_per_second": { "type": "number", "minimum": 0 },
+        "device": { "type": ["string", "null"] }, "timestamp_supported": { "type": "boolean" },
+        "accepted_events": { "type": "integer", "minimum": 0 }, "dropped_events": { "type": "integer", "minimum": 0 },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/task_result" } }
+      }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_type", "message"],
+      "properties": { "record_type": { "const": "error" }, "message": { "type": "string", "minLength": 1 } }
+    },
+    {
+      "type": "object", "additionalProperties": false,
+      "required": ["record_type", "status", "completed_run_count", "total_run_count", "complete"],
+      "properties": {
+        "record_type": { "const": "footer" }, "status": { "enum": ["success", "failed", "abandoned"] },
+        "completed_run_count": { "type": "integer", "minimum": 0 }, "total_run_count": { "type": "integer", "minimum": 1 },
+        "complete": { "const": true }
+      }
+    }
+  ],
+  "$defs": {
+    "task_state": { "enum": ["unknown", "blocked", "ready", "running", "paused", "success", "failure", "cancelled"] },
+    "event_kind": { "enum": ["scheduler_started", "scheduler_finished", "task_ready", "policy_decision", "task_selected", "task_resumed", "submission_requested", "submission_accepted", "submission_rejected", "backend_started", "backend_finished", "completion_observed", "task_paused", "cancellation_requested", "cancellation_applied", "task_succeeded", "task_failed", "policy_failed", "infrastructure_failed"] },
+    "task_result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["node_id", "task_id", "state", "execution_duration_ns", "completed_work_units", "total_work_units", "ready_wait_ns", "selection_bypass_count"],
+      "properties": {
+        "node_id": { "type": "string", "minLength": 1 }, "task_id": { "type": "integer", "minimum": 1 },
+        "state": { "$ref": "#/$defs/task_state" }, "execution_duration_ns": { "type": "integer", "minimum": 0 },
+        "completed_work_units": { "type": "integer", "minimum": 0 }, "total_work_units": { "type": "integer", "minimum": 1 },
+        "ready_wait_ns": { "type": "integer", "minimum": 0 }, "selection_bypass_count": { "type": "integer", "minimum": 0 },
+        "response_duration_ns": { "type": "integer", "minimum": 0 }, "device_execution_duration_ns": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

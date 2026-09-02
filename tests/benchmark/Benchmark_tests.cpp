@@ -3,6 +3,7 @@
 #include "BaselineRunner.h"
 #include "BaselineWriter.h"
 #include "BenchmarkMetrics.h"
+#include "BenchmarkProgress.h"
 #include "BenchmarkTypes.h"
 #include "WorkloadGenerator.h"
 
@@ -15,7 +16,9 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 /** @file Benchmark_tests.cpp @brief Tests benchmark schemas, generation, and metric formulas. */
@@ -138,7 +141,62 @@ TEST_CASE("Checked benchmark schemas are syntactically valid JSON", "[BENCHMARK]
         REQUIRE(schema.is_object());
         ++count;
     }
-    REQUIRE(count == 8U);
+    REQUIRE(count == 11U);
+}
+
+TEST_CASE("Studio benchmark progress serializes bounded direct lifecycle records", "[BENCHMARK][PROFILING]")
+{
+    Atlas::Benchmark::BaselineSuite suite;
+    suite.suiteId = "progress";
+    const std::vector<Atlas::Benchmark::TaskDescriptor> descriptors{ { 0U, "cpu-0", Atlas::ExecutionResource::CPU, 5U, 0U, {} } };
+    const Atlas::Benchmark::BenchmarkRunContext context{ 0U,  1U, 1U,    "case", "direct", Atlas::Benchmark::ExecutionMode::Direct,
+                                                         42U, 0U, false, 0U };
+    Atlas::Benchmark::RunRecord result;
+    result.schedulerResult.status = Atlas::SchedulerStatus::Success;
+    result.schedulerResult.executedTaskCount = 1U;
+    result.schedulerResult.executionTime = std::chrono::nanoseconds{ 100U };
+    result.metrics.throughputTasksPerSecond = 10'000'000.0;
+    result.tasks.push_back({ 0U, "cpu-0", Atlas::ExecutionResource::CPU, 5U, 0U, Atlas::TaskState::Success,
+                             std::chrono::nanoseconds{ 50U }, std::nullopt, std::chrono::nanoseconds{ 5U },
+                             std::chrono::nanoseconds{ 75U }, 0U, 1U, 1U });
+
+    std::ostringstream output;
+    Atlas::Benchmark::BenchmarkProgressWriter writer{ output, 16U };
+    writer.beginSuite(suite, 1U, 1U);
+    writer.beginRun(context, descriptors);
+    bool accepted{ false };
+    for (std::size_t attempt{ 0U }; attempt < 1'000U && !accepted; ++attempt)
+    {
+        accepted = writer.traceSession()->emit(Atlas::TraceEvent{ .kind = Atlas::TraceEventKind::TaskReady,
+                                                                  .source = Atlas::TraceEventSource::Scheduler,
+                                                                  .resource = Atlas::ExecutionResource::CPU,
+                                                                  .hasTask = true,
+                                                                  .hasResource = true,
+                                                                  .graphId = 1U,
+                                                                  .taskId = 1U,
+                                                                  .priority = 5U,
+                                                                  .previousState = Atlas::TaskState::Blocked,
+                                                                  .state = Atlas::TaskState::Ready });
+        if (!accepted)
+            std::this_thread::yield();
+    }
+    REQUIRE(accepted);
+    writer.finishRun(context, result);
+    writer.finishSuite("success");
+
+    std::vector<nlohmann::json> records;
+    std::istringstream input{ output.str() };
+    for (std::string line; std::getline(input, line);)
+        records.push_back(nlohmann::json::parse(line));
+    REQUIRE(records.size() == 6U);
+    REQUIRE(records.at(0U).at("benchmark_stream_version") == 1U);
+    REQUIRE(records.at(1U).at("record_type") == "run_started");
+    REQUIRE(records.at(2U).at("record_type") == "task");
+    REQUIRE(records.at(3U).at("record_type") == "event");
+    REQUIRE(records.at(3U).at("source") == "direct_coordinator");
+    REQUIRE(records.at(4U).at("record_type") == "run_finished");
+    REQUIRE(records.at(4U).at("accepted_events") == 1U);
+    REQUIRE(records.at(5U).at("record_type") == "footer");
 }
 
 TEST_CASE("Baseline environment metadata is strict and optional fields remain optional", "[BENCHMARK]")

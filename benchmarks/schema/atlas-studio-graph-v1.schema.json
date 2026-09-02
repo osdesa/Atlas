@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-studio-graph-v1.schema.json",
+  "title": "Atlas local studio graph version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "nodes", "edges"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "graph_id": { "type": "string", "minLength": 1 },
+    "seed": { "type": "integer", "minimum": 0 },
+    "runtime": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "validation": { "type": "boolean", "default": false } }
+    },
+    "cpu_executor": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["synchronous", "worker_pool"], "default": "synchronous" },
+        "worker_count": { "type": "integer", "minimum": 1, "maximum": 4294967295 }
+      }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false, "required": ["type"],
+      "properties": {
+        "type": { "enum": ["fifo", "static_priority", "round_robin"] },
+        "quantum": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "trace": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "capacity": { "type": "integer", "minimum": 1, "maximum": 1000000 }
+      }
+    },
+    "nodes": {
+      "type": "array", "minItems": 1, "maxItems": 10000,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "resource", "kernel"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "resource": { "enum": ["cpu", "gpu"] },
+          "priority": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+          "kernel": {
+            "type": "object", "additionalProperties": false, "required": ["type"],
+            "properties": {
+              "type": { "enum": ["cpu_burn", "gpu_increment", "vector_add"] },
+              "iterations": { "type": "integer", "minimum": 1 },
+              "workgroups": { "$ref": "#/$defs/dimensions" },
+              "element_count": { "type": "integer", "minimum": 1 },
+              "left_value": { "type": "number" },
+              "right_value": { "type": "number" }
+            }
+          },
+          "slice_workgroups": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/dimensions" }] }
+        }
+      }
+    },
+    "edges": {
+      "type": "array", "maxItems": 50000,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "dimensions": {
+      "type": "object", "additionalProperties": false, "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "y": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "z": { "type": "integer", "minimum": 1, "maximum": 4294967295 }
+      }
+    }
+  }
+}

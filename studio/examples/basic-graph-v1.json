@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "graph_id": "basic-graph",
+  "seed": 42,
+  "runtime": { "validation": false },
+  "cpu_executor": { "mode": "worker_pool", "worker_count": 2 },
+  "policy": { "type": "fifo" },
+  "trace": { "enabled": true, "capacity": 65536 },
+  "nodes": [
+    {
+      "id": "prepare",
+      "name": "CPU preparation",
+      "resource": "cpu",
+      "priority": 0,
+      "kernel": { "type": "cpu_burn", "iterations": 100000 }
+    },
+    {
+      "id": "compute",
+      "name": "Sliced GPU increment",
+      "resource": "gpu",
+      "priority": 0,
+      "kernel": { "type": "gpu_increment", "workgroups": { "x": 64, "y": 1, "z": 1 } },
+      "slice_workgroups": { "x": 16, "y": 1, "z": 1 }
+    }
+  ],
+  "edges": [{ "from": "prepare", "to": "compute" }]
+}

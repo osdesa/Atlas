@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "graph_id": "all-kernels",
+  "seed": 42,
+  "runtime": { "validation": false },
+  "cpu_executor": { "mode": "worker_pool", "worker_count": 2 },
+  "policy": { "type": "round_robin", "quantum": 1 },
+  "trace": { "enabled": true, "capacity": 65536 },
+  "nodes": [
+    {
+      "id": "cpu",
+      "name": "CPU burn",
+      "resource": "cpu",
+      "priority": 1,
+      "kernel": { "type": "cpu_burn", "iterations": 100000 }
+    },
+    {
+      "id": "increment",
+      "name": "GPU increment",
+      "resource": "gpu",
+      "priority": 2,
+      "kernel": { "type": "gpu_increment", "workgroups": { "x": 32, "y": 1, "z": 1 } },
+      "slice_workgroups": { "x": 8, "y": 1, "z": 1 }
+    },
+    {
+      "id": "vector-add",
+      "name": "Vector add",
+      "resource": "gpu",
+      "priority": 3,
+      "kernel": { "type": "vector_add", "element_count": 256, "left_value": 4.0, "right_value": 7.0 },
+      "slice_workgroups": { "x": 2, "y": 1, "z": 1 }
+    }
+  ],
+  "edges": [
+    { "from": "cpu", "to": "increment" },
+    { "from": "increment", "to": "vector-add" }
+  ]
+}

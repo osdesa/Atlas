@@ -11,6 +11,39 @@ permissions:
   contents: read
 
 jobs:
+  studio-desktop:
+    name: Atlas Studio / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: studio/requirements.lock
+
+      - name: Install desktop dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r studio/requirements.lock
+          python -m pip install --disable-pip-version-check --no-deps -e studio
+
+      - name: Test desktop application
+        working-directory: studio
+        run: |
+          ruff format --check atlas_studio tests
+          ruff check atlas_studio tests
+          python -m pytest -q
+
   format:
     name: ClangFormat
     runs-on: ubuntu-24.04
@@ -58,12 +91,27 @@ jobs:
       - name: Run Atlas
         run: ./build/ci-linux/apps/atlas/atlas
 
+      - name: Run Atlas Studio graph contract
+        run: |
+          ./build/ci-linux/apps/atlas_studio_runner/atlas_studio_runner \
+            --config studio/examples/all-kernels-graph-v1.json \
+            --control build/ci-linux/studio-cancel > build/ci-linux/studio-run.jsonl
+          python3 -c "import json, pathlib; records=[json.loads(line) for line in pathlib.Path('build/ci-linux/studio-run.jsonl').read_text().splitlines()]; assert records[0]['record_type']=='header'; assert records[-1]['record_type']=='footer'; assert any(record.get('record_type')=='result' and record.get('status')=='Success' for record in records)"
+
       - name: Run benchmark smoke suite
         run: |
           ./build/ci-linux/apps/atlas_bench/atlas_bench \
             --suite benchmarks/manifests/smoke-v1.json \
             --environment-file benchmarks/environments/ci-lavapipe.json \
             --output-dir build/ci-linux/smoke-results
+
+      - name: Run Atlas Studio benchmark progress contract
+        run: |
+          ./build/ci-linux/apps/atlas_bench/atlas_bench \
+            --suite benchmarks/manifests/smoke-v1.json \
+            --output-dir build/ci-linux/studio-benchmark-results \
+            --studio-progress-jsonl > build/ci-linux/studio-benchmark-progress.jsonl
+          python3 -c "import json,pathlib; records=[json.loads(line) for line in pathlib.Path('build/ci-linux/studio-benchmark-progress.jsonl').read_text().splitlines()]; assert records[0].get('benchmark_stream_version')==1; assert records[-1].get('record_type')=='footer' and records[-1].get('status')=='success'; assert any(r.get('record_type')=='run_finished' and r.get('execution')=='direct' for r in records); assert any(r.get('record_type')=='run_finished' and r.get('execution')=='scheduled' for r in records); sources={r.get('source') for r in records if r.get('record_type')=='event'}; assert {'direct_coordinator','scheduler','cpu_executor','vulkan_executor'} <= sources"
 
       - name: Analyze benchmark smoke suite
         run: |

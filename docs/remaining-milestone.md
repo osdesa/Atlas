@@ -64,28 +64,30 @@ The [Milestone 16 final evaluation](milestone-16-evaluation.md) records the
 8,600-run physical Intel and Lavapipe study, immutable raw bundles, checked
 derived evidence, and final fixed-policy conclusions.
 
-## Milestone 17 — Local web task studio
+## Milestone 17 — Local desktop task studio (implemented)
 
 1. Begin only after the research evaluation is complete; the studio is optional
    productisation rather than a dependency of the scheduler evaluation.
-2. Keep the studio in this repository with independent Python and Node lockfiles
-   and CI jobs. Normal CMake configuration and the core C++ build must not
-   require either toolchain.
+2. Keep the studio in this repository as an independent PySide6 Python project
+   with Linux and Windows CI. Normal CMake configuration and the core C++ build
+   must not require Python.
 3. Add a strict versioned explicit-graph runner whose user-authored DAG nodes
    use only built-in deterministic CPU and Vulkan kernels. Emit live JSONL on
    standard output, reserve standard error for diagnostics, and keep the Atlas
    library free of GUI or Python bindings.
-4. Use a FastAPI/Pydantic ASGI service to supervise one runner process and serve
-   relative versioned HTTP/WebSocket APIs. Bind only to loopback, validate Host
-   and Origin, and protect control requests with a per-launch capability.
-5. Use a Vite-built React/TypeScript frontend with React Flow for DAG editing,
+4. Use a PySide6 desktop application and `QProcess` to supervise one runner
+   directly without an HTTP service, browser, or Python/C++ binding.
+5. Provide DAG editing, complete structured and JSON benchmark editing,
    validation, import/export, policy and slicing controls, whole-run
    start/termination, live task state, timelines, events, and summaries.
 6. Load saved versioned traces and benchmark results without accepting arbitrary
-   C++, shaders, server filesystem paths, per-task live control, runtime graph
-   mutation, authentication, or multi-user execution.
-7. Validate the packaged local application on Linux and Windows. Keep generated
-   frontend bundles as release artifacts rather than tracked source files.
+   C++, shaders, per-task live control, runtime graph mutation, authentication,
+   or multi-user execution.
+7. Validate the source-based application headlessly on Linux and Windows.
+
+The implementation is in `apps/atlas_studio_runner/` and `studio/`. It
+preserves the benchmark suite v1 contract and adds checked graph and run-stream
+schemas under `benchmarks/schema/`.
 
 ## Milestone 18 — Hosted multi-user execution
 
@@ -94,8 +96,9 @@ derived evidence, and final fixed-policy conclusions.
    development path.
 2. Add authentication, persistent jobs, Vulkan worker isolation, resource
    quotas, concurrency limits, cancellation, and abuse controls.
-3. Reuse the Milestone 17 frontend and transport contracts rather than adding a
-   second GUI or exposing the Atlas C++ library directly to untrusted clients.
+3. Reuse the versioned runner and document contracts while implementing a
+   separately secured hosted web client; do not expose the Atlas C++ library
+   directly to untrusted clients.
 4. Separate public read-only trace viewing from authenticated task execution
    and disclose that shared-host contention invalidates canonical benchmark
    comparisons.

@@ -3,6 +3,8 @@
 
 #include "BenchmarkMetrics.h"
 #include "BenchmarkTypes.h"
+#include "WorkloadGenerator.h"
+#include "atlas/Profiling/Trace.h"
 
 #include <memory>
 #include <vector>
@@ -39,9 +41,12 @@ namespace Atlas::Benchmark
          * @brief Executes one measured run while retaining this runner's warmed resources.
          * @param seed Workload and input seed.
          * @param repetition Stable measured-repetition index.
+         * @param descriptors Shared deterministic task descriptions for this case and seed.
+         * @param traceSession Optional borrowed live-progress trace session.
          * @return One complete scheduled run record.
          */
-        RunRecord runSingle(std::uint64_t seed, std::size_t repetition);
+        RunRecord runSingle(std::uint64_t seed, std::size_t repetition, const std::vector<TaskDescriptor>& descriptors,
+                            TraceSession* traceSession = nullptr);
 
         BenchmarkRunner(const BenchmarkRunner&) = delete;
         BenchmarkRunner& operator=(const BenchmarkRunner&) = delete;
