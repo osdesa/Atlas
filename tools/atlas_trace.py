@@ -110,6 +110,9 @@ TIMELINE_RIGHT_MARGIN = 20
 TIMELINE_LANE_TOP = 38
 TIMELINE_AXIS_Y = 25
 TIMELINE_MIN_HEIGHT = 80
+MAX_TRACE_BYTES = 128 * 1024 * 1024
+MAX_TRACE_LINE_BYTES = 2 * 1024 * 1024
+MAX_TRACE_RECORDS = 1_000_000
 
 
 class TraceError(ValueError):
@@ -118,10 +121,18 @@ class TraceError(ValueError):
 
 def read_records(path: pathlib.Path) -> TraceRecords:
     """Read and decode all JSON records from a trace file."""
+    if not path.is_file() or path.is_symlink():
+        raise TraceError(f"trace must be a regular file: {path}")
+    if path.stat().st_size > MAX_TRACE_BYTES:
+        raise TraceError(f"trace exceeds {MAX_TRACE_BYTES} byte limit")
     records: TraceRecords = []
 
     with path.open(encoding="utf-8") as stream:
         for line_number, line in enumerate(stream, 1):
+            if line_number > MAX_TRACE_RECORDS:
+                raise TraceError(f"trace exceeds {MAX_TRACE_RECORDS} record limit")
+            if len(line.encode("utf-8")) > MAX_TRACE_LINE_BYTES:
+                raise TraceError(f"line {line_number}: record exceeds {MAX_TRACE_LINE_BYTES} byte limit")
             records.append(parse_record(line, line_number))
 
     return records
@@ -494,6 +505,10 @@ def render_event_bar(
 
 def render_timeline(records: TraceRecords, path: pathlib.Path) -> None:
     """Render backend execution events as an SVG timeline."""
+    if path.exists():
+        raise TraceError(f"timeline output already exists: {path}")
+    if path.parent.exists() and not path.parent.is_dir():
+        raise TraceError(f"timeline output parent is not a directory: {path.parent}")
     finished = finished_backend_events(records)
     lanes = timeline_lanes(finished)
     lane_indices = {

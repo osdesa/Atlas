@@ -93,7 +93,7 @@ namespace Atlas::Benchmark
             switch (metric)
             {
             case MetricId::CompletionTime:
-                return static_cast<double>(run.schedulerResult.executionTime.count());
+                return static_cast<double>(run.schedulerResult.executionTime.count()) / 1'000.0;
             case MetricId::Throughput:
                 return run.metrics.throughputTasksPerSecond;
             case MetricId::ResponseMean:

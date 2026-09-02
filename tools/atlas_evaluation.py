@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 import urllib.request
+import urllib.parse
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -72,9 +73,22 @@ RESULT_FILES = (
     "comparisons.csv",
 )
 
+# The evaluation tools consume files from local users and release assets.  Keep
+# those inputs deliberately bounded so malformed or hostile data cannot turn a
+# validation run into an unbounded memory, disk, or network operation.
+MAX_JSON_BYTES = 8 * 1024 * 1024
+MAX_JSONL_BYTES = 256 * 1024 * 1024
+MAX_JSONL_LINE_BYTES = 2 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 10_000
+MAX_ARCHIVE_UNPACKED_BYTES = 1024 * 1024 * 1024
+ALLOWED_ARTIFACT_HOSTS = frozenset({"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"})
+
 
 def _load_json(path: pathlib.Path) -> Any:
     try:
+        if path.stat().st_size > MAX_JSON_BYTES:
+            raise EvaluationError(f"JSON input exceeds {MAX_JSON_BYTES} byte limit: {path}")
         with path.open(encoding="utf-8") as stream:
             return json.load(stream)
     except (OSError, json.JSONDecodeError) as error:
@@ -124,6 +138,18 @@ def _sha256(path: pathlib.Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _require_regular_file(path: pathlib.Path, description: str, maximum_bytes: int) -> None:
+    """Require a regular bounded input file before parsing it."""
+    try:
+        status = path.stat()
+    except OSError as error:
+        raise EvaluationError(f"Unable to access {description}: {path}: {error}") from error
+    if not path.is_file() or path.is_symlink():
+        raise EvaluationError(f"{description} must be a regular file: {path}")
+    if status.st_size > maximum_bytes:
+        raise EvaluationError(f"{description} exceeds {maximum_bytes} byte limit: {path}")
 
 
 @dataclass(frozen=True)
@@ -307,8 +333,12 @@ def load_results(study: Study, root: pathlib.Path) -> ResultSet:
 
     runs: dict[tuple[str, str, int, int], dict[str, Any]] = {}
     try:
+        runs_path = root / "runs.jsonl"
+        _require_regular_file(runs_path, "runs.jsonl", MAX_JSONL_BYTES)
         with (root / "runs.jsonl").open(encoding="utf-8") as stream:
             for line_number, line in enumerate(stream, 1):
+                if len(line.encode("utf-8")) > MAX_JSONL_LINE_BYTES:
+                    raise EvaluationError(f"runs.jsonl record exceeds {MAX_JSONL_LINE_BYTES} byte limit at line {line_number}")
                 if not line.strip():
                     raise EvaluationError(f"runs.jsonl contains a blank record at line {line_number}")
                 run = _require_object(json.loads(line), f"runs.jsonl line {line_number}")
@@ -841,13 +871,79 @@ def run_command(arguments: argparse.Namespace) -> None:
 
 
 def _safe_extract(archive: pathlib.Path, destination: pathlib.Path) -> None:
+    """Extract a checked regular archive without links, devices, or overwrite paths."""
+    _require_regular_file(archive, "archive", MAX_ARCHIVE_BYTES)
     with tarfile.open(archive, "r:gz") as tar:
         root = destination.resolve()
-        for member in tar.getmembers():
-            target = (destination / member.name).resolve()
-            if root != target and root not in target.parents:
+        members = tar.getmembers()
+        if len(members) > MAX_ARCHIVE_MEMBERS:
+            raise EvaluationError(f"Archive contains more than {MAX_ARCHIVE_MEMBERS} members")
+        unpacked_bytes = 0
+        seen: set[pathlib.PurePosixPath] = set()
+        for member in members:
+            relative = pathlib.PurePosixPath(member.name)
+            if relative.is_absolute() or ".." in relative.parts or not relative.parts:
                 raise EvaluationError(f"Archive contains an unsafe path: {member.name}")
-        tar.extractall(destination, filter="data")
+            if (relative in seen or not (member.isfile() or member.isdir()) or member.issym() or member.islnk() or member.isdev() or
+                    member.isfifo()):
+                raise EvaluationError(f"Archive contains an unsafe member: {member.name}")
+            seen.add(relative)
+            if member.isfile():
+                unpacked_bytes += member.size
+                if unpacked_bytes > MAX_ARCHIVE_UNPACKED_BYTES:
+                    raise EvaluationError(f"Archive expands beyond {MAX_ARCHIVE_UNPACKED_BYTES} byte limit")
+            target = (destination / member.name).resolve()
+            if root == target or root not in target.parents or target.exists():
+                raise EvaluationError(f"Archive contains an unsafe path: {member.name}")
+        # Extract only the member kinds accepted above.  This avoids tarfile's
+        # platform-dependent metadata handling and works with the documented
+        # Python 3.10 minimum as well as newer extraction-filter APIs.
+        for member in sorted((item for item in members if item.isdir()), key=lambda item: len(pathlib.PurePosixPath(item.name).parts)):
+            (destination / member.name).mkdir(parents=True, exist_ok=True)
+        for member in members:
+            if member.isdir():
+                continue
+            target = destination / member.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source = tar.extractfile(member)
+            if source is None:
+                raise EvaluationError(f"Archive member cannot be read: {member.name}")
+            with source, target.open("xb") as stream:
+                shutil.copyfileobj(source, stream, length=1024 * 1024)
+
+
+def _artifact_url(value: Any) -> str:
+    """Validate an immutable HTTPS release-asset URL before network access."""
+    url = _non_empty_string(value, "artifact.url")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.username or parsed.password or parsed.port or parsed.hostname not in ALLOWED_ARTIFACT_HOSTS:
+        raise EvaluationError("Artifact URLs must use HTTPS and an allowlisted release host")
+    if not parsed.path or pathlib.PurePosixPath(parsed.path).name in {"", ".", ".."}:
+        raise EvaluationError("Artifact URL must name an archive file")
+    return url
+
+
+def _download_artifact(url: str, destination: pathlib.Path, expected_size: int) -> None:
+    """Stream a release asset with a strict byte limit and final-host check."""
+    if expected_size > MAX_ARCHIVE_BYTES:
+        raise EvaluationError(f"Artifact exceeds {MAX_ARCHIVE_BYTES} byte limit")
+    request = urllib.request.Request(url, headers={"User-Agent": "Atlas-evaluation/1"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response, destination.open("xb") as stream:
+            final = urllib.parse.urlparse(response.geturl())
+            if final.scheme != "https" or final.hostname not in ALLOWED_ARTIFACT_HOSTS:
+                raise EvaluationError("Artifact redirect left the HTTPS release-host allowlist")
+            declared_length = response.headers.get("Content-Length")
+            if declared_length is not None and int(declared_length) != expected_size:
+                raise EvaluationError("Artifact Content-Length does not match its index")
+            written = 0
+            while block := response.read(1024 * 1024):
+                written += len(block)
+                if written > expected_size or written > MAX_ARCHIVE_BYTES:
+                    raise EvaluationError("Artifact download exceeds its declared size")
+                stream.write(block)
+    except (OSError, ValueError) as error:
+        raise EvaluationError(f"Unable to download {url}: {error}") from error
 
 
 def _validate_bundle(bundle: pathlib.Path, study: Study, artifact: dict[str, Any]) -> pathlib.Path:
@@ -910,7 +1006,7 @@ def _load_artifact_index(path: pathlib.Path, study: Study) -> list[dict[str, Any
         if environment_id not in study.environments or environment_id in seen:
             raise EvaluationError("Artifact environments must exactly match the study")
         seen.add(environment_id)
-        _non_empty_string(item.get("url"), "artifact.url")
+        item["url"] = _artifact_url(item.get("url"))
         _positive_integer(item.get("size_bytes"), "artifact.size_bytes")
         digest = _non_empty_string(item.get("sha256"), "artifact.sha256")
         if len(digest) != 64 or item.get("suite_sha256") != study.value["suite_sha256"]:
@@ -933,11 +1029,12 @@ def verify_command(arguments: argparse.Namespace) -> None:
     extracted.mkdir()
     result_paths = []
     for artifact in artifacts:
-        archive = downloads / pathlib.Path(artifact["url"]).name
+        archive = downloads / pathlib.PurePosixPath(urllib.parse.urlparse(artifact["url"]).path).name
         try:
-            urllib.request.urlretrieve(artifact["url"], archive)
-        except OSError as error:
-            raise EvaluationError(f"Unable to download {artifact['url']}: {error}") from error
+            _download_artifact(artifact["url"], archive, artifact["size_bytes"])
+        except EvaluationError:
+            archive.unlink(missing_ok=True)
+            raise
         if archive.stat().st_size != artifact["size_bytes"] or _sha256(archive) != artifact["sha256"]:
             raise EvaluationError(f"Published artifact failed verification: {archive.name}")
         destination = extracted / artifact["environment_id"]

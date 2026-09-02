@@ -1,9 +1,7 @@
 #include "atlas/Tasking/TaskGraph.h"
 
-#include <memory>
+#include <algorithm>
 #include <optional>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 /**
@@ -13,6 +11,79 @@
 
 namespace Atlas
 {
+    bool TaskGraph::TaskRecord::isValid() const noexcept
+    {
+        const bool payloadMatchesResource{
+            (std::holds_alternative<TaskFunction>(work) && options.executionResource == ExecutionResource::CPU) ||
+            ((std::holds_alternative<VulkanDispatch>(work) || std::holds_alternative<SlicedVulkanDispatch>(work)) &&
+             options.executionResource == ExecutionResource::GPU)
+        };
+        return handle.isValid() && options.isValid() && payloadMatchesResource;
+    }
+
+    const TaskFunction* TaskGraph::TaskRecord::cpuFunction() const noexcept
+    {
+        return std::get_if<TaskFunction>(&work);
+    }
+
+    const VulkanDispatch* TaskGraph::TaskRecord::gpuDispatch() const noexcept
+    {
+        return std::get_if<VulkanDispatch>(&work);
+    }
+
+    const SlicedVulkanDispatch* TaskGraph::TaskRecord::slicedGpuDispatch() const noexcept
+    {
+        return std::get_if<SlicedVulkanDispatch>(&work);
+    }
+
+    std::span<const TaskHandle> TaskGraph::TaskRecord::getDependencies() const noexcept
+    {
+        return dependencies;
+    }
+
+    std::span<const TaskHandle> TaskGraph::TaskRecord::getDependents() const noexcept
+    {
+        return dependents;
+    }
+
+    bool TaskGraph::TaskRecord::addDependency(const TaskHandle dependency)
+    {
+        if (std::find(dependencies.begin(), dependencies.end(), dependency) != dependencies.end())
+        {
+            return false;
+        }
+        dependencies.emplace_back(dependency);
+        return true;
+    }
+
+    bool TaskGraph::TaskRecord::addDependent(const TaskHandle dependent)
+    {
+        if (std::find(dependents.begin(), dependents.end(), dependent) != dependents.end())
+        {
+            return false;
+        }
+        dependents.emplace_back(dependent);
+        return true;
+    }
+
+    void TaskGraph::TaskRecord::removeDependency(const TaskHandle dependency) noexcept
+    {
+        const auto entry{ std::find(dependencies.begin(), dependencies.end(), dependency) };
+        if (entry != dependencies.end())
+        {
+            dependencies.erase(entry);
+        }
+    }
+
+    void TaskGraph::TaskRecord::removeDependent(const TaskHandle dependent) noexcept
+    {
+        const auto entry{ std::find(dependents.begin(), dependents.end(), dependent) };
+        if (entry != dependents.end())
+        {
+            dependents.erase(entry);
+        }
+    }
+
     std::optional<TaskHandle> TaskGraph::addCpuTask(TaskFunction taskFunction, TaskOptions taskOptions)
     {
         if (taskOptions.executionResource != ExecutionResource::CPU)
@@ -42,46 +113,18 @@ namespace Atlas
 
     std::optional<TaskHandle> TaskGraph::addTaskWork(TaskWork work, TaskOptions taskOptions)
     {
-        if (isFinalised || !taskOptions.isValid())
+        if (lifecycle.load(std::memory_order_acquire) != Lifecycle::Building || !taskOptions.isValid())
         {
             return std::nullopt;
         }
 
-        const std::optional<TaskHandle> taskHandle{ taskIdGenerator.next() };
-        if (!taskHandle.has_value())
+        if (!graphID.isValid() || nextTaskId == INVALID_TASK_ID_VALUE)
         {
             return std::nullopt;
         }
+        const TaskHandle taskHandle{ TaskId{ nextTaskId++ }, graphID };
 
-        std::shared_ptr<Task> task;
-        if (std::holds_alternative<TaskFunction>(work))
-        {
-            task = std::make_shared<Task>(taskHandle.value(), std::move(std::get<TaskFunction>(work)), std::move(taskOptions));
-        }
-        else if (std::holds_alternative<VulkanDispatch>(work))
-        {
-            task = std::make_shared<Task>(taskHandle.value(), std::move(std::get<VulkanDispatch>(work)), std::move(taskOptions));
-        }
-        else
-        {
-            task = std::make_shared<Task>(taskHandle.value(), std::move(std::get<SlicedVulkanDispatch>(work)), std::move(taskOptions));
-        }
-
-        tasks.emplace_back(task);
-        try
-        {
-            const bool inserted{ taskIndex.emplace(taskHandle.value(), std::move(task)).second };
-            if (!inserted)
-            {
-                tasks.pop_back();
-                return std::nullopt;
-            }
-        }
-        catch (...)
-        {
-            tasks.pop_back();
-            throw;
-        }
+        tasks.emplace_back(taskHandle, std::move(work), std::move(taskOptions));
         return taskHandle;
     }
 
@@ -90,9 +133,9 @@ namespace Atlas
         std::vector<TaskHandle> taskHandles;
         taskHandles.reserve(tasks.size());
 
-        for (const std::shared_ptr<Task>& task : tasks)
+        for (const TaskRecord& task : tasks)
         {
-            taskHandles.emplace_back(task->handle);
+            taskHandles.emplace_back(task.handle);
         }
 
         return taskHandles;
@@ -100,7 +143,7 @@ namespace Atlas
 
     bool TaskGraph::addDependency(TaskHandle dependent, TaskHandle dependency)
     {
-        if (isFinalised)
+        if (lifecycle.load(std::memory_order_acquire) != Lifecycle::Building)
         {
             return false;
         }
@@ -110,41 +153,57 @@ namespace Atlas
             return false;
         }
 
-        const std::optional<std::shared_ptr<Task>> dependentTask{ findMutableTask(dependent) };
-        const std::optional<std::shared_ptr<Task>> dependencyTask{ findMutableTask(dependency) };
-
-        if (!dependentTask.has_value() || !dependencyTask.has_value())
+        TaskRecord* const dependentTask{ findTaskRecord(dependent) };
+        TaskRecord* const dependencyTask{ findTaskRecord(dependency) };
+        if (dependentTask == nullptr || dependencyTask == nullptr)
         {
             return false;
         }
 
-        if (checkForCycles(dependent, dependency))
-        {
-            return false;
-        }
-
-        return addTaskLink(dependentTask.value(), dependent, dependencyTask.value(), dependency);
+        return addTaskLink(*dependentTask, dependent, *dependencyTask, dependency);
     }
 
-    bool TaskGraph::addTaskLink(const std::shared_ptr<Task>& dependentTask, TaskHandle dependent,
-                                const std::shared_ptr<Task>& dependencyTask, TaskHandle dependency)
+    bool TaskGraph::removeDependency(const TaskHandle dependent, const TaskHandle dependency)
     {
-        if (!dependentTask->addDependency(dependency))
+        if (lifecycle.load(std::memory_order_acquire) != Lifecycle::Building || !validTaskLink(dependent, dependency))
+        {
+            return false;
+        }
+        TaskRecord* const dependentTask{ findTaskRecord(dependent) };
+        TaskRecord* const dependencyTask{ findTaskRecord(dependency) };
+        if (dependentTask == nullptr || dependencyTask == nullptr)
+        {
+            return false;
+        }
+        if (std::find(dependentTask->getDependencies().begin(), dependentTask->getDependencies().end(), dependency) ==
+            dependentTask->getDependencies().end())
+        {
+            return false;
+        }
+        dependentTask->removeDependency(dependency);
+        dependencyTask->removeDependent(dependent);
+        return true;
+    }
+
+    bool TaskGraph::addTaskLink(TaskRecord& dependentTask, const TaskHandle dependent, TaskRecord& dependencyTask,
+                                const TaskHandle dependency)
+    {
+        if (!dependentTask.addDependency(dependency))
         {
             return false;
         }
 
         try
         {
-            if (!dependencyTask->addDependent(dependent))
+            if (!dependencyTask.addDependent(dependent))
             {
-                dependentTask->removeDependency(dependency);
+                dependentTask.removeDependency(dependency);
                 return false;
             }
         }
         catch (...)
         {
-            dependentTask->removeDependency(dependency);
+            dependentTask.removeDependency(dependency);
             throw;
         }
 
@@ -153,106 +212,66 @@ namespace Atlas
 
     bool TaskGraph::finishTaskGraph()
     {
-        if (isFinalised)
+        if (lifecycle.load(std::memory_order_acquire) != Lifecycle::Building)
         {
             return true;
         }
 
-        std::unordered_map<TaskHandle, std::size_t, TaskHandle::Hash> remainingDependencies;
-        remainingDependencies.reserve(tasks.size());
-        std::vector<TaskHandle> ready;
+        std::vector<std::size_t> remainingDependencies(tasks.size());
+        std::vector<std::size_t> ready;
         ready.reserve(tasks.size());
-        for (const std::shared_ptr<Task>& task : tasks)
+        for (std::size_t index{ 0U }; index < tasks.size(); ++index)
         {
-            const std::size_t dependencyCount{ task->getDependencies().size() };
-            remainingDependencies.emplace(task->handle, dependencyCount);
+            const std::size_t dependencyCount{ tasks.at(index).getDependencies().size() };
+            remainingDependencies.at(index) = dependencyCount;
             if (dependencyCount == 0U)
             {
-                ready.emplace_back(task->handle);
+                ready.emplace_back(index);
             }
         }
 
         std::size_t processedCount{ 0U };
         for (std::size_t readyIndex{ 0U }; readyIndex < ready.size(); ++readyIndex)
         {
-            const std::optional<std::shared_ptr<const Task>> task{ findTask(ready.at(readyIndex)) };
-            if (!task.has_value())
-            {
-                return false;
-            }
+            const TaskRecord& task{ tasks.at(ready.at(readyIndex)) };
             ++processedCount;
-            for (const TaskHandle dependent : task.value()->getDependents())
+            for (const TaskHandle dependent : task.getDependents())
             {
-                auto remaining{ remainingDependencies.find(dependent) };
-                if (remaining == remainingDependencies.end() || remaining->second == 0U)
+                const std::size_t dependentIndex{ static_cast<std::size_t>(dependent.getTaskID().getValue() - 1U) };
+                if (dependentIndex >= remainingDependencies.size() || remainingDependencies.at(dependentIndex) == 0U)
                 {
                     return false;
                 }
-                --remaining->second;
-                if (remaining->second == 0U)
+                --remainingDependencies.at(dependentIndex);
+                if (remainingDependencies.at(dependentIndex) == 0U)
                 {
-                    ready.emplace_back(dependent);
+                    ready.emplace_back(dependentIndex);
                 }
             }
         }
 
-        isFinalised = !ready.empty() && processedCount == tasks.size();
+        const bool finalised{ !ready.empty() && processedCount == tasks.size() };
 
-        if (isFinalised)
+        if (finalised)
         {
             setInitialStateForTasks();
+            lifecycle.store(Lifecycle::Finalised, std::memory_order_release);
         }
 
-        return isFinalised;
-    }
-
-    bool TaskGraph::checkForCycles(TaskHandle dependent, TaskHandle dependency) const
-    {
-        std::vector<TaskHandle> pending{ dependency };
-        std::unordered_set<TaskHandle, TaskHandle::Hash> visited;
-        visited.reserve(tasks.size());
-
-        while (!pending.empty())
-        {
-            const TaskHandle current{ pending.back() };
-            pending.pop_back();
-
-            if (current == dependent)
-            {
-                return true;
-            }
-
-            if (!visited.emplace(current).second)
-            {
-                continue;
-            }
-
-            const std::optional<std::shared_ptr<const Task>> task{ findTask(current) };
-            if (!task.has_value())
-            {
-                continue;
-            }
-
-            for (const TaskHandle next : task.value()->getDependencies())
-            {
-                pending.emplace_back(next);
-            }
-        }
-
-        return false;
+        return finalised;
     }
 
     void TaskGraph::setInitialStateForTasks() noexcept
     {
-        for (const std::shared_ptr<Task>& task : tasks)
+        for (TaskRecord& task : tasks)
         {
-            if (task->getDependencies().empty())
+            if (task.getDependencies().empty())
             {
-                task->executionInfo.state = TaskState::Ready;
+                task.executionInfo.state = TaskState::Ready;
             }
             else
             {
-                task->executionInfo.state = TaskState::Blocked;
+                task.executionInfo.state = TaskState::Blocked;
             }
         }
     }
@@ -266,24 +285,49 @@ namespace Atlas
         return validHandles && sameGraph && differentTasks;
     }
 
-    std::optional<std::shared_ptr<Task>> TaskGraph::findMutableTask(TaskHandle taskHandle) noexcept
+    TaskGraph::TaskRecord* TaskGraph::findTaskRecord(const TaskHandle taskHandle) noexcept
     {
-        const auto taskIt{ taskIndex.find(taskHandle) };
-        if (taskIt == taskIndex.end())
+        if (!taskHandle.isValid() || taskHandle.getGraphID() != graphID)
         {
-            return std::nullopt;
+            return nullptr;
         }
-        return taskIt->second;
+        const std::size_t index{ static_cast<std::size_t>(taskHandle.getTaskID().getValue() - 1U) };
+        return index < tasks.size() ? &tasks.at(index) : nullptr;
     }
 
-    std::optional<std::shared_ptr<const Task>> TaskGraph::findTask(TaskHandle taskHandle) const noexcept
+    const TaskGraph::TaskRecord* TaskGraph::findTaskRecord(const TaskHandle taskHandle) const noexcept
     {
-        const auto taskIt{ taskIndex.find(taskHandle) };
-        if (taskIt == taskIndex.end())
+        if (!taskHandle.isValid() || taskHandle.getGraphID() != graphID)
+        {
+            return nullptr;
+        }
+        const std::size_t index{ static_cast<std::size_t>(taskHandle.getTaskID().getValue() - 1U) };
+        return index < tasks.size() ? &tasks.at(index) : nullptr;
+    }
+
+    std::optional<TaskSnapshot> TaskGraph::snapshotTask(const TaskHandle taskHandle) const
+    {
+        const TaskRecord* const task{ findTaskRecord(taskHandle) };
+        if (task == nullptr)
         {
             return std::nullopt;
         }
-        return std::shared_ptr<const Task>{ taskIt->second };
+        return TaskSnapshot{ task->handle,
+                             task->options,
+                             task->executionInfo,
+                             { task->getDependencies().begin(), task->getDependencies().end() },
+                             { task->getDependents().begin(), task->getDependents().end() } };
+    }
+
+    bool TaskGraph::tryBeginExecution() const noexcept
+    {
+        Lifecycle expected{ Lifecycle::Finalised };
+        return lifecycle.compare_exchange_strong(expected, Lifecycle::Executing, std::memory_order_acq_rel, std::memory_order_acquire);
+    }
+
+    void TaskGraph::markExecutionFinished() const noexcept
+    {
+        lifecycle.store(Lifecycle::Executed, std::memory_order_release);
     }
 
 } // namespace Atlas

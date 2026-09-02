@@ -104,12 +104,12 @@ namespace
 
     void requireSuccessfulTask(const Atlas::TaskGraph& graph, Atlas::TaskHandle handle)
     {
-        const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.findTask(handle) };
+        const std::optional<Atlas::TaskSnapshot> task{ graph.snapshotTask(handle) };
 
         REQUIRE(task.has_value());
-        REQUIRE(task.value()->executionInfo.state == Atlas::TaskState::Success);
-        REQUIRE(task.value()->executionInfo.exception == nullptr);
-        REQUIRE(task.value()->executionInfo.executionDuration >= std::chrono::microseconds{ 0 });
+        REQUIRE(task.value().executionInfo.state == Atlas::TaskState::Success);
+        REQUIRE(task.value().executionInfo.exception == nullptr);
+        REQUIRE(task.value().executionInfo.executionDuration >= std::chrono::microseconds{ 0 });
     }
 } // namespace
 
@@ -369,11 +369,11 @@ TEST_CASE("KahnScheduler drains worker-pool work after the first task failure", 
     REQUIRE(result.status == Atlas::SchedulerStatus::TaskFailed);
     REQUIRE(result.executedTaskCount == 1U);
     REQUIRE(result.exception != nullptr);
-    REQUIRE(graph.findTask(failedHandle).value()->executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(failedHandle).value().executionInfo.state == Atlas::TaskState::Failure);
     requireSuccessfulTask(graph, drainedHandle);
     REQUIRE_FALSE(unsubmittedTaskExecuted.load());
-    REQUIRE(graph.findTask(unsubmittedHandle).value()->executionInfo.state == Atlas::TaskState::Ready);
-    REQUIRE(graph.findTask(blockedHandle).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(unsubmittedHandle).value().executionInfo.state == Atlas::TaskState::Ready);
+    REQUIRE(graph.snapshotTask(blockedHandle).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler completes a large independent graph through the worker pool", "[FEATURE][CONCURRENCY]")

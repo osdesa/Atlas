@@ -62,7 +62,7 @@ namespace Atlas
 
     TaskCompletion SynchronousCpuExecutor::execute(TaskHandle taskHandle, const TaskFunction& taskFunction)
     {
-        TaskCompletion completion{ taskHandle, nullptr, std::chrono::microseconds{ 0 }, ExecutionResource::CPU };
+        TaskCompletion completion{ taskHandle, nullptr, std::chrono::nanoseconds{ 0 }, ExecutionResource::CPU };
 
         const auto startTime{ std::chrono::steady_clock::now() };
         try
@@ -78,7 +78,7 @@ namespace Atlas
         }
 
         const auto endTime{ std::chrono::steady_clock::now() };
-        completion.executionDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+        completion.executionDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime);
         return completion;
     }
 

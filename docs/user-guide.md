@@ -103,6 +103,10 @@ python3 tools/atlas_trace.py timeline build/atlas-trace.jsonl \
   --output build/atlas-timeline.svg
 ```
 
+Trace inputs are bounded to 128 MiB, one million records, and 2 MiB per
+record. Timeline output is intentionally no-overwrite: choose a new path or
+move an earlier SVG before rendering again.
+
 Pass `--allow-incomplete` only when intentionally inspecting a trace without a
 footer. The checked record contract is
 `benchmarks/schema/atlas-trace-v1.schema.json`. Timestamps use one monotonic
@@ -208,7 +212,9 @@ the selected compute queue reports no timestamp bits or profiling was compiled
 out. `gpu_timestamp_supported` states the capability and
 `gpu_timestamp_busy_fraction` is present only when every GPU task in the run
 has device timing. Host execution duration remains distinct from queue/device
-execution duration.
+execution duration. Atlas retains host measurements internally at nanosecond
+resolution and converts them explicitly for the result contract's `_us`
+fields.
 
 ## Evaluation conclusions
 
@@ -257,12 +263,40 @@ and creates a compressed raw-data bundle. It does not delete or overwrite an
 existing output directory. Repeat with the Lavapipe environment and analyze
 the two `results` directories with `atlas_evaluation.py analyze`. The analysis
 emits version-one JSON, CSV, Markdown tables, and dependency-free SVG plots.
+Published-bundle verification accepts only bounded HTTPS release assets from
+the Atlas GitHub release hosts and rejects archives with links, special files,
+path traversal, duplicate paths, or excessive expansion.
 
 Python 3.10 or newer is required only for evaluation and trace tooling. If
 `vulkaninfo` is installed, its summary is captured; otherwise the bundle records
 that it was unavailable while retaining the Vulkan metadata resolved by Atlas.
 See `benchmarks/evaluation/README.md` for the complete bundle layout and
 publication verification command.
+
+## Coverage, fuzzing, and security validation
+
+The coverage preset instruments Atlas and its tests with gcov-compatible
+flags:
+
+```bash
+cmake --preset coverage-linux
+cmake --build --preset coverage-linux --parallel
+ctest --preset coverage-linux
+```
+
+The Clang fuzz preset builds bounded ASan/UBSan libFuzzer harnesses. For
+example:
+
+```bash
+cmake --preset fuzz-linux
+cmake --build --preset fuzz-linux --parallel
+./build/fuzz-linux/tests/fuzz/TaskGraph_fuzz -runs=50000 -max_len=4096
+```
+
+CI captures project coverage, and the security workflow runs CodeQL plus the
+bounded graph fuzz regression. Benchmark provenance appends `-dirty` to the
+embedded Git revision whenever tracked or untracked source-tree changes are
+present at configure time.
 
 The published study can be downloaded, hash-checked, structurally validated,
 and reanalyzed in one command:

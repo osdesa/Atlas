@@ -35,9 +35,9 @@ namespace Atlas::Detail
         void recordGpuSelection(TaskHandle handle) noexcept;
 
         /// @brief Returns accumulated active control time, including an open interval.
-        std::chrono::microseconds activeDuration() const noexcept;
+        std::chrono::nanoseconds activeDuration() const noexcept;
         /// @brief Returns accumulated immediate slice-switch control time.
-        std::chrono::microseconds immediateSliceSwitchDuration() const noexcept;
+        std::chrono::nanoseconds immediateSliceSwitchDuration() const noexcept;
         /// @brief Returns the number of sampled immediate slice switches.
         std::size_t immediateSliceSwitchCount() const noexcept;
 

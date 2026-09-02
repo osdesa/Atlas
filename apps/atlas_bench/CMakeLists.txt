@@ -1,24 +1,11 @@
-set(
-    ATLAS_BENCHMARK_SUPPORT_SOURCES
-    BaselineAnalysis.cpp
-    BaselineAnalysis.h
-    BaselineConfig.cpp
-    BaselineConfig.h
-    BaselineRunner.cpp
-    BaselineRunner.h
-    BaselineWriter.cpp
-    BaselineWriter.h
-    BenchmarkTypes.cpp
-    BenchmarkTypes.h
-    BenchmarkMetrics.cpp
-    BenchmarkMetrics.h
-    BenchmarkRunner.cpp
-    BenchmarkRunner.h
-    DirectBenchmarkRunner.cpp
-    DirectBenchmarkRunner.h
-    WorkloadGenerator.cpp
-    WorkloadGenerator.h
+file(
+    GLOB ATLAS_BENCHMARK_SUPPORT_SOURCES
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
 )
+list(REMOVE_ITEM ATLAS_BENCHMARK_SUPPORT_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp")
+list(SORT ATLAS_BENCHMARK_SUPPORT_SOURCES)
 
 add_library(atlas_benchmark_support STATIC)
 target_sources(atlas_benchmark_support PRIVATE ${ATLAS_BENCHMARK_SUPPORT_SOURCES})
@@ -35,6 +22,17 @@ execute_process(
 )
 if(NOT ATLAS_BENCHMARK_GIT_REVISION)
     set(ATLAS_BENCHMARK_GIT_REVISION unknown)
+else()
+    execute_process(
+        COMMAND git status --porcelain
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        OUTPUT_VARIABLE ATLAS_BENCHMARK_GIT_STATUS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    if(ATLAS_BENCHMARK_GIT_STATUS)
+        string(APPEND ATLAS_BENCHMARK_GIT_REVISION "-dirty")
+    endif()
 endif()
 
 target_compile_definitions(
@@ -55,6 +53,7 @@ add_dependencies(atlas_benchmark_support atlas_benchmark_shader)
 atlas_set_project_warnings(atlas_benchmark_support)
 atlas_enable_sanitizers(atlas_benchmark_support)
 atlas_enable_clang_tidy(atlas_benchmark_support)
+atlas_enable_coverage(atlas_benchmark_support)
 
 add_executable(atlas_bench main.cpp)
 target_compile_features(atlas_bench PRIVATE cxx_std_20)
@@ -62,3 +61,4 @@ target_link_libraries(atlas_bench PRIVATE atlas_benchmark_support)
 atlas_set_project_warnings(atlas_bench)
 atlas_enable_sanitizers(atlas_bench)
 atlas_enable_clang_tidy(atlas_bench)
+atlas_enable_coverage(atlas_bench)

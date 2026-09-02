@@ -1,0 +1,63 @@
+name: Security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeql:
+    name: CodeQL C++ analysis
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build libvulkan-dev glslc spirv-tools
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          queries: security-extended
+
+      - name: Build Atlas
+        run: |
+          cmake --preset ci-linux
+          cmake --build --preset ci-linux --parallel
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+
+  fuzz:
+    name: Bounded libFuzzer regression
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install fuzz build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang ninja-build libvulkan-dev glslc spirv-tools
+
+      - name: Build fuzz harnesses
+        run: |
+          cmake --preset fuzz-linux
+          cmake --build --preset fuzz-linux --parallel
+
+      - name: Run bounded TaskGraph fuzzing
+        run: ./build/fuzz-linux/tests/fuzz/TaskGraph_fuzz -runs=50000 -max_len=4096 -timeout=10

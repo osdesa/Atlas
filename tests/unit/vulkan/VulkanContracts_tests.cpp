@@ -10,7 +10,7 @@
 
 TEST_CASE("ComputeShader validates SPIR-V identity and unique storage bindings", "[UNIT]")
 {
-    Atlas::ComputeShader shader{ { 0x07230203U }, "main", { 0U, 1U } };
+    Atlas::ComputeShader shader{ { 0x07230203U, 0x00010300U, 0U, 1U, 0U }, "main", { 0U, 1U } };
     REQUIRE(shader.isValid());
 
     shader.storageBufferBindings.emplace_back(1U);
@@ -19,6 +19,9 @@ TEST_CASE("ComputeShader validates SPIR-V identity and unique storage bindings",
     shader.spirv.front() = 0U;
     REQUIRE_FALSE(shader.isValid());
     shader.spirv.front() = 0x07230203U;
+    shader.spirv.at(4U) = 1U;
+    REQUIRE_FALSE(shader.isValid());
+    shader.spirv.at(4U) = 0U;
     shader.entryPoint.clear();
     REQUIRE_FALSE(shader.isValid());
     shader.entryPoint = "main";

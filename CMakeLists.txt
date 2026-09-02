@@ -22,10 +22,13 @@ option(ATLAS_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSan
 option(ATLAS_ENABLE_THREAD_SANITIZER "Enable ThreadSanitizer for Atlas targets" OFF)
 option(ATLAS_ENABLE_CLANG_TIDY "Enable Clang-Tidy for Atlas targets when available" OFF)
 option(ATLAS_REQUIRE_CLANG_TIDY "Fail configuration when Clang-Tidy is enabled but unavailable" OFF)
+option(ATLAS_ENABLE_COVERAGE "Instrument Atlas targets for source coverage" OFF)
+option(ATLAS_BUILD_FUZZERS "Build bounded libFuzzer harnesses" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(CompilerWarnings)
+include(Coverage)
 include(Documentation)
 include(Sanitizers)
 include(StaticAnalysis)
@@ -102,6 +105,7 @@ target_link_libraries(atlas_library PUBLIC Vulkan::Vulkan PRIVATE Threads::Threa
 atlas_set_project_warnings(atlas_library)
 atlas_enable_sanitizers(atlas_library)
 atlas_enable_clang_tidy(atlas_library)
+atlas_enable_coverage(atlas_library)
 
 atlas_add_documentation()
 
@@ -129,4 +133,8 @@ if(ATLAS_BUILD_TESTS)
         atlas_feature_tests
         PRIVATE ATLAS_VECTOR_ADD_SPIRV_PATH="${ATLAS_VECTOR_ADD_SPIRV}"
     )
+endif()
+
+if(ATLAS_BUILD_FUZZERS)
+    add_subdirectory(tests/fuzz)
 endif()

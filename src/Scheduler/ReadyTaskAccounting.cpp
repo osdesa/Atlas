@@ -19,14 +19,14 @@ namespace Atlas::Detail
         firstReadySince.reserve(graph.getTaskCount());
     }
 
-    void ReadyTaskAccounting::recordReady(const std::shared_ptr<const Task>& task)
+    void ReadyTaskAccounting::recordReady(const TaskRecord* const task)
     {
         const Clock::time_point readyTime{ Clock::now() };
         readySince.try_emplace(task->handle, readyTime);
         firstReadySince.try_emplace(task->handle, readyTime);
     }
 
-    void ReadyTaskAccounting::recordSelection(const std::shared_ptr<const Task>& selectedTask,
+    void ReadyTaskAccounting::recordSelection(const TaskRecord* const selectedTask,
                                               const std::span<const SchedulingCandidate> remainingCandidates)
     {
         const Clock::time_point selectionTime{ Clock::now() };
@@ -34,26 +34,26 @@ namespace Atlas::Detail
 
         for (const SchedulingCandidate& candidate : remainingCandidates)
         {
-            const std::optional<std::shared_ptr<const Task>> task{ graph.findTask(candidate.handle) };
-            if (!task.has_value() || readySince.find(candidate.handle) == readySince.end())
+            const TaskRecord* const task{ graph.findTaskRecord(candidate.handle) };
+            if (task == nullptr || readySince.find(candidate.handle) == readySince.end())
             {
                 continue;
             }
 
-            const TaskState state{ task.value()->executionInfo.state };
+            const TaskState state{ task->executionInfo.state };
             if (state == TaskState::Ready || state == TaskState::Paused)
             {
-                ++task.value()->executionInfo.selectionBypassCount;
+                ++task->executionInfo.selectionBypassCount;
             }
         }
     }
 
-    void ReadyTaskAccounting::closeReadyInterval(const std::shared_ptr<const Task>& task) noexcept
+    void ReadyTaskAccounting::closeReadyInterval(const TaskRecord* const task) noexcept
     {
         closeReadyIntervalAt(task, Clock::now());
     }
 
-    void ReadyTaskAccounting::recordTerminal(const std::shared_ptr<const Task>& task) noexcept
+    void ReadyTaskAccounting::recordTerminal(const TaskRecord* const task) noexcept
     {
         const Clock::time_point terminalTime{ Clock::now() };
         closeReadyIntervalAt(task, terminalTime);
@@ -63,8 +63,7 @@ namespace Atlas::Detail
             return;
         }
 
-        task->executionInfo.responseDuration =
-            std::chrono::duration_cast<std::chrono::microseconds>(terminalTime - firstReady->second);
+        task->executionInfo.responseDuration = std::chrono::duration_cast<std::chrono::nanoseconds>(terminalTime - firstReady->second);
         firstReadySince.erase(firstReady);
     }
 
@@ -73,18 +72,18 @@ namespace Atlas::Detail
         const Clock::time_point finishTime{ Clock::now() };
         for (auto entry{ readySince.begin() }; entry != readySince.end();)
         {
-            const std::optional<std::shared_ptr<const Task>> task{ graph.findTask(entry->first) };
-            if (task.has_value())
+            const TaskRecord* const task{ graph.findTaskRecord(entry->first) };
+            if (task != nullptr)
             {
-                task.value()->executionInfo.readyWaitDuration +=
-                    std::chrono::duration_cast<std::chrono::microseconds>(finishTime - entry->second);
+                task->executionInfo.readyWaitDuration +=
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(finishTime - entry->second);
             }
             entry = readySince.erase(entry);
         }
         firstReadySince.clear();
     }
 
-    void ReadyTaskAccounting::closeReadyIntervalAt(const std::shared_ptr<const Task>& task, const Clock::time_point endTime) noexcept
+    void ReadyTaskAccounting::closeReadyIntervalAt(const TaskRecord* const task, const Clock::time_point endTime) noexcept
     {
         const auto entry{ readySince.find(task->handle) };
         if (entry == readySince.end())
@@ -92,7 +91,7 @@ namespace Atlas::Detail
             return;
         }
 
-        task->executionInfo.readyWaitDuration += std::chrono::duration_cast<std::chrono::microseconds>(endTime - entry->second);
+        task->executionInfo.readyWaitDuration += std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - entry->second);
         readySince.erase(entry);
     }
 } // namespace Atlas::Detail

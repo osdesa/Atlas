@@ -63,16 +63,16 @@ namespace Atlas::Detail
         pendingSliceTask.reset();
     }
 
-    std::chrono::microseconds SchedulerTimingAccounting::activeDuration() const noexcept
+    std::chrono::nanoseconds SchedulerTimingAccounting::activeDuration() const noexcept
     {
         const Clock::duration duration{ activeSince.has_value() ? accumulatedActiveDuration + (Clock::now() - activeSince.value())
                                                                 : accumulatedActiveDuration };
-        return std::chrono::duration_cast<std::chrono::microseconds>(duration);
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
     }
 
-    std::chrono::microseconds SchedulerTimingAccounting::immediateSliceSwitchDuration() const noexcept
+    std::chrono::nanoseconds SchedulerTimingAccounting::immediateSliceSwitchDuration() const noexcept
     {
-        return std::chrono::duration_cast<std::chrono::microseconds>(accumulatedSliceSwitchDuration);
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(accumulatedSliceSwitchDuration);
     }
 
     std::size_t SchedulerTimingAccounting::immediateSliceSwitchCount() const noexcept

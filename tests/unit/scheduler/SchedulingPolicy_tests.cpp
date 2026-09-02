@@ -272,7 +272,7 @@ TEST_CASE("KahnScheduler rejects an invalid policy index", "[UNIT]")
 
     REQUIRE(result.status == Atlas::SchedulerStatus::PolicyError);
     REQUIRE(result.exception != nullptr);
-    REQUIRE(graph.findTask(task.value()).value()->executionInfo.state == Atlas::TaskState::Ready);
+    REQUIRE(graph.snapshotTask(task.value()).value().executionInfo.state == Atlas::TaskState::Ready);
     REQUIRE_THROWS_AS(std::rethrow_exception(result.exception), std::out_of_range);
 }
 
@@ -320,13 +320,13 @@ TEST_CASE("KahnScheduler drains accepted work after a later policy failure", "[U
     REQUIRE(result.status == Atlas::SchedulerStatus::PolicyError);
     REQUIRE(result.executedTaskCount == 1U);
     REQUIRE(result.exception == policyFailure);
-    REQUIRE(graph.findTask(accepted.value()).value()->executionInfo.state == Atlas::TaskState::Success);
-    const Atlas::TaskExecutionInfo& rejectedInfo{ graph.findTask(rejected.value()).value()->executionInfo };
+    REQUIRE(graph.snapshotTask(accepted.value()).value().executionInfo.state == Atlas::TaskState::Success);
+    const Atlas::TaskExecutionInfo rejectedInfo{ graph.snapshotTask(rejected.value()).value().executionInfo };
     REQUIRE(rejectedInfo.state == Atlas::TaskState::Ready);
     REQUIRE(rejectedInfo.selectionBypassCount == 1U);
     REQUIRE(rejectedInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
     REQUIRE(rejectedInfo.readyWaitDuration <= result.executionTime);
-    REQUIRE(graph.findTask(dependent.value()).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(dependent.value()).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler preserves a task exception while reporting a policy error", "[UNIT]")

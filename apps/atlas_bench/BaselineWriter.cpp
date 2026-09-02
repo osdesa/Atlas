@@ -48,6 +48,11 @@ namespace Atlas::Benchmark
 {
     namespace
     {
+        template <typename Duration> std::int64_t wholeMicroseconds(const Duration duration)
+        {
+            return std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
+        }
+
         using Json = nlohmann::json;
 
         Json optionalNumber(const std::optional<double> value)
@@ -219,11 +224,12 @@ namespace Atlas::Benchmark
                          { "priority", task.priority },
                          { "burst", task.burstIndex },
                          { "state", taskStateName(task.state) },
-                         { "execution_us", task.executionDuration.count() },
+                         { "execution_us", wholeMicroseconds(task.executionDuration) },
                          { "device_execution_ns",
                            task.deviceExecutionDuration.has_value() ? Json(task.deviceExecutionDuration->count()) : Json(nullptr) },
-                         { "ready_wait_us", task.readyWaitDuration.count() },
-                         { "response_us", task.responseDuration.has_value() ? Json(task.responseDuration->count()) : Json(nullptr) },
+                         { "ready_wait_us", wholeMicroseconds(task.readyWaitDuration) },
+                         { "response_us", task.responseDuration.has_value() ? Json(wholeMicroseconds(task.responseDuration.value()))
+                                                                            : Json(nullptr) },
                          { "selection_bypasses", mode == ExecutionMode::Scheduled ? Json(task.selectionBypassCount) : Json(nullptr) },
                          { "completed_work_units", task.completedWorkUnitCount },
                          { "total_work_units", task.totalWorkUnitCount } };
@@ -275,8 +281,8 @@ namespace Atlas::Benchmark
                 { "result",
                   { { "status", toString(record.run.schedulerResult.status) },
                     { "executed_task_count", record.run.schedulerResult.executedTaskCount },
-                    { "completion_time_us", record.run.schedulerResult.executionTime.count() },
-                    { "control_active_us", record.run.schedulerResult.schedulerActiveDuration.count() },
+                    { "completion_time_us", wholeMicroseconds(record.run.schedulerResult.executionTime) },
+                    { "control_active_us", wholeMicroseconds(record.run.schedulerResult.schedulerActiveDuration) },
                     { "control_active_fraction", optionalNumber(record.run.metrics.schedulerActiveFraction) } } },
                 { "metrics",
                   { { "throughput_tasks_per_second", record.run.metrics.throughputTasksPerSecond },
@@ -450,12 +456,12 @@ namespace Atlas::Benchmark
         runCsv << "2," << csvEscape(record.suiteId) << ',' << csvEscape(record.caseId) << ',' << csvEscape(record.variantId) << ','
                << toString(record.executionMode) << ',' << record.run.seed << ',' << record.run.repetition << ','
                << record.executionOrder << ',' << toString(record.run.schedulerResult.status) << ','
-               << record.run.schedulerResult.executedTaskCount << ',' << record.run.schedulerResult.executionTime.count() << ','
-               << std::setprecision(17) << record.run.metrics.throughputTasksPerSecond << ','
+               << record.run.schedulerResult.executedTaskCount << ',' << wholeMicroseconds(record.run.schedulerResult.executionTime)
+               << ',' << std::setprecision(17) << record.run.metrics.throughputTasksPerSecond << ','
                << csvOptional(record.run.metrics.responseLatency.mean) << ',' << csvOptional(record.run.metrics.responseLatency.p95)
                << ',' << csvOptional(record.run.metrics.readyWait.mean) << ',' << csvOptional(record.run.metrics.readyWait.p95) << ','
                << csvOptional(bypassMean(record)) << ',' << csvOptional(bypassMaximum(record)) << ','
-               << record.run.schedulerResult.schedulerActiveDuration.count() << ','
+               << wholeMicroseconds(record.run.schedulerResult.schedulerActiveDuration) << ','
                << csvOptional(record.run.metrics.schedulerActiveFraction) << ','
                << csvOptional(record.run.metrics.immediateSliceSwitchMeanMicroseconds) << ','
                << csvOptional(record.run.metrics.cpuBusyFraction) << ',' << csvOptional(record.run.metrics.gpuHostBusyFraction) << ','
@@ -468,11 +474,13 @@ namespace Atlas::Benchmark
             taskCsv << "2," << csvEscape(record.suiteId) << ',' << csvEscape(record.caseId) << ',' << csvEscape(record.variantId)
                     << ',' << toString(record.executionMode) << ',' << record.run.seed << ',' << record.run.repetition << ','
                     << task.index << ',' << csvEscape(task.name) << ',' << resourceName(task.resource) << ',' << task.priority << ','
-                    << task.burstIndex << ',' << taskStateName(task.state) << ',' << task.executionDuration.count() << ','
+                    << task.burstIndex << ',' << taskStateName(task.state) << ',' << wholeMicroseconds(task.executionDuration) << ','
                     << (task.deviceExecutionDuration.has_value() ? std::to_string(task.deviceExecutionDuration->count())
                                                                  : std::string{})
-                    << ',' << task.readyWaitDuration.count() << ','
-                    << (task.responseDuration.has_value() ? std::to_string(task.responseDuration->count()) : std::string{}) << ',';
+                    << ',' << wholeMicroseconds(task.readyWaitDuration) << ','
+                    << (task.responseDuration.has_value() ? std::to_string(wholeMicroseconds(task.responseDuration.value()))
+                                                          : std::string{})
+                    << ',';
             if (record.executionMode == ExecutionMode::Scheduled)
             {
                 taskCsv << task.selectionBypassCount;

@@ -122,15 +122,15 @@ int main(const int argumentCount, char** arguments)
         {
             trace->finish(result.status == Atlas::SchedulerStatus::Success ? "success" : "failed");
         }
-        const Atlas::TaskExecutionInfo& computeProgress{ graph.findTask(compute.value()).value()->executionInfo };
-        if (result.status != Atlas::SchedulerStatus::Success || !verified || computeProgress.completedWorkUnitCount != 2U ||
-            computeProgress.totalWorkUnitCount != 2U)
+        const Atlas::TaskSnapshot computeProgress{ graph.snapshotTask(compute.value()).value() };
+        if (result.status != Atlas::SchedulerStatus::Success || !verified ||
+            computeProgress.executionInfo.completedWorkUnitCount != 2U || computeProgress.executionInfo.totalWorkUnitCount != 2U)
         {
             std::cerr << "Mixed graph execution failed\n";
             return EXIT_FAILURE;
         }
-        std::cout << "Verified CPU -> sliced Vulkan (" << computeProgress.completedWorkUnitCount << " work units) -> CPU graph on "
-                  << runtime.deviceInfo().name << '\n';
+        std::cout << "Verified CPU -> sliced Vulkan (" << computeProgress.executionInfo.completedWorkUnitCount
+                  << " work units) -> CPU graph on " << runtime.deviceInfo().name << '\n';
         return EXIT_SUCCESS;
     }
     catch (const std::exception& exception)

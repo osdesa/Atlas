@@ -38,21 +38,33 @@ TEST_CASE("TaskGraph exposes read-only task queries", "[UNIT]")
 
     REQUIRE(graph.getTaskCount() == 0U);
     REQUIRE(graph.getTaskHandles().empty());
-    REQUIRE_FALSE(graph.findTask(missing).has_value());
+    REQUIRE_FALSE(graph.snapshotTask(missing).has_value());
 
     const Atlas::TaskHandle first{ addTask(graph, "First") };
     const Atlas::TaskHandle second{ addTask(graph, "Second") };
     const std::vector<Atlas::TaskHandle> taskHandles{ graph.getTaskHandles() };
-    const std::optional<std::shared_ptr<const Atlas::Task>> task{ graph.findTask(first) };
+    const std::optional<Atlas::TaskSnapshot> task{ graph.snapshotTask(first) };
 
-    STATIC_REQUIRE(std::is_same_v<decltype(graph.findTask(first)), std::optional<std::shared_ptr<const Atlas::Task>>>);
+    STATIC_REQUIRE(std::is_same_v<decltype(graph.snapshotTask(first)), std::optional<Atlas::TaskSnapshot>>);
     REQUIRE(graph.getTaskCount() == 2U);
     REQUIRE(graph.getGraphID().isValid());
     REQUIRE(taskHandles == std::vector<Atlas::TaskHandle>{ first, second });
     REQUIRE(task.has_value());
-    REQUIRE(task.value()->handle == first);
-    REQUIRE(task.value()->getDependencies().empty());
-    REQUIRE(task.value()->getDependents().empty());
+    REQUIRE(task.value().handle == first);
+    REQUIRE(task.value().dependencies.empty());
+    REQUIRE(task.value().dependents.empty());
+}
+
+TEST_CASE("TaskGraph snapshots are detached from later execution", "[UNIT]")
+{
+    Atlas::TaskGraph graph;
+    const Atlas::TaskHandle handle{ addTask(graph, "Snapshot") };
+    const Atlas::TaskSnapshot before{ graph.snapshotTask(handle).value() };
+    REQUIRE(before.executionInfo.state == Atlas::TaskState::Unknown);
+    REQUIRE(graph.finishTaskGraph());
+    const Atlas::TaskSnapshot after{ graph.snapshotTask(handle).value() };
+    REQUIRE(after.executionInfo.state == Atlas::TaskState::Ready);
+    REQUIRE(before.executionInfo.state == Atlas::TaskState::Unknown);
 }
 
 TEST_CASE("TaskGraph preserves CPU metadata and rejects GPU metadata for CPU work", "[UNIT]")
@@ -67,10 +79,10 @@ TEST_CASE("TaskGraph preserves CPU metadata and rejects GPU metadata for CPU wor
     REQUIRE(cpuHandle.has_value());
     REQUIRE_FALSE(gpuHandle.has_value());
 
-    const std::optional<std::shared_ptr<const Atlas::Task>> cpuTask{ graph.findTask(cpuHandle.value()) };
+    const std::optional<Atlas::TaskSnapshot> cpuTask{ graph.snapshotTask(cpuHandle.value()) };
     REQUIRE(cpuTask.has_value());
-    REQUIRE(cpuTask.value()->options.executionResource == Atlas::ExecutionResource::CPU);
-    REQUIRE(cpuTask.value()->options.priority == 2U);
+    REQUIRE(cpuTask.value().options.executionResource == Atlas::ExecutionResource::CPU);
+    REQUIRE(cpuTask.value().options.priority == 2U);
 }
 
 TEST_CASE("TaskGraph accepts sliced GPU work and rejects CPU metadata", "[UNIT]")
@@ -88,13 +100,12 @@ TEST_CASE("TaskGraph accepts sliced GPU work and rejects CPU metadata", "[UNIT]"
     REQUIRE_FALSE(rejectedHandle.has_value());
     REQUIRE(graph.getTaskCount() == 1U);
 
-    const std::optional<std::shared_ptr<const Atlas::Task>> gpuTask{ graph.findTask(gpuHandle.value()) };
+    const std::optional<Atlas::TaskSnapshot> gpuTask{ graph.snapshotTask(gpuHandle.value()) };
     REQUIRE(gpuTask.has_value());
-    REQUIRE(gpuTask.value()->isValid());
-    REQUIRE(gpuTask.value()->slicedGpuDispatch() != nullptr);
-    REQUIRE(gpuTask.value()->options.priority == 3U);
-    REQUIRE(gpuTask.value()->executionInfo.completedWorkUnitCount == 0U);
-    REQUIRE(gpuTask.value()->executionInfo.totalWorkUnitCount == 1U);
+    REQUIRE(gpuTask.value().handle.isValid());
+    REQUIRE(gpuTask.value().options.priority == 3U);
+    REQUIRE(gpuTask.value().executionInfo.completedWorkUnitCount == 0U);
+    REQUIRE(gpuTask.value().executionInfo.totalWorkUnitCount == 1U);
 }
 
 TEST_CASE("TaskGraph accepts anonymous task metadata", "[UNIT]")
@@ -107,10 +118,10 @@ TEST_CASE("TaskGraph accepts anonymous task metadata", "[UNIT]")
     REQUIRE(anonymousHandle.value().getTaskID() == Atlas::TaskId{ 1U });
     REQUIRE(graph.getTaskCount() == 1U);
 
-    const std::optional<std::shared_ptr<const Atlas::Task>> anonymousTask{ graph.findTask(anonymousHandle.value()) };
+    const std::optional<Atlas::TaskSnapshot> anonymousTask{ graph.snapshotTask(anonymousHandle.value()) };
     REQUIRE(anonymousTask.has_value());
-    REQUIRE(anonymousTask.value()->isValid());
-    REQUIRE(anonymousTask.value()->options.name.empty());
+    REQUIRE(anonymousTask.value().handle.isValid());
+    REQUIRE(anonymousTask.value().options.name.empty());
 }
 
 TEST_CASE("TaskGraph rejects an out-of-range execution resource without consuming a task ID", "[UNIT]")
@@ -146,18 +157,18 @@ TEST_CASE("TaskGraph accepts one valid dependency edge", "[UNIT]")
 
     REQUIRE(graph.addDependency(dependent, prerequisite));
 
-    const std::optional<std::shared_ptr<const Atlas::Task>> prerequisiteTask{ graph.findTask(prerequisite) };
-    const std::optional<std::shared_ptr<const Atlas::Task>> dependentTask{ graph.findTask(dependent) };
+    const std::optional<Atlas::TaskSnapshot> prerequisiteTask{ graph.snapshotTask(prerequisite) };
+    const std::optional<Atlas::TaskSnapshot> dependentTask{ graph.snapshotTask(dependent) };
 
     REQUIRE(prerequisiteTask.has_value());
     REQUIRE(dependentTask.has_value());
-    REQUIRE(prerequisiteTask.value()->getDependents().size() == 1U);
-    REQUIRE(prerequisiteTask.value()->getDependents().front() == dependent);
-    REQUIRE(dependentTask.value()->getDependencies().size() == 1U);
-    REQUIRE(dependentTask.value()->getDependencies().front() == prerequisite);
+    REQUIRE(prerequisiteTask.value().dependents.size() == 1U);
+    REQUIRE(prerequisiteTask.value().dependents.front() == dependent);
+    REQUIRE(dependentTask.value().dependencies.size() == 1U);
+    REQUIRE(dependentTask.value().dependencies.front() == prerequisite);
 }
 
-TEST_CASE("TaskGraph rejects a two-task dependency cycle", "[UNIT]")
+TEST_CASE("TaskGraph detects a two-task dependency cycle at finalisation", "[UNIT]")
 {
     Atlas::TaskGraph graph;
 
@@ -165,10 +176,13 @@ TEST_CASE("TaskGraph rejects a two-task dependency cycle", "[UNIT]")
     const Atlas::TaskHandle second{ addTask(graph, "Second") };
 
     REQUIRE(graph.addDependency(second, first));
-    REQUIRE_FALSE(graph.addDependency(first, second));
+    REQUIRE(graph.addDependency(first, second));
+    REQUIRE_FALSE(graph.finishTaskGraph());
+    REQUIRE(graph.removeDependency(first, second));
+    REQUIRE(graph.finishTaskGraph());
 }
 
-TEST_CASE("TaskGraph rejects a longer dependency cycle", "[UNIT]")
+TEST_CASE("TaskGraph detects a longer dependency cycle at finalisation", "[UNIT]")
 {
     Atlas::TaskGraph graph;
 
@@ -178,7 +192,10 @@ TEST_CASE("TaskGraph rejects a longer dependency cycle", "[UNIT]")
 
     REQUIRE(graph.addDependency(second, first));
     REQUIRE(graph.addDependency(third, second));
-    REQUIRE_FALSE(graph.addDependency(first, third));
+    REQUIRE(graph.addDependency(first, third));
+    REQUIRE_FALSE(graph.finishTaskGraph());
+    REQUIRE(graph.removeDependency(first, third));
+    REQUIRE(graph.finishTaskGraph());
 }
 
 TEST_CASE("TaskGraph rejects invalid dependency edges", "[UNIT]")
@@ -194,7 +211,7 @@ TEST_CASE("TaskGraph rejects invalid dependency edges", "[UNIT]")
 
     REQUIRE(first.getTaskID() == other.getTaskID());
     REQUIRE_FALSE(first.getGraphID() == other.getGraphID());
-    REQUIRE_FALSE(graph.findTask(other).has_value());
+    REQUIRE_FALSE(graph.snapshotTask(other).has_value());
 
     REQUIRE_FALSE(graph.addDependency(invalid, first));
     REQUIRE_FALSE(graph.addDependency(first, first));
@@ -203,6 +220,8 @@ TEST_CASE("TaskGraph rejects invalid dependency edges", "[UNIT]")
     REQUIRE_FALSE(graph.addDependency(first, missing));
     REQUIRE(graph.addDependency(second, first));
     REQUIRE_FALSE(graph.addDependency(second, first));
+    REQUIRE(graph.removeDependency(second, first));
+    REQUIRE_FALSE(graph.removeDependency(second, first));
 }
 
 TEST_CASE("TaskGraph does not finish when it is empty", "[UNIT]")
@@ -228,19 +247,19 @@ TEST_CASE("TaskGraph finishes a valid directed acyclic graph", "[UNIT]")
     REQUIRE(graph.isFinalisedGraph());
     REQUIRE(graph.finishTaskGraph());
 
-    const std::optional<std::shared_ptr<const Atlas::Task>> rootTask{ graph.findTask(root) };
-    const std::optional<std::shared_ptr<const Atlas::Task>> middleTask{ graph.findTask(middle) };
-    const std::optional<std::shared_ptr<const Atlas::Task>> leafTask{ graph.findTask(leaf) };
+    const std::optional<Atlas::TaskSnapshot> rootTask{ graph.snapshotTask(root) };
+    const std::optional<Atlas::TaskSnapshot> middleTask{ graph.snapshotTask(middle) };
+    const std::optional<Atlas::TaskSnapshot> leafTask{ graph.snapshotTask(leaf) };
 
     REQUIRE(rootTask.has_value());
     REQUIRE(middleTask.has_value());
     REQUIRE(leafTask.has_value());
-    REQUIRE(rootTask.value()->executionInfo.state == Atlas::TaskState::Ready);
-    REQUIRE(middleTask.value()->executionInfo.state == Atlas::TaskState::Blocked);
-    REQUIRE(leafTask.value()->executionInfo.state == Atlas::TaskState::Blocked);
-    REQUIRE(rootTask.value()->executionInfo.exception == nullptr);
-    REQUIRE(middleTask.value()->executionInfo.exception == nullptr);
-    REQUIRE(leafTask.value()->executionInfo.exception == nullptr);
+    REQUIRE(rootTask.value().executionInfo.state == Atlas::TaskState::Ready);
+    REQUIRE(middleTask.value().executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(leafTask.value().executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(rootTask.value().executionInfo.exception == nullptr);
+    REQUIRE(middleTask.value().executionInfo.exception == nullptr);
+    REQUIRE(leafTask.value().executionInfo.exception == nullptr);
 }
 
 TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")
@@ -258,9 +277,9 @@ TEST_CASE("TaskGraph rejects structural changes after finalisation", "[UNIT]")
     REQUIRE_FALSE(graph.addDependency(secondDependent, root));
     REQUIRE(graph.getTaskCount() == 3U);
 
-    const std::optional<std::shared_ptr<const Atlas::Task>> secondTask{ graph.findTask(secondDependent) };
+    const std::optional<Atlas::TaskSnapshot> secondTask{ graph.snapshotTask(secondDependent) };
     REQUIRE(secondTask.has_value());
-    REQUIRE(secondTask.value()->getDependencies().empty());
+    REQUIRE(secondTask.value().dependencies.empty());
     REQUIRE(graph.isFinalisedGraph());
 }
 

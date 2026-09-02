@@ -51,7 +51,7 @@ namespace Atlas
             }
 
             taskQueue.emplace_back(WorkItem{
-                std::move(taskFunction), TaskCompletion{ taskHandle, nullptr, std::chrono::microseconds{ 0 }, ExecutionResource::CPU },
+                std::move(taskFunction), TaskCompletion{ taskHandle, nullptr, std::chrono::nanoseconds{ 0 }, ExecutionResource::CPU },
                 &completionChannel, completionChannel.traceSession() });
             ++unfinishedTasks;
         }
@@ -130,7 +130,7 @@ namespace Atlas
             }
 
             workItem.completion.executionDuration =
-                std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - startTime);
+                std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - startTime);
 
             if constexpr (profilingEnabled)
             {

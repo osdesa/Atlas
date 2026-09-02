@@ -38,10 +38,10 @@ namespace Atlas::Benchmark
         std::uint32_t priority{ 0U };
         std::size_t burstIndex{ 0U };
         TaskState state{ TaskState::Unknown };
-        std::chrono::microseconds executionDuration{ 0 };
+        std::chrono::nanoseconds executionDuration{ 0 };
         std::optional<std::chrono::nanoseconds> deviceExecutionDuration;
-        std::chrono::microseconds readyWaitDuration{ 0 };
-        std::optional<std::chrono::microseconds> responseDuration;
+        std::chrono::nanoseconds readyWaitDuration{ 0 };
+        std::optional<std::chrono::nanoseconds> responseDuration;
         std::size_t selectionBypassCount{ 0U };
         std::size_t completedWorkUnitCount{ 0U };
         std::size_t totalWorkUnitCount{ 0U };

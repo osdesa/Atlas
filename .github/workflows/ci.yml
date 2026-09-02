@@ -108,6 +108,43 @@ jobs:
       - name: Build and analyze
         run: cmake --build --preset analysis-linux --parallel
 
+  coverage:
+    name: Source coverage
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install coverage and Vulkan dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build lcov libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
+
+      - name: Select Lavapipe
+        run: |
+          lavapipe_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
+          test -n "${lavapipe_icd}"
+          echo "VK_DRIVER_FILES=${lavapipe_icd}" >> "${GITHUB_ENV}"
+
+      - name: Build and test instrumented targets
+        run: |
+          cmake --preset coverage-linux
+          cmake --build --preset coverage-linux --parallel
+          ctest --preset coverage-linux
+
+      - name: Capture project coverage
+        run: |
+          lcov --capture --directory build/coverage-linux --output-file build/coverage-linux/coverage.info --ignore-errors mismatch
+          lcov --remove build/coverage-linux/coverage.info '/usr/*' '*/build/_deps/*' '*/tests/*' --output-file build/coverage-linux/coverage.info
+          lcov --summary build/coverage-linux/coverage.info
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-coverage
+          path: build/coverage-linux/coverage.info
+
   documentation:
     name: Documentation
     runs-on: ubuntu-24.04

@@ -1,11 +1,11 @@
 #ifndef ATLAS_KAHN_SCHEDULER
 #define ATLAS_KAHN_SCHEDULER
 
-#include "BaseScheduler.h"
 #include "atlas/Executor/CompletionChannel.h"
 #include "atlas/Executor/CpuExecutor.h"
 #include "atlas/Executor/VulkanDispatchExecutor.h"
 #include "atlas/Profiling/Trace.h"
+#include "atlas/Scheduler/SchedulerResult.h"
 #include "atlas/Scheduler/SchedulingPolicy.h"
 #include "atlas/Tasking/TaskGraph.h"
 
@@ -31,7 +31,7 @@ namespace Atlas
      * @brief Keeps CPU and Vulkan work in flight independently in dependency order.
      * @plantumlfile kahn_scheduler.puml
      */
-    class KahnScheduler : public BaseScheduler
+    class KahnScheduler
     {
       public:
         /**
@@ -56,7 +56,7 @@ namespace Atlas
                       const SchedulingPolicy& policy, TraceSession* traceSession = nullptr);
 
         /// @brief Executes the finalised graph until all accepted work drains.
-        SchedulerResult execute() override;
+        SchedulerResult execute();
 
         /**
          * @brief Requests fail-stop cancellation of one graph-owned task.
@@ -70,7 +70,7 @@ namespace Atlas
          */
         bool requestCancellation(TaskHandle taskHandle);
         /// @brief Destroys the scheduler without taking ownership of executors.
-        ~KahnScheduler() override;
+        ~KahnScheduler();
 
         /// @brief Prevents copying scheduler state.
         KahnScheduler(const KahnScheduler&) = delete;
@@ -82,6 +82,26 @@ namespace Atlas
         KahnScheduler& operator=(KahnScheduler&&) = delete;
 
       private:
+        using TaskRecord = TaskGraph::TaskRecord;
+
+        /** @brief Contiguous policy view with constant-time removal from its FIFO head. */
+        class ReadyQueue final
+        {
+          public:
+            bool empty() const noexcept;
+            std::size_t size() const noexcept;
+            void clear() noexcept;
+            void reserve(std::size_t capacity);
+            void push(SchedulingCandidate candidate);
+            std::span<const SchedulingCandidate> candidates() const noexcept;
+            SchedulingCandidate remove(std::size_t index);
+
+          private:
+            void compact();
+            std::vector<SchedulingCandidate> storage;
+            std::size_t first{ 0U };
+        };
+
         struct ExecutionState
         {
             /// @brief Maximum CPU submissions allowed in flight.
@@ -173,28 +193,28 @@ namespace Atlas
         /// @brief Marks a task ready and appends it to the matching ready set.
         void enqueueReadyTask(TaskHandle taskHandle);
         /// @brief Appends one task to its resource-specific ready set without changing its state.
-        void appendReadyTask(const std::shared_ptr<const Task>& task);
+        void appendReadyTask(const TaskRecord* task);
         /// @brief Returns the ready set matching one execution resource.
-        std::vector<SchedulingCandidate>& readyTasksForResource(ExecutionResource resource) noexcept;
+        ReadyQueue& readyTasksForResource(ExecutionResource resource) noexcept;
         /// @brief Returns the independent policy matching one execution resource.
         SchedulingPolicy& policyForResource(ExecutionResource resource) noexcept;
         /// @brief Records a policy exception and stops new submissions.
         void recordPolicyFailure(ExecutionState& state, std::exception_ptr exception) noexcept;
         /// @brief Uses the resource policy to remove the next currently-ready task.
-        std::optional<std::shared_ptr<const Task>> takeNextReadyTask(ExecutionResource resource, ExecutionState& state);
+        const TaskRecord* takeNextReadyTask(ExecutionResource resource, ExecutionState& state);
         /// @brief Restores a task after its executor rejected submission.
-        void restoreRejectedTask(const std::shared_ptr<const Task>& task) noexcept;
+        void restoreRejectedTask(const TaskRecord* task) noexcept;
         /// @brief Applies a completion to graph-owned task execution state.
-        void completeTask(const std::shared_ptr<const Task>& task, const TaskCompletion& completion);
+        void completeTask(const TaskRecord* task, const TaskCompletion& completion);
         /// @brief Releases dependants after a successful prerequisite.
-        void updateDependencies(const std::shared_ptr<const Task>& executedTask);
+        void updateDependencies(const TaskRecord* executedTask);
         /// @brief Publishes one best-effort event when profiling is active.
         void emitTrace(TraceEvent event) noexcept;
 
         /// @brief Stable enqueue-ordered ready CPU candidates.
-        std::vector<SchedulingCandidate> cpuReadyTasks;
+        ReadyQueue cpuReadyTasks;
         /// @brief Stable enqueue-ordered ready GPU candidates.
-        std::vector<SchedulingCandidate> gpuReadyTasks;
+        ReadyQueue gpuReadyTasks;
         /// @brief Remaining prerequisite counts keyed by dependent handle.
         std::unordered_map<TaskHandle, std::size_t, TaskHandle::Hash> remainingDependencies;
         /// @brief Accepted tasks and their expected completion resource.
@@ -213,6 +233,8 @@ namespace Atlas
         std::size_t cpuTaskCount{ 0U };
         /// @brief Number of GPU tasks parsed from the graph for capacity validation.
         std::size_t gpuTaskCount{ 0U };
+        /// @brief Borrowed graph used for this execution.
+        const TaskGraph& startingGraph;
         /// @brief Borrowed CPU executor used for this execution.
         CpuExecutor& cpuExecutor;
         /// @brief Borrowed Vulkan dispatch executor.

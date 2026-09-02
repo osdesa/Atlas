@@ -334,7 +334,7 @@ TEST_CASE("KahnScheduler submits sliced GPU work in order and releases dependant
     REQUIRE(dependentExecuted);
     REQUIRE(gpuExecutor.submittedWorkUnits ==
             std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{ { sliced, 0U }, { sliced, 1U }, { sliced, 2U } });
-    const Atlas::TaskExecutionInfo& progress{ graph.findTask(sliced).value()->executionInfo };
+    const Atlas::TaskExecutionInfo progress{ graph.snapshotTask(sliced).value().executionInfo };
     REQUIRE(progress.state == Atlas::TaskState::Success);
     REQUIRE(progress.completedWorkUnitCount == 3U);
     REQUIRE(progress.totalWorkUnitCount == 3U);
@@ -360,8 +360,8 @@ TEST_CASE("KahnScheduler interleaves sliced GPU tasks at work-unit boundaries", 
     REQUIRE(result.executedTaskCount == 2U);
     REQUIRE(gpuExecutor.submittedWorkUnits ==
             std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{ { first, 0U }, { second, 0U }, { first, 1U }, { second, 1U } });
-    const Atlas::TaskExecutionInfo& firstInfo{ graph.findTask(first).value()->executionInfo };
-    const Atlas::TaskExecutionInfo& secondInfo{ graph.findTask(second).value()->executionInfo };
+    const Atlas::TaskExecutionInfo firstInfo{ graph.snapshotTask(first).value().executionInfo };
+    const Atlas::TaskExecutionInfo secondInfo{ graph.snapshotTask(second).value().executionInfo };
     REQUIRE(firstInfo.selectionBypassCount == 1U);
     REQUIRE(secondInfo.selectionBypassCount == 2U);
     REQUIRE(firstInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
@@ -432,7 +432,7 @@ TEST_CASE("KahnScheduler lets newly ready priority work intervene after an activ
                                                     if (handle == lower && workUnitIndex == 0U)
                                                     {
                                                         lowerWasRunningWhenHigherBecameEligible =
-                                                            graph.findTask(lower).value()->executionInfo.state ==
+                                                            graph.snapshotTask(lower).value().executionInfo.state ==
                                                             Atlas::TaskState::Running;
                                                         REQUIRE(cpuExecutor.publishPendingCompletion());
                                                     }
@@ -445,7 +445,7 @@ TEST_CASE("KahnScheduler lets newly ready priority work intervene after an activ
     REQUIRE(lowerWasRunningWhenHigherBecameEligible);
     REQUIRE(gpuExecutor.submittedWorkUnits ==
             std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{ { lower, 0U }, { higher, 0U }, { lower, 1U } });
-    const Atlas::TaskExecutionInfo& lowerInfo{ graph.findTask(lower).value()->executionInfo };
+    const Atlas::TaskExecutionInfo lowerInfo{ graph.snapshotTask(lower).value().executionInfo };
     REQUIRE(lowerInfo.completedWorkUnitCount == 2U);
     REQUIRE(lowerInfo.selectionBypassCount == 1U);
     REQUIRE(lowerInfo.readyWaitDuration >= std::chrono::microseconds{ 0 });
@@ -473,10 +473,10 @@ TEST_CASE("KahnScheduler measures a finite strict-priority backlog exactly", "[U
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(gpuExecutor.submittedWorkUnits == std::vector<std::pair<Atlas::TaskHandle, std::size_t>>{
                                                   { firstHigher, 0U }, { secondHigher, 0U }, { thirdHigher, 0U }, { lower, 0U } });
-    REQUIRE(graph.findTask(firstHigher).value()->executionInfo.selectionBypassCount == 0U);
-    REQUIRE(graph.findTask(secondHigher).value()->executionInfo.selectionBypassCount == 1U);
-    REQUIRE(graph.findTask(thirdHigher).value()->executionInfo.selectionBypassCount == 2U);
-    REQUIRE(graph.findTask(lower).value()->executionInfo.selectionBypassCount == 3U);
+    REQUIRE(graph.snapshotTask(firstHigher).value().executionInfo.selectionBypassCount == 0U);
+    REQUIRE(graph.snapshotTask(secondHigher).value().executionInfo.selectionBypassCount == 1U);
+    REQUIRE(graph.snapshotTask(thirdHigher).value().executionInfo.selectionBypassCount == 2U);
+    REQUIRE(graph.snapshotTask(lower).value().executionInfo.selectionBypassCount == 3U);
 }
 
 TEST_CASE("KahnScheduler preserves sliced progress and duration when a later unit fails", "[UNIT]")
@@ -497,12 +497,12 @@ TEST_CASE("KahnScheduler preserves sliced progress and duration when a later uni
     REQUIRE(result.status == Atlas::SchedulerStatus::TaskFailed);
     REQUIRE(result.executedTaskCount == 0U);
     REQUIRE(result.exception == failure);
-    const Atlas::TaskExecutionInfo& progress{ graph.findTask(sliced).value()->executionInfo };
+    const Atlas::TaskExecutionInfo progress{ graph.snapshotTask(sliced).value().executionInfo };
     REQUIRE(progress.state == Atlas::TaskState::Failure);
     REQUIRE(progress.completedWorkUnitCount == 1U);
     REQUIRE(progress.totalWorkUnitCount == 3U);
     REQUIRE(progress.executionDuration == std::chrono::microseconds{ 18 });
-    REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(dependent).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler rejects mismatched sliced work-unit attribution", "[UNIT]")
@@ -520,9 +520,9 @@ TEST_CASE("KahnScheduler rejects mismatched sliced work-unit attribution", "[UNI
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(graph.findTask(sliced).value()->executionInfo.state == Atlas::TaskState::Failure);
-    REQUIRE(graph.findTask(sliced).value()->executionInfo.completedWorkUnitCount == 0U);
-    REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(sliced).value().executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(sliced).value().executionInfo.completedWorkUnitCount == 0U);
+    REQUIRE(graph.snapshotTask(dependent).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler rejects duplicate or stale sliced completions", "[UNIT]")
@@ -540,9 +540,9 @@ TEST_CASE("KahnScheduler rejects duplicate or stale sliced completions", "[UNIT]
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(graph.findTask(sliced).value()->executionInfo.state == Atlas::TaskState::Paused);
-    REQUIRE(graph.findTask(sliced).value()->executionInfo.completedWorkUnitCount == 1U);
-    REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(sliced).value().executionInfo.state == Atlas::TaskState::Paused);
+    REQUIRE(graph.snapshotTask(sliced).value().executionInfo.completedWorkUnitCount == 1U);
+    REQUIRE(graph.snapshotTask(dependent).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler restores Paused when a later sliced submission is rejected", "[UNIT]")
@@ -559,7 +559,7 @@ TEST_CASE("KahnScheduler restores Paused when a later sliced submission is rejec
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.executedTaskCount == 0U);
-    const Atlas::TaskExecutionInfo& progress{ graph.findTask(sliced).value()->executionInfo };
+    const Atlas::TaskExecutionInfo progress{ graph.snapshotTask(sliced).value().executionInfo };
     REQUIRE(progress.state == Atlas::TaskState::Paused);
     REQUIRE(progress.completedWorkUnitCount == 1U);
     REQUIRE(progress.executionDuration == std::chrono::microseconds{ 13 });
@@ -598,7 +598,7 @@ TEST_CASE("KahnScheduler requires a GPU executor for explicit GPU work", "[UNIT]
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Ready);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.state == Atlas::TaskState::Ready);
 }
 
 TEST_CASE("KahnScheduler requires a GPU executor for blocked GPU work", "[UNIT]")
@@ -615,8 +615,8 @@ TEST_CASE("KahnScheduler requires a GPU executor for blocked GPU work", "[UNIT]"
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.executedTaskCount == 1U);
-    REQUIRE(graph.findTask(cpuTask).value()->executionInfo.state == Atlas::TaskState::Success);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Ready);
+    REQUIRE(graph.snapshotTask(cpuTask).value().executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.state == Atlas::TaskState::Ready);
 }
 
 TEST_CASE("KahnScheduler ignores an unused zero-capacity CPU backend for a GPU-only graph", "[UNIT]")
@@ -632,7 +632,7 @@ TEST_CASE("KahnScheduler ignores an unused zero-capacity CPU backend for a GPU-o
 
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 1U);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.state == Atlas::TaskState::Success);
 }
 
 TEST_CASE("KahnScheduler ignores an unused zero-capacity GPU backend for a CPU-only graph", "[UNIT]")
@@ -650,7 +650,7 @@ TEST_CASE("KahnScheduler ignores an unused zero-capacity GPU backend for a CPU-o
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 1U);
     REQUIRE(executed);
-    REQUIRE(graph.findTask(cpuTask).value()->executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.snapshotTask(cpuTask).value().executionInfo.state == Atlas::TaskState::Success);
 }
 
 TEST_CASE("KahnScheduler rejects a GPU completion reported as CPU work", "[UNIT]")
@@ -665,7 +665,7 @@ TEST_CASE("KahnScheduler rejects a GPU completion reported as CPU work", "[UNIT]
     const Atlas::SchedulerResult result{ scheduler.execute() };
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.state == Atlas::TaskState::Failure);
 }
 
 TEST_CASE("KahnScheduler preserves a GPU dispatch exception and blocks dependants", "[UNIT]")
@@ -684,8 +684,8 @@ TEST_CASE("KahnScheduler preserves a GPU dispatch exception and blocks dependant
 
     REQUIRE(result.status == Atlas::SchedulerStatus::TaskFailed);
     REQUIRE(result.exception == failure);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Failure);
-    REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(dependent).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler classifies Vulkan device loss as infrastructure failure", "[UNIT]")
@@ -705,9 +705,9 @@ TEST_CASE("KahnScheduler classifies Vulkan device loss as infrastructure failure
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.exception == deviceLoss);
     REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Failure);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.exception == deviceLoss);
-    REQUIRE(graph.findTask(dependent).value()->executionInfo.state == Atlas::TaskState::Blocked);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.exception == deviceLoss);
+    REQUIRE(graph.snapshotTask(dependent).value().executionInfo.state == Atlas::TaskState::Blocked);
 }
 
 TEST_CASE("KahnScheduler releases mixed fan-out and cross-resource fan-in", "[UNIT]")
@@ -768,7 +768,7 @@ TEST_CASE("KahnScheduler processes GPU progress while CPU work remains in flight
     REQUIRE(result.status == Atlas::SchedulerStatus::Success);
     REQUIRE(result.executedTaskCount == 3U);
     REQUIRE(gpuExecutor.submitted == std::vector<Atlas::TaskHandle>{ firstGpu, secondGpu });
-    REQUIRE(graph.findTask(cpuRoot).value()->executionInfo.state == Atlas::TaskState::Success);
+    REQUIRE(graph.snapshotTask(cpuRoot).value().executionInfo.state == Atlas::TaskState::Success);
 }
 
 TEST_CASE("KahnScheduler treats a completion producer failure as infrastructure failure", "[UNIT]")
@@ -784,7 +784,7 @@ TEST_CASE("KahnScheduler treats a completion producer failure as infrastructure 
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.state == Atlas::TaskState::Failure);
 }
 
 TEST_CASE("KahnScheduler terminates when a completion producer closes the channel", "[UNIT]")
@@ -800,5 +800,5 @@ TEST_CASE("KahnScheduler terminates when a completion producer closes the channe
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(graph.findTask(gpuTask).value()->executionInfo.state == Atlas::TaskState::Failure);
+    REQUIRE(graph.snapshotTask(gpuTask).value().executionInfo.state == Atlas::TaskState::Failure);
 }

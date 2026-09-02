@@ -5,7 +5,7 @@ generate_method_arguments: full
 using_namespace: Atlas
 
 diagrams:
-  task:
+  task_snapshot:
     type: class
     glob:
       - src/Tasking/*.cpp
@@ -13,7 +13,7 @@ diagrams:
       context:
         - match:
             radius: 1
-            pattern: Atlas::Task
+            pattern: Atlas::TaskSnapshot
     exclude:
       namespaces:
         - std
@@ -36,28 +36,6 @@ diagrams:
         - match:
             radius: 1
             pattern: Atlas::TaskHandle
-    exclude:
-      namespaces:
-        - std
-    plantuml:
-      before:
-        - skinparam backgroundColor transparent
-        - skinparam class {
-        - '  BackgroundColor #E0F2FE'
-        - '  BorderColor #0284C7'
-        - '  ArrowColor #64748B'
-        - '  FontColor #0F172A'
-        - '}'
-
-  task_id_generator:
-    type: class
-    glob:
-      - src/Tasking/*.cpp
-    include:
-      context:
-        - match:
-            radius: 1
-            pattern: Atlas::TaskIdGenerator
     exclude:
       namespaces:
         - std
@@ -325,28 +303,6 @@ diagrams:
         - match:
             radius: 1
             pattern: Atlas::VulkanExecutor
-    exclude:
-      namespaces:
-        - std
-    plantuml:
-      before:
-        - skinparam backgroundColor transparent
-        - skinparam class {
-        - '  BackgroundColor #E0F2FE'
-        - '  BorderColor #0284C7'
-        - '  ArrowColor #64748B'
-        - '  FontColor #0F172A'
-        - '}'
-
-  base_scheduler:
-    type: class
-    glob:
-      - src/Scheduler/*.cpp
-    include:
-      context:
-        - match:
-            radius: 1
-            pattern: Atlas::BaseScheduler
     exclude:
       namespaces:
         - std

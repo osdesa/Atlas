@@ -23,6 +23,7 @@ function(atlas_add_test_suite target_name suite_label)
     atlas_set_project_warnings(${target_name})
     atlas_enable_sanitizers(${target_name})
     atlas_enable_clang_tidy(${target_name})
+    atlas_enable_coverage(${target_name})
 
     if(NOT suite_TIMEOUT)
         set(suite_TIMEOUT 60)

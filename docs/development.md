@@ -4,13 +4,18 @@
 
 Atlas separates immutable graph work, backend execution, and scheduler control:
 
-- `TaskGraph` owns graph-scoped handles, task payload variants, dependencies,
-  and finalisation.
+- `TaskGraph` owns graph-scoped handles, contiguous private task records,
+  payload variants, dependencies,
+  and finalisation. Dependency insertion is constant-time with respect to graph
+  reachability; finalisation performs the single Kahn cycle check. Tentative
+  edges can be removed before finalisation.
 - `CpuExecutor` implementations run CPU callables. `VulkanExecutor` owns a
   worker and submits declarative dispatches through a retained Vulkan context.
+  Its capacity-one worker reuses one descriptor pool, command buffer, fence,
+  and optional timestamp query pool across drained dispatches.
 - `CompletionChannel` is the single preallocated completion path used by CPU
   and Vulkan producers.
-- `KahnScheduler` owns ready queues, independent capacities/in-flight counts,
+- `KahnScheduler` directly owns ready queues, independent capacities/in-flight counts,
   policy instances, state transitions, dependency release, cancellation, and
   metrics. It always receives both CPU and Vulkan executors.
 - `VulkanRuntime` owns the instance/device/queue context. Public buffers and
@@ -43,7 +48,8 @@ multi-backend API.
 ## Ownership and lifecycle
 
 A task handle is valid only in its originating graph. A graph is structurally
-mutable until finalisation and is intended for one scheduler execution. Tasks
+mutable until finalisation and can be claimed atomically for exactly one
+scheduler execution. Tasks
 contain exactly one CPU callable, ordinary Vulkan dispatch, or sliced Vulkan
 dispatch matching their declared execution resource.
 
@@ -70,7 +76,8 @@ drop under capacity or lock contention. Consumers must use footer counters when
 deciding whether a trace is complete enough for analysis.
 
 When compiled with profiling, `VulkanExecutor` reuses a two-query timestamp
-pool. Support requires a nonzero `timestampValidBits` value on the selected
+pool alongside its other per-executor command resources. Support requires a
+nonzero `timestampValidBits` value on the selected
 compute queue and a positive device timestamp period. Results are availability
 checked, masked to the reported valid-bit width, and converted to nanoseconds;
 host duration and device duration remain separate measurements.
