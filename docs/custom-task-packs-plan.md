@@ -1,5 +1,34 @@
 # Custom Task Packs: Decomposed Implementation Plan
 
+## Implementation status and handoff
+
+**Part A is complete on `Milestone-Custom-Task`.** It is a library-only
+feature: no executable, runner protocol, graph document, or Studio UI accepts a
+custom pack yet. Parts B through D remain planned work.
+
+The completed library contract is the starting point for all later work:
+
+- `atlas/Extension/TaskPack.h` provides `TaskPackManifest`, typed scalar field
+  descriptors, `TaskPackRegistry`, and move-only `CustomTaskInstance`.
+- `atlas/Extension/TaskPackAbi.h` is the version-one pure-C ABI. Its host-owned
+  bounded writers copy metadata, initialization bytes, summaries, and errors
+  while callbacks are active. Do not add a second ABI or pass C++/Vulkan types
+  across this boundary.
+- Inspection already parses the strict current `manifest.json`, validates the
+  directory and referenced files, and computes the canonical content digest
+  without loading native code. Loading is explicit and trusted.
+- CPU packs prepare independent contexts and become ordinary `TaskFunction`s.
+  GPU packs become Atlas-owned ordinary or sliced dispatches; Atlas retains the
+  native module while callbacks or Vulkan resources may still use it.
+- Pipeline creation now validates SPIR-V for Vulkan 1.1 and requires exact
+  reflected storage-buffer bindings and access declarations. All new shader
+  paths must use `ShaderBufferBinding`, not binding numbers alone.
+
+Before changing any of these contracts, read the public header, implementation,
+and its unit/feature tests together. In particular, preserve the explicit trust
+boundary, per-node CPU contexts, bounded output, exact digest identity, and the
+rule that raw Vulkan handles never reach a pack.
+
 ## Recommended breakdown
 
 Use a hybrid decomposition:
@@ -37,7 +66,7 @@ before graph finalisation.
 
 # Part A — Atlas library
 
-## A1. Common task-pack API
+## A1. Common task-pack API — complete
 
 Add an `atlas/Extension` module with:
 
@@ -60,7 +89,7 @@ Add an `atlas/Extension` module with:
 Use a shared internal module-state object so the native library cannot unload
 while a callable, Vulkan resource, or result callback still depends on it.
 
-## A2. Native C ABI
+## A2. Native C ABI — complete
 
 Add a pure-C ABI version 1 header.
 
@@ -79,7 +108,7 @@ Add a pure-C ABI version 1 header.
 Split the callback table into common metadata, CPU callbacks, and GPU callbacks
 rather than using one resource-ambiguous function.
 
-## A3. CPU custom tasks
+## A3. CPU custom tasks — complete
 
 The CPU callback receives validated parameter JSON, the graph seed and stable
 node index, an opaque per-node plugin context, and a bounded output writer for
@@ -97,7 +126,7 @@ Wrap execution in an ordinary `TaskFunction`:
   memory, create threads, hang, or terminate the process. The API documentation
   must describe them as trusted native code.
 
-## A4. GPU custom tasks
+## A4. GPU custom tasks — complete
 
 Keep the first GPU extension within Atlas’s existing storage-buffer compute
 model.
@@ -114,7 +143,7 @@ download.
 Do not expose raw handles or support push constants, uniforms, images, samplers,
 arbitrary descriptor sets, specialization constants, or command recording.
 
-## A5. SPIR-V and buffer-access hardening
+## A5. SPIR-V and buffer-access hardening — complete
 
 Strengthen the existing Vulkan API for all callers:
 
@@ -135,9 +164,32 @@ separate dispatches preserve the algorithm’s semantics.
 
 # Part B — Task-pack format and runner
 
+## Part B handoff and order of work
+
+Part B must consume the completed library API; it must not reimplement native
+loading, manifest parsing, parameter canonicalization, GPU preparation, or
+SPIR-V reflection in `atlas_studio_runner`. The runner owns snapshotting,
+document validation, provenance, and process-facing errors. The recommended
+order is B1, B2 snapshotting, B5 graph document, B3 preflight, B4 built-in
+unification, then the run-stream portion of B5. This keeps every graph path on
+one descriptor/preparation route before the Studio begins using it.
+
+Keep the existing built-in-only graph-v1 and run-stream-v1 behavior until graph
+v2 and stream-v2 replace them atomically. Atlas has no compatibility promise:
+once v2 is complete, remove v1 parsing, schemas, examples, tests, and UI
+branches instead of maintaining dual formats.
+
 ## B1. Pack directory format
 
 Add `atlas-task-pack-v1.schema.json`.
+
+The strict library parser is already the executable manifest contract. Make the
+JSON schema describe that contract exactly, including current root keys,
+platform triples, `.spv` shaders, buffer access values, CPU/GPU task-specific
+fields, and flat scalar fields. Add schema contract tests that compare accepted
+and rejected documents with `TaskPackRegistry::inspectDirectory()`. Do not
+invent nested values, additional descriptor resources, optional backends, or a
+second manifest parser for the runner.
 
 A pack directory contains `manifest.json`, Linux and/or Windows native
 libraries indexed by platform/architecture triple, and manifest-listed `.spv`
@@ -167,6 +219,14 @@ files.
   a graph.
 - Do not implement signing or automatic publisher trust in this version.
 
+The library has already completed direct-directory validation, referenced-file
+hashing, safe-path checks, size/count bounds, and digest identity. The remaining
+Part B work is runner-specific: copy only each selected, inspected directory to
+a runner-private temporary directory; recompute and compare its digest there;
+then call `loadDirectory()` only on that snapshot. Clean up the snapshot after
+the run. Treat a missing platform binary as a pre-execution error, not a CPU
+fallback. Test changed-after-inspection input and a digest mismatch after copy.
+
 ## B3. Runner preflight
 
 Extend `atlas_studio_runner` with repeated `--task-pack <directory>` arguments.
@@ -185,12 +245,29 @@ Pack loading or preparation failure is a pre-execution runner error. CPU
 callback, Vulkan dispatch, policy, cancellation, and device-loss failures
 continue through existing scheduler behavior.
 
+Implementation guide: keep this orchestration in
+`apps/atlas_studio_runner/main.cpp`. Parse and validate the complete graph-v2
+document before scheduling anything; use one `TaskPackRegistry` for the run;
+resolve every `(pack_id, digest, task_id)` exactly; prepare every instance; add
+all prepared instances and dependencies only after preparation succeeds; then
+finalise and execute. Retain every `CustomTaskInstance` through terminal state
+and summary collection. Report loader, trust-input, digest, descriptor, and
+preparation failures as structured runner errors before emitting execution
+records. Do not expose a task-pack argument in `atlas` or `atlas_bench`.
+
 ## B4. Built-in task unification
 
 Represent CPU burn, GPU increment, and vector add as an internal
 `atlas.builtin` descriptor collection. Use the same parameter validation,
 dynamic form metadata, preparation interface, and result handling. Built-ins
 require no installation, digest declaration, native module, or trust prompt.
+
+Implement this as a small internal descriptor/preparation adapter, not as a
+pretend native pack. It must use the same scalar validation, graph-v2 node
+shape, result-summary path, and UI metadata as custom descriptors while keeping
+built-ins free of native loading and trust state. Update the existing hard-coded
+runner kernels and Studio forms in the same change; do not leave two execution
+paths.
 
 ## B5. Graph and run protocols
 
@@ -210,7 +287,28 @@ Replace the Studio run stream v1 with v2:
 - trace event schema v1 remains unchanged because lifecycle semantics do not
   change.
 
+Start with `benchmarks/schema/atlas-studio-graph-v1.schema.json`,
+`benchmarks/schema/atlas-studio-run-v1.schema.json`, runner JSONL emission, and
+the matching `studio/atlas_studio/models/` protocol/document code. Define
+bounded field sizes and an explicit v2 error record before implementation.
+Provenance must contain the exact executed pack ID and digest, not a directory
+path or display version. Add fixtures for built-in-only, CPU-pack, GPU-pack,
+missing-pack, wrong-digest, and incomplete-crash streams before deleting v1.
+
 # Part C — Atlas Studio GUI
+
+## Part C handoff and order of work
+
+Begin only after the runner accepts graph-v2 documents and emits a stable
+stream-v2. The Python process must remain an untrusted-pack *manager* only: it
+may inspect and copy directories, persist trust decisions, and launch the
+runner, but it must never call `loadDirectory()` or import a native pack.
+
+The main integration points are `studio/atlas_studio/models/documents.py`,
+`models/graph.py`, `models/protocol.py`, `services/launch.py`,
+`services/process.py`, and the graph/results views. Extend their tests alongside
+each model/controller boundary rather than making a direct widget-to-process
+shortcut.
 
 ## C1. Pack management
 
@@ -225,12 +323,21 @@ isolation does not restrict files or network, CPU tasks may hang or crash, GPU
 tasks may hang or lose the Vulkan device, and validation does not make hostile
 code safe. A changed digest always requires new trust.
 
+Use a content-addressed per-user directory keyed by the library digest and
+store trust by that digest in `QSettings`. Import must invoke only the safe
+inspection path, reject unsafe inputs before copy, and verify the copied digest.
+Removal must not delete a pack referenced by an active launch.
+
 ## C2. Task palette
 
 Replace Add CPU/Add GPU with a palette grouped into Built-in and Installed
 Packs. Show name, resource, pack/version, description, availability, and trust
 status. Add selected tasks with descriptor defaults. Continue coloring canvas
 nodes by CPU/GPU resource and show task name plus pack identity.
+
+Build palette entries from serialized descriptor metadata rather than parsing
+native manifests in Python. Add descriptor defaults through the graph-model
+transaction API so undo/redo, validation, and save behavior remain coherent.
 
 ## C3. Dynamic node inspector
 
@@ -245,12 +352,20 @@ Retain common ID, name, priority, and resource fields. Show slicing only for
 slice-capable GPU tasks. Commit edits atomically through the existing
 model/controller boundary.
 
+Use the field types and bounds already defined by Part A. Keep arbitrary JSON
+editing out of the normal UI; model validation must reject an invalid edit as a
+single transaction and retain the previous node value.
+
 ## C4. Missing and untrusted packs
 
 Allow structurally valid graphs to open when a pack is absent, untrusted,
 incompatible, or unavailable on the current platform. Preserve unresolved task
 data, mark affected nodes, disable Run, and report exact pack ID/version/digest,
 platform, or trust problems. Saving preserves exact provenance.
+
+Represent unresolved nodes explicitly in the document model. They are valid for
+open/save but invalid for launch; never silently substitute a same-name or
+newer-version pack.
 
 ## C5. Process launch and results
 
@@ -263,41 +378,51 @@ Extend Results with an expandable per-task summary view. Attach
 bounded JSON, and distinguish incomplete native-crash streams from normal task
 failures.
 
+Pass snapshots selected by exact digest only. Keep parser limits on every
+stream-v2 record and render summaries as declared scalar fields plus bounded raw
+JSON, not arbitrary plugin-controlled rich text.
+
 # Part D — Delivery sequence
 
-## Stage 1: contracts and skeleton
+The completed Part A work covers the library contracts, native ABI, CPU/GPU
+preparation, mock-pack coverage, and Vulkan hardening. It intentionally does
+not claim completion of runner schemas, snapshots, built-in unification, or
+Studio integration. Resume delivery with the next stage below.
 
-Add the pack manifest, C ABI, descriptor types, digest logic, mock modules, and
-graph/run v2 schemas. Convert built-ins to descriptors without changing
-execution behavior.
+## Next Stage 1: runner contracts and skeleton
+
+Keep the completed library manifest, C ABI, descriptor types, digest logic, and
+mock modules unchanged. Add graph/run v2 schemas that match those contracts and
+convert built-ins to internal descriptors without changing execution behavior.
 
 Acceptance: built-in-only graph v2 executes with unchanged scheduler results.
 
-## Stage 2: CPU vertical slice
+## Next Stage 2: CPU runner vertical slice
 
-Implement native loading, CPU instances, a sample CPU pack, runner resolution,
-parameter validation, summaries, provenance, and minimal Studio
+Implement snapshot-backed runner resolution of the completed native loading and
+CPU-instance APIs, then add a sample CPU pack, provenance, and minimal Studio
 import/trust/palette/form support.
 
 Acceptance: a user can import, trust, add, run, and inspect a custom CPU task on
 Linux and Windows.
 
-## Stage 3: GPU library hardening
+## Completed Stage 3: GPU library hardening
 
-Add runtime SPIR-V validation/reflection and strict shader/buffer access
-contracts. Update built-ins and Vulkan tests first.
+Runtime SPIR-V validation/reflection and strict shader/buffer access contracts
+are implemented for all callers, with updated built-ins and Vulkan tests.
 
 Acceptance: all existing Vulkan behavior passes with reflected interfaces.
 
-## Stage 4: GPU vertical slice
+## Next Stage 4: GPU runner vertical slice
 
-Add GPU builder callbacks, host-owned resources, readbacks, slicing checks,
-summaries, a sample GPU pack, Lavapipe coverage, and Studio GPU descriptors.
+Connect the completed GPU preparation callbacks, host-owned resources,
+readbacks, slicing checks, and summaries to runner snapshots/protocols. Add a
+sample GPU pack, Lavapipe coverage, and Studio GPU descriptors.
 
 Acceptance: mixed custom CPU/GPU graphs run unsliced and sliced on Lavapipe
 with verified summaries.
 
-## Stage 5: GUI and protocol completion
+## Next Stage 5: GUI and protocol completion
 
 Finish pack management, missing-pack states, trust revocation, result
 presentation, imports, diagnostics, JSONL bounds, and removal of v1 handling
@@ -306,7 +431,7 @@ and hard-coded forms.
 Acceptance: saved graph v2 documents resolve reproducibly by digest and all
 abnormal pack states are actionable without loading code into the GUI.
 
-## Stage 6: robustness and documentation
+## Next Stage 6: robustness and documentation
 
 Run sanitizers, repeated TSan, real Vulkan tests, Studio headless tests, and
 platform loader CI. Update README, User Guide, Development Guide, Task
