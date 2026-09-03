@@ -129,15 +129,18 @@ complete raw directories, computes arbitrary predeclared paired contrasts, and
 generates the final machine-readable result, tables, and SVG plots. This keeps
 research interpretation outside the Atlas library and benchmark executor.
 
-The local studio is a process-boundary PySide6 client. It validates documents,
-creates private managed run directories, and launches `atlas_studio_runner` or
-`atlas_bench` through `QProcess` without C++ bindings or raw Vulkan resources.
-Its Python code follows MVC ownership: UI-independent document and result
-models own canonical state, Qt controllers apply user intent and coordinate
-file/process services, and widgets only emit intent and render detached
-snapshots. The `AtlasProcessService` publishes bounded raw process records;
-the run controller validates each versioned JSONL record before reducing it
-into result state.
+The local studio is a process-boundary PySide6 client. Its GUI thread owns all
+widgets and presentation state. For each run, `AtlasProcessService` creates a
+dedicated `QThread` whose worker prepares managed files, owns `QProcess`,
+launches `atlas_studio_runner` or `atlas_bench`, validates bounded JSONL, and
+loads final benchmark artifacts without C++ bindings or raw Vulkan resources.
+Validated records cross to the GUI in batches, and the run controller reduces
+them into result state in bounded event-loop time slices. Presentation refreshes
+are coalesced, large task and benchmark tables use virtual models, inactive tabs
+are not rebuilt, and snapshots cap live visual data independently of the larger
+retained result bounds. Its Python code otherwise follows MVC ownership:
+UI-independent document and result models own canonical state, Qt controllers
+apply user intent, and widgets only emit intent and render detached snapshots.
 The studio runner emits bounded machine-readable JSONL on stdout and
 diagnostics on stderr; accepted work is drained when a run is terminated.
 Studio benchmark launches opt into a separate bounded progress JSONL stream.

@@ -1,10 +1,9 @@
 import re
-import sys
 from pathlib import Path
 
 import pytest
 
-from atlas_studio.models import default_benchmark
+from atlas_studio.models import default_benchmark, default_graph
 from atlas_studio.services import AtlasProcessService, prepare_benchmark_output_directory
 from atlas_studio.services.streams import BoundedLineBuffer
 
@@ -47,7 +46,7 @@ def test_benchmark_service_passes_timestamped_child_to_atlas_bench(
         "import pathlib,sys\n"
         "arguments = sys.argv[1:]\n"
         "output = pathlib.Path(arguments[arguments.index('--output-dir') + 1])\n"
-        "(output / 'received.txt').write_text(str(output), encoding='utf-8')\n",
+        "(output / 'received.txt').write_text('\\n'.join(arguments), encoding='utf-8')\n",
         encoding="utf-8",
     )
     runner.chmod(0o755)
@@ -62,47 +61,50 @@ def test_benchmark_service_passes_timestamped_child_to_atlas_bench(
     output_directory = service.output_directory
     assert output_directory is not None
     assert output_directory.parent == tmp_path
-    assert (output_directory / "received.txt").read_text(encoding="utf-8") == str(output_directory)
+    arguments = (output_directory / "received.txt").read_text(encoding="utf-8").splitlines()
+    assert arguments[arguments.index("--output-dir") + 1] == str(output_directory)
+    assert arguments[-1] == "--studio-progress-jsonl"
     assert any(str(output_directory) in diagnostic for diagnostic in diagnostics)
-    assert service.process.arguments()[-1] == "--studio-progress-jsonl"
 
 
-def test_process_service_publishes_raw_stdout_and_stderr(qtbot, tmp_path: Path) -> None:
+def test_process_service_decodes_stdout_off_the_gui_thread(qtbot, tmp_path: Path, monkeypatch) -> None:
     script = tmp_path / "fake_runner.py"
     script.write_text(
         "import sys\n"
-        'print(\'{"record_type":"header"}\', flush=True)\n'
+        'print(\'{"record_type":"header","studio_schema_version":1,'
+        '"trace_schema_version":1}\', flush=True)\n'
+        'print(\'{"record_type":"footer","status":"success","accepted_events":0,'
+        '"dropped_events":0,"complete":true}\', flush=True)\n'
         "print('diagnostic text', file=sys.stderr, flush=True)\n",
         encoding="utf-8",
     )
+    monkeypatch.setenv("ATLAS_STUDIO_RUNNER", str(script))
     service = AtlasProcessService()
-    lines: list[bytes] = []
+    batches: list[tuple[dict, ...]] = []
     diagnostics: list[str] = []
-    service.stdout_line.connect(lines.append)
+    service.records_received.connect(batches.append)
     service.diagnostic_received.connect(diagnostics.append)
-    service._prepare("graph")
     with qtbot.waitSignal(service.run_finished, timeout=5_000):
-        service._start(Path(sys.executable), [str(script)])
-    assert lines == [b'{"record_type":"header"}']
+        service.start_graph(default_graph())
+        assert service._worker is not None
+        assert service._worker.thread() is not service.thread()
+    records = [record for batch in batches for record in batch]
+    assert [record["record_type"] for record in records] == ["header", "footer"]
     assert any("diagnostic text" in diagnostic for diagnostic in diagnostics)
 
 
-def test_process_service_enforces_one_active_run(qtbot, tmp_path: Path) -> None:
+def test_process_service_enforces_one_active_run(qtbot, tmp_path: Path, monkeypatch) -> None:
     script = tmp_path / "waiting.py"
-    script.write_text("import time\ntime.sleep(2)\n", encoding="utf-8")
+    script.write_text("import time\ntime.sleep(10)\n", encoding="utf-8")
+    monkeypatch.setenv("ATLAS_BENCH", str(script))
     service = AtlasProcessService()
-    service._prepare("graph")
-    service._start(Path(sys.executable), [str(script)])
-    try:
+    with qtbot.waitSignal(service.run_started, timeout=5_000):
+        service.start_benchmark(default_benchmark(), tmp_path / "results", live_tracing=False)
+    with qtbot.waitSignal(service.run_finished, timeout=5_000):
         assert service.active
-        try:
-            service._prepare("benchmark")
-            raise AssertionError("expected one-run guard")
-        except RuntimeError as error:
-            assert "one Atlas run" in str(error)
-    finally:
-        service.process.kill()
-        service.process.waitForFinished(3_000)
+        with pytest.raises(RuntimeError, match="one Atlas run"):
+            service.start_graph(default_graph())
+        service.stop()
 
 
 def test_bounded_line_buffer_frames_fragments_and_rejects_oversize_lines() -> None:

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -14,16 +15,128 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from ..models.results import ResultsSnapshot
+from ..models.documents import JsonObject
+from ..models.results import BenchmarkRunRow, ResultsSnapshot
 from .formatting import format_nanoseconds
 from .timeline import TimelineView
+
+_ROOT_INDEX = QModelIndex()
+
+
+class _TaskTableModel(QAbstractTableModel):
+    """Virtual table model for the bounded live task projection."""
+
+    HEADERS = (
+        "Task",
+        "Resource",
+        "State",
+        "Execution",
+        "Response",
+        "Ready wait",
+        "Device",
+        "Work units",
+        "Bypasses",
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._rows: tuple[JsonObject, ...] = ()
+
+    def rowCount(self, parent: QModelIndex = _ROOT_INDEX) -> int:
+        return 0 if parent.isValid() else len(self._rows)
+
+    def columnCount(self, parent: QModelIndex = _ROOT_INDEX) -> int:
+        return 0 if parent.isValid() else len(self.HEADERS)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
+        if role != Qt.DisplayRole or not index.isValid():
+            return None
+        task = self._rows[index.row()]
+        completed, total = task.get("completed_work_units", 0), task.get("total_work_units", 0)
+        values = (
+            task.get("name", task.get("node_id", task.get("task_id"))),
+            task.get("resource", "—"),
+            task.get("state", "unknown"),
+            format_nanoseconds(task.get("execution_duration_ns")),
+            format_nanoseconds(task.get("response_duration_ns")),
+            format_nanoseconds(task.get("ready_wait_ns")),
+            format_nanoseconds(task.get("device_execution_duration_ns")),
+            f"{completed}/{total}",
+            task.get("selection_bypass_count", 0),
+        )
+        return str(values[index.column()])
+
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:
+        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
+            return self.HEADERS[section]
+        return None
+
+    def set_rows(self, rows: tuple[JsonObject, ...]) -> None:
+        if rows == self._rows:
+            return
+        self.beginResetModel()
+        self._rows = rows
+        self.endResetModel()
+
+
+class _BenchmarkRunsTableModel(QAbstractTableModel):
+    """Virtual table model that remains cheap for thousands of benchmark runs."""
+
+    HEADERS = (
+        "Case",
+        "Variant",
+        "Execution",
+        "Seed",
+        "Repetition",
+        "Status",
+        "Completion µs",
+        "Throughput",
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._rows: tuple[BenchmarkRunRow, ...] = ()
+
+    def rowCount(self, parent: QModelIndex = _ROOT_INDEX) -> int:
+        return 0 if parent.isValid() else len(self._rows)
+
+    def columnCount(self, parent: QModelIndex = _ROOT_INDEX) -> int:
+        return 0 if parent.isValid() else len(self.HEADERS)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any:
+        if role != Qt.DisplayRole or not index.isValid():
+            return None
+        run = self._rows[index.row()]
+        values = (
+            run.case_id,
+            run.variant_id,
+            run.execution,
+            run.seed,
+            run.repetition,
+            run.status,
+            run.completion_us,
+            run.throughput,
+        )
+        value = values[index.column()]
+        return str(value if value is not None else "—")
+
+    def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.DisplayRole) -> Any:
+        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
+            return self.HEADERS[section]
+        return None
+
+    def set_rows(self, rows: tuple[BenchmarkRunRow, ...]) -> None:
+        if rows == self._rows:
+            return
+        self.beginResetModel()
+        self._rows = rows
+        self.endResetModel()
 
 
 class ResultsView(QWidget):
@@ -34,6 +147,10 @@ class ResultsView(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._updating_selector = False
+        self._snapshot: ResultsSnapshot | None = None
+        self._rendered_records: tuple[JsonObject, ...] = ()
+        self._rendered_diagnostics: tuple[str, ...] = ()
+        self._rendered_comparisons: object = object()
 
         summary = QGroupBox("Run summary")
         summary_form = QFormLayout(summary)
@@ -54,22 +171,12 @@ class ResultsView(QWidget):
         self.run_context.setVisible(False)
         self.run_selector.setVisible(False)
         self.suite_progress.setVisible(False)
+        self.display_limit = QLabel()
+        self.display_limit.setVisible(False)
 
-        self.tasks = QTableWidget(0, 9)
-        self.tasks.setHorizontalHeaderLabels(
-            [
-                "Task",
-                "Resource",
-                "State",
-                "Execution",
-                "Response",
-                "Ready wait",
-                "Device",
-                "Work units",
-                "Bypasses",
-            ]
-        )
-        self.tasks.setSortingEnabled(False)
+        self.tasks = QTableView()
+        self.task_model = _TaskTableModel()
+        self.tasks.setModel(self.task_model)
         self.tasks.horizontalHeader().setStretchLastSection(True)
 
         self.timeline = TimelineView()
@@ -79,10 +186,9 @@ class ResultsView(QWidget):
         self.diagnostics = QPlainTextEdit()
         self.diagnostics.setReadOnly(True)
         self.diagnostics.setMaximumBlockCount(20_000)
-        self.benchmark_runs = QTableWidget(0, 8)
-        self.benchmark_runs.setHorizontalHeaderLabels(
-            ["Case", "Variant", "Execution", "Seed", "Repetition", "Status", "Completion µs", "Throughput"]
-        )
+        self.benchmark_runs = QTableView()
+        self.benchmark_run_model = _BenchmarkRunsTableModel()
+        self.benchmark_runs.setModel(self.benchmark_run_model)
         self.comparisons = QPlainTextEdit()
         self.comparisons.setReadOnly(True)
 
@@ -90,17 +196,18 @@ class ResultsView(QWidget):
         live_split.addWidget(self.tasks)
         live_split.addWidget(self.timeline)
         live_split.setSizes([360, 160])
-        tabs = QTabWidget()
-        tabs.addTab(live_split, "Tasks and timeline")
-        tabs.addTab(self.event_log, "Event stream")
-        tabs.addTab(self.diagnostics, "Diagnostics")
+        self.tabs = QTabWidget()
+        self.tabs.addTab(live_split, "Tasks and timeline")
+        self.tabs.addTab(self.event_log, "Event stream")
+        self.tabs.addTab(self.diagnostics, "Diagnostics")
         benchmark_split = QSplitter(Qt.Vertical)
         benchmark_split.addWidget(self.benchmark_runs)
         benchmark_split.addWidget(self.comparisons)
-        tabs.addTab(benchmark_split, "Benchmark results")
+        self.tabs.addTab(benchmark_split, "Benchmark results")
+        self.tabs.currentChanged.connect(self._render_selected_tab)
         top = QSplitter()
         top.addWidget(summary)
-        top.addWidget(tabs)
+        top.addWidget(self.tabs)
         top.setSizes([260, 900])
         controls = QHBoxLayout()
         controls.addWidget(self.run_context, 1)
@@ -108,6 +215,7 @@ class ResultsView(QWidget):
         controls.addWidget(self.suite_progress)
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
+        layout.addWidget(self.display_limit)
         layout.addWidget(top)
 
     def _selected_run_changed(self, _index: int) -> None:
@@ -115,6 +223,7 @@ class ResultsView(QWidget):
             self.run_selection_requested.emit(self.run_selector.currentData())
 
     def render(self, snapshot: ResultsSnapshot) -> None:
+        self._snapshot = snapshot
         summary = snapshot.summary
         values = {
             "Status": summary.get("status"),
@@ -126,49 +235,6 @@ class ResultsView(QWidget):
         }
         for name, value in values.items():
             self.summary_labels[name].setText(str(value if value is not None else "—"))
-
-        self.tasks.setRowCount(len(snapshot.tasks))
-        for row, task in enumerate(snapshot.tasks):
-            completed, total = task.get("completed_work_units", 0), task.get("total_work_units", 0)
-            task_values = [
-                task.get("name", task.get("node_id", task.get("task_id"))),
-                task.get("resource", "—"),
-                task.get("state", "unknown"),
-                format_nanoseconds(task.get("execution_duration_ns")),
-                format_nanoseconds(task.get("response_duration_ns")),
-                format_nanoseconds(task.get("ready_wait_ns")),
-                format_nanoseconds(task.get("device_execution_duration_ns")),
-                f"{completed}/{total}",
-                task.get("selection_bypass_count", 0),
-            ]
-            for column, value in enumerate(task_values):
-                self.tasks.setItem(row, column, QTableWidgetItem(str(value)))
-
-        self.event_log.setPlainText(
-            "\n".join(json.dumps(record, separators=(",", ":")) for record in snapshot.records)
-        )
-        self.diagnostics.setPlainText("\n".join(snapshot.diagnostics))
-        self.benchmark_runs.setRowCount(len(snapshot.benchmark_runs))
-        for row, run in enumerate(snapshot.benchmark_runs):
-            run_values = [
-                run.case_id,
-                run.variant_id,
-                run.execution,
-                run.seed,
-                run.repetition,
-                run.status,
-                run.completion_us,
-                run.throughput,
-            ]
-            for column, value in enumerate(run_values):
-                self.benchmark_runs.setItem(
-                    row, column, QTableWidgetItem(str(value if value is not None else "—"))
-                )
-        self.comparisons.setPlainText(
-            json.dumps(snapshot.comparisons, indent=2)
-            if snapshot.comparisons
-            else "No comparison summary was produced."
-        )
 
         self.run_context.setVisible(snapshot.benchmark_mode)
         self.run_selector.setVisible(snapshot.benchmark_mode)
@@ -183,4 +249,38 @@ class ResultsView(QWidget):
         index = self.run_selector.findData(snapshot.selected_run_id)
         self.run_selector.setCurrentIndex(index if index >= 0 else 0)
         self._updating_selector = False
-        self.timeline.render_events(snapshot.events)
+        limits = []
+        if len(snapshot.tasks) < snapshot.total_task_count:
+            limits.append(f"first {len(snapshot.tasks):,} of {snapshot.total_task_count:,} tasks")
+        if len(snapshot.events) < snapshot.total_event_count:
+            limits.append(f"latest {len(snapshot.events):,} of {snapshot.total_event_count:,} events")
+        if len(snapshot.records) < snapshot.total_record_count:
+            limits.append(f"latest {len(snapshot.records):,} of {snapshot.total_record_count:,} records")
+        self.display_limit.setText("Live display is limited to " + ", ".join(limits) + ".")
+        self.display_limit.setVisible(bool(limits))
+        self._render_selected_tab(self.tabs.currentIndex())
+
+    def _render_selected_tab(self, index: int) -> None:
+        snapshot = self._snapshot
+        if snapshot is None:
+            return
+        if index == 0:
+            self.task_model.set_rows(snapshot.tasks)
+            self.timeline.render_events(snapshot.events)
+        elif index == 1 and snapshot.records != self._rendered_records:
+            self.event_log.setPlainText(
+                "\n".join(json.dumps(record, separators=(",", ":")) for record in snapshot.records)
+            )
+            self._rendered_records = snapshot.records
+        elif index == 2 and snapshot.diagnostics != self._rendered_diagnostics:
+            self.diagnostics.setPlainText("\n".join(snapshot.diagnostics))
+            self._rendered_diagnostics = snapshot.diagnostics
+        elif index == 3:
+            self.benchmark_run_model.set_rows(snapshot.benchmark_runs)
+            if snapshot.comparisons != self._rendered_comparisons:
+                self.comparisons.setPlainText(
+                    json.dumps(snapshot.comparisons, indent=2)
+                    if snapshot.comparisons
+                    else "No comparison summary was produced."
+                )
+                self._rendered_comparisons = snapshot.comparisons

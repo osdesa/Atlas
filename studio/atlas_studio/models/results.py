@@ -10,6 +10,9 @@ from .documents import JsonObject
 
 MAX_DISPLAY_RECORDS = 100_000
 MAX_RETAINED_RUNS = 20
+MAX_PRESENTED_TASKS = 5_000
+MAX_PRESENTED_EVENTS = 500
+MAX_PRESENTED_RECORDS = 2_000
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,9 @@ class ResultsSnapshot:
     selected_run_id: int | None
     progress_value: int
     progress_maximum: int
+    total_task_count: int
+    total_event_count: int
+    total_record_count: int
 
 
 @dataclass(frozen=True)
@@ -76,7 +82,7 @@ class ResultsSessionModel:
         self.benchmark_runs: list[BenchmarkRunRow] = []
         self.comparisons: JsonObject | None = None
         self.benchmark_mode = False
-        self.current_records: list[JsonObject] = []
+        self.current_records: deque[JsonObject] = deque(maxlen=MAX_DISPLAY_RECORDS)
         self.history: list[RetainedRun] = []
         self.current_context: JsonObject | None = None
         self.live_context = ""
@@ -93,7 +99,7 @@ class ResultsSessionModel:
             self.diagnostics.append(stripped)
 
     def consume(self, record: JsonObject) -> None:
-        """Apply one validated graph or benchmark stream record."""
+        """Take ownership of one validated graph or benchmark stream record."""
         if record.get("record_type") == "header" and record.get("benchmark_stream_version") == 1:
             self._begin_benchmark(record)
             return
@@ -144,13 +150,16 @@ class ResultsSessionModel:
                 (label for label, run_id in choices if run_id == self.selected_run_id), "selected run"
             )
             context = f"Viewing {label}"
+        tasks = list(self.tasks.values())
+        events = list(self.events)
+        records = list(self.records)
         return ResultsSnapshot(
             summary=deepcopy(self.summary),
-            tasks=tuple(deepcopy(list(self.tasks.values()))),
-            events=tuple(deepcopy(list(self.events))),
-            records=tuple(deepcopy(list(self.records))),
+            tasks=tuple(deepcopy(tasks[:MAX_PRESENTED_TASKS])),
+            events=tuple(deepcopy(events[-MAX_PRESENTED_EVENTS:])),
+            records=tuple(deepcopy(records[-MAX_PRESENTED_RECORDS:])),
             diagnostics=tuple(self.diagnostics),
-            benchmark_runs=tuple(deepcopy(self.benchmark_runs)),
+            benchmark_runs=tuple(self.benchmark_runs),
             comparisons=deepcopy(self.comparisons),
             benchmark_mode=self.benchmark_mode,
             run_context=context,
@@ -158,11 +167,14 @@ class ResultsSessionModel:
             selected_run_id=self.selected_run_id,
             progress_value=self.progress_value,
             progress_maximum=self.progress_maximum,
+            total_task_count=len(tasks),
+            total_event_count=len(events),
+            total_record_count=len(records),
         )
 
     def _begin_benchmark(self, record: JsonObject) -> None:
         self.benchmark_mode = True
-        self.current_records = []
+        self.current_records = deque(maxlen=MAX_DISPLAY_RECORDS)
         self.history = []
         self.current_context = None
         self.progress_maximum = int(record.get("total_run_count", 1))
@@ -172,8 +184,8 @@ class ResultsSessionModel:
     def _consume_benchmark(self, record: JsonObject) -> None:
         record_type = record.get("record_type")
         if record_type == "run_started":
-            self.current_context = deepcopy(record)
-            self.current_records = [deepcopy(record)]
+            self.current_context = record
+            self.current_records = deque([record], maxlen=MAX_DISPLAY_RECORDS)
             phase = "warmup" if record.get("warmup") else f"repetition {int(record.get('repetition', 0)) + 1}"
             self.live_context = (
                 f"Run {record.get('run_number')}/{record.get('total_run_count')} · "
@@ -184,9 +196,7 @@ class ResultsSessionModel:
                 self._clear_visual()
             return
         if record_type in {"task", "event", "run_finished"}:
-            if len(self.current_records) >= MAX_DISPLAY_RECORDS:
-                del self.current_records[1 if len(self.current_records) > 1 else 0]
-            self.current_records.append(deepcopy(record))
+            self.current_records.append(record)
             if self.selected_run_id is None:
                 self._apply_visual(record)
             if record_type == "run_finished":
@@ -197,7 +207,7 @@ class ResultsSessionModel:
                         RetainedRun(
                             run_id=int(record["run_id"]),
                             label=self._run_label(record),
-                            records=tuple(deepcopy(self.current_records)),
+                            records=tuple(self.current_records),
                         )
                     )
                     self.history = self.history[-MAX_RETAINED_RUNS:]
@@ -209,15 +219,15 @@ class ResultsSessionModel:
             self.progress_value = int(record.get("completed_run_count", 0))
 
     def _apply_visual(self, record: JsonObject) -> None:
-        self.records.append(deepcopy(record))
+        self.records.append(record)
         record_type = record.get("record_type")
         if record_type == "task":
             task_id = int(record["task_id"])
-            task = deepcopy(record)
+            task = dict(record)
             task.setdefault("state", "unknown")
             self.tasks[task_id] = task
         elif record_type == "event":
-            self.events.append(deepcopy(record))
+            self.events.append(record)
             if "task_id" in record:
                 task_id = int(record["task_id"])
                 task = self.tasks.setdefault(task_id, {"task_id": task_id})
@@ -248,7 +258,7 @@ class ResultsSessionModel:
         for incoming in record.get("tasks", []):
             task_id = int(incoming["task_id"])
             task = self.tasks.setdefault(task_id, {"task_id": task_id})
-            task.update(deepcopy(incoming))
+            task.update(incoming)
 
     def _append_benchmark_row(self, record: JsonObject) -> None:
         self.benchmark_runs.append(

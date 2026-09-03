@@ -59,11 +59,11 @@ python3 tools/atlas_evaluation.py --help
 ```
 
 The optional PySide6 desktop studio is under `studio/`. It launches
-`atlas_studio_runner` and `atlas_bench` as supervised local processes while
-editing explicit graphs and benchmark-suite documents. Python is not required
-by the normal CMake build. Studio benchmark runs can stream the active generated
-task graph into the Tasks and Timeline view while retaining the normal result
-artifacts.
+`atlas_studio_runner` and `atlas_bench` as supervised local processes from a
+dedicated Qt worker thread while the GUI remains on the main thread. Python is
+not required by the normal CMake build. Studio benchmark runs can stream the
+active generated task graph into the Tasks and Timeline view while retaining
+the normal result artifacts.
 
 All Atlas executables fail early and return non-zero when required Vulkan
 initialization or execution is unavailable.

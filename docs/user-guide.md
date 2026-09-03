@@ -89,12 +89,23 @@ python3 -m atlas_studio
 ```
 
 The application launches `atlas_studio_runner` and `atlas_bench` directly and
-supervises one local run at a time. Set `ATLAS_STUDIO_RUNNER` or `ATLAS_BENCH`
-when the executables are outside the normal build tree. The application accepts
-only versioned built-in-kernel documents and does not accept arbitrary C++,
-shaders, task-level live control, or runtime graph mutation. The graph contract
-is `benchmarks/schema/atlas-studio-graph-v1.schema.json`; live runner output is
-the versioned `atlas-studio-run-v1` JSONL stream.
+supervises one local run at a time. Widgets and presentation remain on Qt's GUI
+thread. Each run receives a dedicated worker thread for process launch and
+control, temporary and result-file I/O, stream framing, JSON decoding, and
+schema validation. Validated records cross back in batches and are applied in
+bounded time slices so a complex benchmark or dense live trace does not
+monopolize GUI event handling. Atlas execution remains isolated in the
+supervised C++ child process. Large tables use virtual models, hidden result
+tabs are not rebuilt, and live rendering is limited to the first 5,000 tasks,
+latest 500 timeline events, and latest 2,000 stream records. The Studio shows
+when one of these presentation limits is active; validated result state and
+benchmark artifacts retain their existing bounds. Set `ATLAS_STUDIO_RUNNER` or
+`ATLAS_BENCH` when the executables are outside the normal build tree. The
+application accepts only versioned built-in-kernel documents and does not
+accept arbitrary C++, shaders, task-level live control, or runtime graph
+mutation. The graph contract is
+`benchmarks/schema/atlas-studio-graph-v1.schema.json`; live runner output is the
+versioned `atlas-studio-run-v1` JSONL stream.
 
 Task Studio exposes CPU burn and Vulkan increment/vector-add kernels, task
 metadata, explicit edges, worker capacity, policies, slicing, seeds, Vulkan

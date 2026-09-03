@@ -6,7 +6,12 @@ from atlas_studio.models import (
     default_benchmark,
     validate_document,
 )
-from atlas_studio.models.results import ResultsSessionModel
+from atlas_studio.models.results import (
+    MAX_PRESENTED_EVENTS,
+    MAX_PRESENTED_RECORDS,
+    MAX_PRESENTED_TASKS,
+    ResultsSessionModel,
+)
 from atlas_studio.views import BenchmarkView, GraphView, MainWindow, ResultsView
 
 
@@ -186,6 +191,22 @@ def benchmark_record(run_id: int, record_type: str, **values) -> dict:
     return {"record_type": record_type, **context, **values}
 
 
+def test_results_snapshot_caps_only_the_live_visual_projection() -> None:
+    model = ResultsSessionModel()
+    model.tasks = {task_id: {"task_id": task_id} for task_id in range(MAX_PRESENTED_TASKS + 1)}
+    model.events.extend({"sequence": index} for index in range(MAX_PRESENTED_EVENTS + 1))
+    model.records.extend({"record": index} for index in range(MAX_PRESENTED_RECORDS + 1))
+
+    snapshot = model.snapshot()
+
+    assert len(snapshot.tasks) == MAX_PRESENTED_TASKS
+    assert len(snapshot.events) == MAX_PRESENTED_EVENTS
+    assert len(snapshot.records) == MAX_PRESENTED_RECORDS
+    assert snapshot.total_task_count == MAX_PRESENTED_TASKS + 1
+    assert snapshot.total_event_count == MAX_PRESENTED_EVENTS + 1
+    assert snapshot.total_record_count == MAX_PRESENTED_RECORDS + 1
+
+
 def test_results_controller_retains_last_twenty_benchmark_runs(qtbot) -> None:
     view = ResultsView()
     qtbot.addWidget(view)
@@ -243,9 +264,12 @@ def test_results_controller_retains_last_twenty_benchmark_runs(qtbot) -> None:
             )
         )
 
+    controller.render()
     assert len(model.history) == 20
     assert view.run_selector.count() == 21
-    assert view.benchmark_runs.rowCount() == 22
-    assert view.tasks.item(0, 0).text() == "task-21"
+    view.tabs.setCurrentIndex(3)
+    assert view.benchmark_run_model.rowCount() == 22
+    view.tabs.setCurrentIndex(0)
+    assert view.task_model.data(view.task_model.index(0, 0)) == "task-21"
     view.run_selector.setCurrentIndex(view.run_selector.count() - 1)
-    assert view.tasks.item(0, 0).text() == "task-2"
+    assert view.task_model.data(view.task_model.index(0, 0)) == "task-2"

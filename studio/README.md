@@ -44,12 +44,21 @@ The desktop application uses MVC boundaries:
   result-session state without depending on widgets. Graph, benchmark,
   validation, and JSONL protocol concerns live in separate modules;
 - `atlas_studio/controllers/` applies editing intent, coordinates file and process
-  services, validates live JSONL, and supplies detached presentation state;
+  services, time-slices validated live records, and supplies detached
+  presentation state;
 - `atlas_studio/views/` contains composed form editors, graph/timeline canvases,
   a packaged QSS theme, and widgets that render controller snapshots;
-- `atlas_studio/services/` isolates imports, launch policy, bounded process-line
-  framing, `QProcess`, and filesystem behavior; and
+- `atlas_studio/services/` isolates imports and launch policy. A dedicated
+  per-run `QThread` owns bounded process-line framing, schema validation,
+  `QProcess`, and run-related filesystem I/O so those operations cannot block
+  the GUI thread; and
 - `app.py` is the composition root that wires these layers together.
+
+Live refreshes are coalesced and large tables are virtualized. To keep a dense
+trace responsive, the visual projection shows at most the first 5,000 tasks,
+latest 500 timeline events, and latest 2,000 stream records, with an on-screen
+notice when a limit applies. The bounded model history and final benchmark
+artifacts remain available independently of these display limits.
 
 Run the headless Studio tests with:
 
