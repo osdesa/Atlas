@@ -1,1 +1,0 @@
-"""Packaged Atlas Studio resources."""

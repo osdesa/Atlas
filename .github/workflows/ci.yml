@@ -33,7 +33,16 @@ jobs:
           cache-dependency-path: studio/requirements.lock
 
       - name: Install desktop dependencies
+        if: runner.os != 'Linux'
         run: |
+          python -m pip install --disable-pip-version-check -r studio/requirements.lock
+          python -m pip install --disable-pip-version-check --no-deps -e studio
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libegl1
           python -m pip install --disable-pip-version-check -r studio/requirements.lock
           python -m pip install --disable-pip-version-check --no-deps -e studio
 
@@ -184,7 +193,7 @@ jobs:
       - name: Capture project coverage
         run: |
           lcov --capture --directory build/coverage-linux --output-file build/coverage-linux/coverage.info --ignore-errors mismatch
-          lcov --remove build/coverage-linux/coverage.info '/usr/*' '*/build/_deps/*' '*/tests/*' --output-file build/coverage-linux/coverage.info
+          lcov --ignore-errors unused --remove build/coverage-linux/coverage.info '/usr/*' '*/build/_deps/*' '*/tests/*' --output-file build/coverage-linux/coverage.info
           lcov --summary build/coverage-linux/coverage.info
 
       - name: Upload coverage data

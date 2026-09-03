@@ -93,3 +93,4 @@ __pycache__/
 .DS_Store
 Thumbs.db
 docs/milestone-3-cpu-execution-backend.md
+/studio/build/

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 from pathlib import Path
 
@@ -145,8 +146,12 @@ class AtlasProcessService(QObject):
 
     def _start(self, executable: Path, arguments: list[str]) -> None:
         self.process.setWorkingDirectory(str(ROOT))
-        self.process.setProgram(str(executable))
-        self.process.setArguments(arguments)
+        if executable.suffix.casefold() == ".py":
+            self.process.setProgram(sys.executable)
+            self.process.setArguments([str(executable), *arguments])
+        else:
+            self.process.setProgram(str(executable))
+            self.process.setArguments(arguments)
         self.process.start()
         if not self.process.waitForStarted(3_000):
             raise RuntimeError(self.process.errorString())

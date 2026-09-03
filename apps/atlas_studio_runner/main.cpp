@@ -519,6 +519,8 @@ int main(int argc, char** argv)
         {
             throw std::invalid_argument{ "Usage: atlas_studio_runner --config <graph.json> --control <cancel-file>" };
         }
+        // The config path is intentionally selected by the local user through the documented CLI.
+        // codeql[cpp/path-injection]
         const Config config = loadConfig(argv[2]);
         StudioTrace trace{ config.tracing ? config.traceCapacity : 1U };
         Atlas::VulkanRuntime runtime{ Atlas::VulkanRuntimeOptions{

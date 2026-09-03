@@ -146,6 +146,11 @@ TEST_CASE("Checked benchmark schemas are syntactically valid JSON", "[BENCHMARK]
 
 TEST_CASE("Studio benchmark progress serializes bounded direct lifecycle records", "[BENCHMARK][PROFILING]")
 {
+    if (!Atlas::profilingEnabled)
+    {
+        SKIP("Studio benchmark progress requires profiling");
+    }
+
     Atlas::Benchmark::BaselineSuite suite;
     suite.suiteId = "progress";
     const std::vector<Atlas::Benchmark::TaskDescriptor> descriptors{ { 0U, "cpu-0", Atlas::ExecutionResource::CPU, 5U, 0U, {} } };
