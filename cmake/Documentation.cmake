@@ -113,6 +113,7 @@ function(atlas_add_documentation)
         "${ATLAS_UML_OUTPUT_DIRECTORY}/completion_channel.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/task_completion.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/trace.puml"
+        "${ATLAS_UML_OUTPUT_DIRECTORY}/task_pack.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/synchronous_cpu_executor.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/workerpool_executor.puml"
         "${ATLAS_UML_OUTPUT_DIRECTORY}/vulkan_compute.puml"

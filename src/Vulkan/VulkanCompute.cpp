@@ -26,8 +26,10 @@ namespace Atlas
 
         for (std::size_t index{ 0U }; index < storageBufferBindings.size(); ++index)
         {
-            if (std::find(storageBufferBindings.begin() + static_cast<std::ptrdiff_t>(index + 1U), storageBufferBindings.end(),
-                          storageBufferBindings.at(index)) != storageBufferBindings.end())
+            if (!isValidBufferAccess(storageBufferBindings.at(index).access) ||
+                std::find_if(storageBufferBindings.begin() + static_cast<std::ptrdiff_t>(index + 1U), storageBufferBindings.end(),
+                             [binding = storageBufferBindings.at(index).binding](const ShaderBufferBinding& candidate)
+                             { return candidate.binding == binding; }) != storageBufferBindings.end())
             {
                 return false;
             }
@@ -40,13 +42,13 @@ namespace Atlas
         return implementation == nullptr ? 0U : implementation->byteSize;
     }
 
-    std::span<const std::uint32_t> VulkanComputePipeline::storageBufferBindings() const noexcept
+    std::span<const ShaderBufferBinding> VulkanComputePipeline::storageBufferBindings() const noexcept
     {
         if (implementation == nullptr)
         {
             return {};
         }
-        return implementation->bindingNumbers;
+        return implementation->storageBufferBindings;
     }
 
     const VulkanComputePipeline& VulkanDispatch::pipeline() const noexcept
@@ -81,12 +83,12 @@ namespace Atlas
             throw std::invalid_argument{ "VulkanDispatch dimensions exceed device limits" };
         }
 
-        if (buffers.size() != pipelineResource->bindingNumbers.size())
+        if (buffers.size() != pipelineResource->storageBufferBindings.size())
         {
             throw std::invalid_argument{ "VulkanDispatch must bind every pipeline storage buffer exactly once" };
         }
 
-        std::vector<std::uint32_t> suppliedBindings;
+        std::vector<ShaderBufferBinding> suppliedBindings;
         suppliedBindings.reserve(buffers.size());
         for (const BufferBinding& binding : buffers)
         {
@@ -99,17 +101,21 @@ namespace Atlas
             {
                 throw std::invalid_argument{ "VulkanDispatch resources belong to different Vulkan runtimes" };
             }
-            suppliedBindings.emplace_back(binding.binding);
+            suppliedBindings.emplace_back(ShaderBufferBinding{ binding.binding, binding.access });
         }
 
-        std::sort(suppliedBindings.begin(), suppliedBindings.end());
-        if (std::adjacent_find(suppliedBindings.begin(), suppliedBindings.end()) != suppliedBindings.end() ||
-            suppliedBindings != pipelineResource->bindingNumbers)
+        const auto byBinding = [](const ShaderBufferBinding& left, const ShaderBufferBinding& right)
+        { return left.binding < right.binding; };
+        std::sort(suppliedBindings.begin(), suppliedBindings.end(), byBinding);
+        if (std::adjacent_find(suppliedBindings.begin(), suppliedBindings.end(),
+                               [](const ShaderBufferBinding& left, const ShaderBufferBinding& right)
+                               { return left.binding == right.binding; }) != suppliedBindings.end() ||
+            suppliedBindings != pipelineResource->storageBufferBindings)
         {
-            throw std::invalid_argument{ "VulkanDispatch bindings do not match the compute pipeline" };
+            throw std::invalid_argument{ "VulkanDispatch bindings or access do not match the reflected compute pipeline" };
         }
 
-        implementation = std::make_shared<Impl>(Impl{ std::move(pipeline), std::move(buffers) });
+        implementation = std::make_shared<Impl>(Impl{ std::move(pipeline), std::move(buffers), {} });
     }
 
     VulkanDispatch::VulkanDispatch(std::shared_ptr<Impl> description, const DispatchOffset offset, const DispatchDimensions dimensions,

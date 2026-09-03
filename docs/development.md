@@ -20,6 +20,10 @@ Atlas separates immutable graph work, backend execution, and scheduler control:
   metrics. It always receives both CPU and Vulkan executors.
 - `VulkanRuntime` owns the instance/device/queue context. Public buffers and
   pipelines retain that context without exposing raw owning handles.
+- `TaskPackRegistry` validates and hashes pack directories without loading code,
+  then loads only explicitly requested host binaries through the version-one C
+  ABI. `CustomTaskInstance` prepares exactly one existing Atlas payload and
+  retains native module/context state through execution and summary collection.
 - `TraceSession` timestamps fixed-size events from scheduler and executor
   producers. `BoundedTraceBuffer` provides best-effort non-blocking publication,
   while `TraceJsonlWriter` drains records on its own thread.
@@ -38,6 +42,8 @@ multi-backend API.
 - `include/atlas/Scheduler/`: scheduler and policy APIs.
 - `include/atlas/Vulkan/`: opaque resource and runtime APIs.
 - `include/atlas/Profiling/`: trace event, buffer, session, and JSONL writer APIs.
+- `include/atlas/Extension/`: task-pack descriptors, registry/instance APIs, and
+  the pure-C native ABI.
 - `src/`: implementations matching those public modules.
 - `apps/atlas/`: current mixed-graph executable and shader.
 - `apps/atlas_bench/`: suite parser, runners, analysis, and result writers.
@@ -69,6 +75,22 @@ work, and joins owned threads.
 Vulkan buffers and pipelines belong to one runtime context. Cross-context
 dispatch resources are rejected before queue submission. Destruction order is
 private RAII state; a resource or `VulkanExecutor` retains the context it needs.
+
+Task packs are trusted in-process native code. Inspection rejects unsafe paths,
+symlinks, special files, duplicate identities, invalid typed fields, excessive
+sizes, and unsupported platform triples without loading a library. Loading
+cross-checks exact structure sizes, ABI version, callbacks, task IDs, and
+resources against the manifest. Each prepared node owns an independent plugin
+context. Shared module state outlives every CPU callable, anchored custom GPU
+dispatch, and result callback that uses it. A plugin must catch its exceptions;
+a native crash, hang, process exit, or exception escaping the C ABI is outside
+the recoverable scheduler contract.
+
+SPIRV-Tools validates every compute module against Vulkan 1.1 before Vulkan
+object creation. The strict reflector accepts exactly set-zero, non-arrayed
+storage-buffer declarations for the selected compute entry point and rejects
+push constants, specialization constants, images, samplers, other descriptor
+sets/types, duplicate bindings, and declared/reflected access differences.
 
 Tracing is an optional borrowed association: the writer/session must outlive
 the scheduler and all accepted executor work. The completion channel carries

@@ -36,6 +36,10 @@ is used directly. When the selected directory already contains files, the
 Studio preserves them and writes the run to a new
 `testRun-YYYYMMDD-HHMMSS` child directory.
 
+The Atlas C++ library has a trusted native task-pack API, but the current Studio
+and `atlas_studio_runner` remain restricted to built-in kernels. They do not
+import, trust, load, or pass custom packs yet.
+
 ## Architecture
 
 The desktop application uses MVC boundaries:

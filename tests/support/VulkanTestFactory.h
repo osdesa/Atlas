@@ -18,7 +18,7 @@ namespace Atlas::Testing
             std::vector<VulkanBuffer> buffers;
         };
 
-        static Resources resources(std::vector<std::uint32_t> bindings = { 0U })
+        static Resources resources(std::vector<ShaderBufferBinding> bindings = { { 0U, BufferAccess::ReadWrite } })
         {
             std::shared_ptr<Detail::VulkanContext> context{ createContext() };
             std::vector<VulkanBuffer> buffers;
@@ -30,7 +30,7 @@ namespace Atlas::Testing
 
             auto pipelineImplementation{ std::make_shared<VulkanComputePipeline::Impl>() };
             pipelineImplementation->context = std::move(context);
-            pipelineImplementation->bindingNumbers = std::move(bindings);
+            pipelineImplementation->storageBufferBindings = std::move(bindings);
             return Resources{ VulkanComputePipeline{ std::move(pipelineImplementation) }, std::move(buffers) };
         }
 

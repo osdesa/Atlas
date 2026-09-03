@@ -32,6 +32,8 @@ Atlas requires:
 - CMake 3.24 or newer;
 - a C++20 compiler;
 - Threads and Vulkan development headers/loader;
+- SPIRV-Tools headers, library, and CMake package configuration for mandatory
+  Vulkan 1.1 runtime shader validation;
 - a Vulkan 1.1-capable physical device with a compute queue and dispatch-base
   support required by Atlas;
 - `glslc` and `spirv-val` for checked shader compilation;
@@ -70,6 +72,66 @@ Profiling is compiled in by default. Configure with
 clock reads, trace publication, or Vulkan timestamp queries. Such a build still
 provides the trace API, but `TraceSession::emit` is inert and `atlas --trace`
 fails with an explicit diagnostic.
+
+## C++ task-pack extension API
+
+The Atlas library exposes `atlas/Extension/TaskPack.h` for explicitly trusted
+local task packs. This is currently a library API only: `atlas`,
+`atlas_studio_runner`, `atlas_bench`, and Atlas Studio do not accept pack
+arguments or custom-pack graph documents yet.
+
+`TaskPackRegistry::inspectDirectory()` performs bounded manifest, path, regular-
+file, platform, typed-field, and canonical SHA-256 validation without loading
+native code. `loadDirectory()` is the explicit trust boundary and loads the one
+library matching the current `linux`/`windows` and `x86_64`/`aarch64` triple.
+The native task metadata and resource types must exactly match the manifest and
+the complete digest is executable identity; a display version is not.
+
+The current library manifest is strict JSON with these required root fields:
+`schema_version: 1`, `abi_version: 1`, `pack_id`, `version`, `platforms`,
+`shaders`, and `tasks`; `name` and `description` are optional. Platform entries
+contain `platform`, `architecture`, and a safe relative `library`. Shader
+entries contain `shader_id`, a relative `.spv` `path`, `entry_point`, and
+non-empty `storage_buffers` entries with unsigned `binding` and `access` equal
+to `read_only`, `write_only`, or `read_write`. CPU and GPU task entries contain
+`task_id`, `resource`, `parameters`, and `summaries`. GPU tasks additionally
+declare `shader_id`, `result_bindings`, and optional `supports_slicing`.
+Unknown fields, absolute/traversing paths, backslashes, symlinks, special files,
+duplicates, and excessive file or output sizes are rejected.
+
+Parameter and summary fields are flat scalars. Supported `type` values are
+`boolean`, `integer`, `unsigned_integer`, finite `number`, bounded `string`, and
+`enum`. Fields use `id`, optional display `name`/`description`, `required`, and
+`default`; the applicable `minimum`, `maximum`, or enum `values` complete the
+contract. String fields require a positive `max_length` no greater than 4 KiB,
+and parameter JSON is limited to 64 KiB. Nested objects and arrays are not
+accepted.
+
+`createTask()` validates and canonicalizes parameters before calling native
+preparation. `CustomTaskInstance::addToGraph()` inserts exactly one prepared
+ordinary CPU callable, Vulkan dispatch, or sliced Vulkan dispatch.
+`collectSummary()` is available only after terminal execution and returns a
+bounded, schema-validated scalar result. Keep the instance alive through
+summary collection and keep its graph alive longer than the instance.
+
+The pure-C ABI is in `atlas/Extension/TaskPackAbi.h`. It uses fixed-width
+structures, explicit structure sizes, opaque per-node contexts, borrowed input
+views, status codes, and bounded host writers. Metadata IDs, GPU initialization,
+summaries, and diagnostics are copied into host storage while their callbacks
+are active. Plugins must catch all exceptions. They are trusted native code
+with the user's full process, filesystem, and network privileges; they may
+allocate, create threads, hang, crash, or terminate the process. Inspection and
+SPIR-V validation do not sandbox or make hostile code safe.
+
+Custom GPU tasks remain inside Atlas's storage-buffer compute model. Atlas owns
+shader modules, reflected pipelines, allocations, upload/download, descriptors,
+dispatch/slicing, synchronization, timestamps, and device-loss handling. Raw
+Vulkan handles, push constants, uniforms, images, samplers, descriptor arrays or
+sets other than zero, specialization constants, and command recording are not
+available. Preparation is limited to 32 storage buffers and 256 MiB in aggregate
+buffer allocation and initialization. Every shader is validated by SPIRV-Tools
+for Vulkan 1.1 and its reflected binding access must exactly match both the
+manifest and dispatch.
 
 ## Running Atlas
 
@@ -391,5 +453,8 @@ python3 tools/atlas_evaluation.py verify \
   inconsistent JSON field named in the error.
 - **Unsupported workload or parameters:** use only the policies, dependency
   shapes, dimensions, and execution modes documented above.
+- **Rejected task pack:** inspect the reported manifest/path/ABI/platform,
+  parameter, summary, or reflected SPIR-V mismatch. Load only a digest whose
+  native publisher and contents you explicitly trust.
 - **Existing output:** choose an empty directory or explicitly pass
   `--overwrite`.

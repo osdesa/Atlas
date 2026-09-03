@@ -442,8 +442,11 @@ namespace
               left{ runtimeContext.createBuffer(checkedBytes(config.elementCount, sizeof(float), "vector_add buffer")) },
               right{ runtimeContext.createBuffer(checkedBytes(config.elementCount, sizeof(float), "vector_add buffer")) },
               output{ runtimeContext.createBuffer(checkedBytes(config.elementCount, sizeof(float), "vector_add buffer")) },
-              pipeline{ runtimeContext.createComputePipeline(
-                  Atlas::ComputeShader{ shaderWords(ATLAS_STUDIO_VECTOR_ADD_SPIRV_PATH), "main", { 0U, 1U, 2U } }) },
+              pipeline{ runtimeContext.createComputePipeline(Atlas::ComputeShader{ shaderWords(ATLAS_STUDIO_VECTOR_ADD_SPIRV_PATH),
+                                                                                   "main",
+                                                                                   { { 0U, Atlas::BufferAccess::ReadOnly },
+                                                                                     { 1U, Atlas::BufferAccess::ReadOnly },
+                                                                                     { 2U, Atlas::BufferAccess::WriteOnly } } }) },
               dispatch{ pipeline,
                         { { 0U, left, Atlas::BufferAccess::ReadOnly },
                           { 1U, right, Atlas::BufferAccess::ReadOnly },
@@ -549,7 +552,9 @@ int main(int argc, char** argv)
             else if (node.kernel == "gpu_increment")
             {
                 const Atlas::VulkanComputePipeline pipeline{ runtime.createComputePipeline(
-                    Atlas::ComputeShader{ shaderWords(ATLAS_STUDIO_BENCHMARK_SPIRV_PATH), "main", { 0U, 1U } }) };
+                    Atlas::ComputeShader{ shaderWords(ATLAS_STUDIO_BENCHMARK_SPIRV_PATH),
+                                          "main",
+                                          { { 0U, Atlas::BufferAccess::ReadOnly }, { 1U, Atlas::BufferAccess::ReadWrite } } }) };
                 const Atlas::VulkanBuffer dimensionsBuffer{ runtime.createBuffer(4U * sizeof(std::uint32_t)) };
                 const std::uint64_t count = checkedProduct(node.workgroups, node.id + ".workgroups");
                 const Atlas::VulkanBuffer output{ runtime.createBuffer(

@@ -10,10 +10,12 @@
 
 TEST_CASE("ComputeShader validates SPIR-V identity and unique storage bindings", "[UNIT]")
 {
-    Atlas::ComputeShader shader{ { 0x07230203U, 0x00010300U, 0U, 1U, 0U }, "main", { 0U, 1U } };
+    Atlas::ComputeShader shader{ { 0x07230203U, 0x00010300U, 0U, 1U, 0U },
+                                 "main",
+                                 { { 0U, Atlas::BufferAccess::ReadOnly }, { 1U, Atlas::BufferAccess::WriteOnly } } };
     REQUIRE(shader.isValid());
 
-    shader.storageBufferBindings.emplace_back(1U);
+    shader.storageBufferBindings.emplace_back(Atlas::ShaderBufferBinding{ 1U, Atlas::BufferAccess::ReadOnly });
     REQUIRE_FALSE(shader.isValid());
     shader.storageBufferBindings.pop_back();
     shader.spirv.front() = 0U;
@@ -31,8 +33,12 @@ TEST_CASE("ComputeShader validates SPIR-V identity and unique storage bindings",
 
 TEST_CASE("VulkanDispatch rejects invalid descriptions without a Vulkan device", "[UNIT]")
 {
-    const Atlas::Testing::VulkanTestFactory::Resources first{ Atlas::Testing::VulkanTestFactory::resources({ 0U, 1U }) };
+    const Atlas::Testing::VulkanTestFactory::Resources first{ Atlas::Testing::VulkanTestFactory::resources(
+        { { 0U, Atlas::BufferAccess::ReadOnly }, { 1U, Atlas::BufferAccess::WriteOnly } }) };
     const Atlas::Testing::VulkanTestFactory::Resources second{ Atlas::Testing::VulkanTestFactory::resources() };
+
+    REQUIRE(first.pipeline.storageBufferBindings().size() == 2U);
+    REQUIRE(first.pipeline.storageBufferBindings().front().access == Atlas::BufferAccess::ReadOnly);
 
     REQUIRE_THROWS_AS((Atlas::VulkanDispatch{ {}, {}, { 1U, 1U, 1U } }), std::invalid_argument);
     REQUIRE_THROWS_AS((Atlas::VulkanDispatch{ first.pipeline,
@@ -43,6 +49,11 @@ TEST_CASE("VulkanDispatch rejects invalid descriptions without a Vulkan device",
     REQUIRE_THROWS_AS((Atlas::VulkanDispatch{ first.pipeline,
                                               { { 0U, first.buffers.at(0U), Atlas::BufferAccess::ReadOnly },
                                                 { 1U, second.buffers.front(), Atlas::BufferAccess::WriteOnly } },
+                                              { 1U, 1U, 1U } }),
+                      std::invalid_argument);
+    REQUIRE_THROWS_AS((Atlas::VulkanDispatch{ first.pipeline,
+                                              { { 0U, first.buffers.at(0U), Atlas::BufferAccess::ReadOnly },
+                                                { 1U, first.buffers.at(1U), Atlas::BufferAccess::ReadOnly } },
                                               { 1U, 1U, 1U } }),
                       std::invalid_argument);
     // This deliberately constructs a value that the public validation boundary must reject.

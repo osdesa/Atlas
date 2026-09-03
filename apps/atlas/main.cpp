@@ -72,7 +72,11 @@ int main(const int argumentCount, char** arguments)
         const Atlas::VulkanBuffer rightBuffer{ runtime.createBuffer(elementCount * sizeof(float)) };
         const Atlas::VulkanBuffer outputBuffer{ runtime.createBuffer(elementCount * sizeof(float)) };
         const Atlas::VulkanComputePipeline pipeline{ runtime.createComputePipeline(
-            Atlas::ComputeShader{ readShader(), "main", { 0U, 1U, 2U } }) };
+            Atlas::ComputeShader{ readShader(),
+                                  "main",
+                                  { { 0U, Atlas::BufferAccess::ReadOnly },
+                                    { 1U, Atlas::BufferAccess::ReadOnly },
+                                    { 2U, Atlas::BufferAccess::WriteOnly } } }) };
         const Atlas::VulkanDispatch logicalDispatch{ pipeline,
                                                      { { 0U, leftBuffer, Atlas::BufferAccess::ReadOnly },
                                                        { 1U, rightBuffer, Atlas::BufferAccess::ReadOnly },

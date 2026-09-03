@@ -34,6 +34,7 @@ include(Sanitizers)
 include(StaticAnalysis)
 
 find_package(Vulkan REQUIRED)
+find_package(SPIRV-Tools REQUIRED CONFIG)
 find_package(Threads REQUIRED)
 
 include(FetchContent)
@@ -100,7 +101,11 @@ target_compile_definitions(
     PUBLIC ATLAS_PROFILING_ENABLED=$<IF:$<BOOL:${ATLAS_ENABLE_PROFILING}>,1,0>
 )
 
-target_link_libraries(atlas_library PUBLIC Vulkan::Vulkan PRIVATE Threads::Threads)
+target_link_libraries(
+    atlas_library
+    PUBLIC Vulkan::Vulkan
+    PRIVATE SPIRV-Tools Threads::Threads nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS}
+)
 
 atlas_set_project_warnings(atlas_library)
 atlas_enable_sanitizers(atlas_library)

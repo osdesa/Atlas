@@ -11,6 +11,10 @@ scheduling, cancellation, FIFO/round-robin/static-priority policies, per-task
 wait/response measurements, and reproducible comparison-suite benchmarking.
 It also provides bounded execution tracing, JSONL validation/summary/timeline
 tooling, and capability-checked Vulkan device-duration measurements.
+The C++ library can also inspect and explicitly load trusted native task packs,
+prepare their CPU callbacks or declarative storage-buffer GPU work as existing
+Atlas payloads, and collect bounded typed summaries. The Studio runner remains
+built-in-only at the current application boundary.
 Canonical physical Intel and Lavapipe evaluation supports FIFO and
 quantum-one round-robin as transparent defaults, rejects static priority as a
 general default, and finds cooperative slicing costly enough to require an
@@ -27,7 +31,8 @@ and [AGENTS.md](AGENTS.md).
 ## Build and test
 
 Requirements include CMake 3.24+, C++20, Threads, Vulkan 1.1 development files
-and a usable compute device, `glslc`, and `spirv-val`.
+and a usable compute device, `glslc`, `spirv-val`, and the SPIRV-Tools
+development library used for mandatory runtime shader validation.
 
 ```bash
 cmake -S . -B build

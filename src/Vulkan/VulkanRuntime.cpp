@@ -2,6 +2,7 @@
 
 /** @file VulkanRuntime.cpp @brief Implements compute-only Vulkan runtime and persistent resource ownership. */
 
+#include "SpirvReflection.h"
 #include "VulkanInternal.h"
 #include "atlas/Vulkan/VulkanError.h"
 
@@ -589,27 +590,23 @@ namespace Atlas
     VulkanComputePipeline VulkanRuntime::createComputePipeline(const ComputeShader& shader) const
     {
         implementation->context->requireDeviceAvailable("create Vulkan compute pipeline");
-        if (!shader.isValid())
-        {
-            throw std::invalid_argument{ "ComputeShader is empty, malformed, or has invalid storage-buffer bindings" };
-        }
-        if (shader.storageBufferBindings.size() > implementation->context->properties.limits.maxPerStageDescriptorStorageBuffers ||
-            shader.storageBufferBindings.size() > implementation->context->properties.limits.maxDescriptorSetStorageBuffers)
+        const std::vector<ShaderBufferBinding> reflectedBindings{ Detail::validateAndReflectComputeShader(shader) };
+        if (reflectedBindings.size() > implementation->context->properties.limits.maxPerStageDescriptorStorageBuffers ||
+            reflectedBindings.size() > implementation->context->properties.limits.maxDescriptorSetStorageBuffers)
         {
             throw std::invalid_argument{ "ComputeShader storage-buffer count exceeds device limits" };
         }
 
         auto resource{ std::make_shared<VulkanComputePipeline::Impl>() };
         resource->context = implementation->context;
-        resource->bindingNumbers = shader.storageBufferBindings;
-        std::sort(resource->bindingNumbers.begin(), resource->bindingNumbers.end());
+        resource->storageBufferBindings = reflectedBindings;
 
         std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
-        layoutBindings.reserve(resource->bindingNumbers.size());
-        for (const std::uint32_t binding : resource->bindingNumbers)
+        layoutBindings.reserve(resource->storageBufferBindings.size());
+        for (const ShaderBufferBinding binding : resource->storageBufferBindings)
         {
-            layoutBindings.emplace_back(
-                VkDescriptorSetLayoutBinding{ binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1U, VK_SHADER_STAGE_COMPUTE_BIT, nullptr });
+            layoutBindings.emplace_back(VkDescriptorSetLayoutBinding{ binding.binding, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1U,
+                                                                      VK_SHADER_STAGE_COMPUTE_BIT, nullptr });
         }
 
         VkShaderModule shaderModule{ VK_NULL_HANDLE };

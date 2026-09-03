@@ -40,6 +40,21 @@ namespace Atlas
 
     /**
      * @ingroup vulkan
+     * @brief Declares one storage-buffer binding expected by a compute shader.
+     */
+    struct ShaderBufferBinding
+    {
+        /// @brief Descriptor binding number in set zero.
+        std::uint32_t binding{ 0U };
+        /// @brief Shader-declared access for the complete storage buffer.
+        BufferAccess access{ BufferAccess::ReadOnly };
+
+        /// @brief Compares the descriptor binding and access declaration exactly.
+        friend bool operator==(const ShaderBufferBinding&, const ShaderBufferBinding&) noexcept = default;
+    };
+
+    /**
+     * @ingroup vulkan
      * @brief Reports whether @p access is a supported enumerator.
      */
     constexpr bool isValidBufferAccess(const BufferAccess access) noexcept
@@ -99,10 +114,10 @@ namespace Atlas
         std::vector<std::uint32_t> spirv;
         /// @brief Compute entry point created from the module.
         std::string entryPoint{ "main" };
-        /// @brief Unique descriptor bindings expected in set zero.
-        std::vector<std::uint32_t> storageBufferBindings;
+        /// @brief Unique storage-buffer bindings and access expected in set zero.
+        std::vector<ShaderBufferBinding> storageBufferBindings;
 
-        /// @brief Validates a complete SPIR-V header, entry point, and binding uniqueness.
+        /// @brief Validates the declaration shape before runtime SPIR-V validation and reflection.
         bool isValid() const noexcept;
     };
 
@@ -162,8 +177,8 @@ namespace Atlas
             return implementation != nullptr;
         }
 
-        /// @brief Returns the sorted storage-buffer bindings required by this pipeline.
-        std::span<const std::uint32_t> storageBufferBindings() const noexcept;
+        /// @brief Returns the sorted, reflected storage-buffer interface required by this pipeline.
+        std::span<const ShaderBufferBinding> storageBufferBindings() const noexcept;
 
       private:
         /// @brief Private implementation containing pipeline and descriptor handles.

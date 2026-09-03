@@ -165,6 +165,14 @@ scheduling policy or an invalid selected index is a policy error. Both stop new
 submissions and drain accepted work. Useful duration and progress recorded
 before a later failure are retained.
 
+A custom CPU callback that returns the ABI error status becomes an ordinary C++
+task exception and follows the same `TaskFailed` fail-stop path. Custom GPU work
+is already an ordinary or sliced `VulkanDispatch` by finalisation, so its
+completion, device-loss, progress, and cancellation behavior is unchanged.
+Pack inspection, loading, parameter validation, and preparation happen before
+graph insertion and are not task lifecycle states. Native crashes, hangs, and
+exceptions escaping the C ABI are unrecoverable process failures.
+
 `VK_ERROR_DEVICE_LOST` is always an executor infrastructure failure, including
 when a CPU callable or Vulkan worker reports it through an attributed task
 completion. That task enters `Failure`, its dependants remain blocked, the
