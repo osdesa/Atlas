@@ -73,6 +73,55 @@ fails with an explicit diagnostic.
 
 ## Running Atlas
 
+### Local Atlas Studio
+
+The optional PySide6 desktop studio edits explicit DAGs and the complete
+benchmark-suite input contract. Build Atlas first, then install and launch the
+source-based application:
+
+```bash
+cd studio
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -r requirements.lock
+python3 -m pip install --no-deps -e .
+python3 -m atlas_studio
+```
+
+The application launches `atlas_studio_runner` and `atlas_bench` directly and
+supervises one local run at a time. Set `ATLAS_STUDIO_RUNNER` or `ATLAS_BENCH`
+when the executables are outside the normal build tree. The application accepts
+only versioned built-in-kernel documents and does not accept arbitrary C++,
+shaders, task-level live control, or runtime graph mutation. The graph contract
+is `benchmarks/schema/atlas-studio-graph-v1.schema.json`; live runner output is
+the versioned `atlas-studio-run-v1` JSONL stream.
+
+Task Studio exposes CPU burn and Vulkan increment/vector-add kernels, task
+metadata, explicit edges, worker capacity, policies, slicing, seeds, Vulkan
+validation, and trace settings. Benchmark Studio provides structured controls
+and synchronized JSON for every field in the existing
+`atlas-baseline-suite-v1` contract, optional environment metadata, and a new or
+empty output directory. If the selected benchmark directory already contains
+files, the Studio preserves them and creates a `testRun-YYYYMMDD-HHMMSS` child
+directory for the new run. Results show live task state, timelines, events,
+diagnostics, final measurements, and imported versioned traces or benchmark
+artifacts.
+
+Structured edits are committed atomically: an edit that would create an
+invalid graph or suite is rejected and the last valid value is restored. Save,
+Validate, and Run apply only to the Task Graph and Benchmarks workspaces and
+are disabled while Results is selected. Live machine-readable runner records
+are schema-checked before they are displayed. Malformed, oversized, mixed, or
+incomplete streams fail the affected run and are reported in Diagnostics;
+imported headered JSONL streams likewise require one terminal completion footer.
+
+Studio enables live benchmark task tracing by default. Tasks and Timeline show
+the active warmup or measured execution and retain the latest 20 measured runs
+in a selector; warmups are displayed live but are not retained. This
+instrumentation adds observer overhead, so clear **Show live benchmark tasks**
+for a timing-focused GUI run. The aggregate result files remain the
+authoritative output in either mode.
+
 ### `atlas`
 
 `atlas` runs the current representative workflow: a CPU preparation task,
@@ -130,10 +179,15 @@ concurrent producers need not arrive in sequence order.
 | `--environment-file` | Optional | Path to strict environment JSON; absent by default | Adds user-supplied machine metadata | `--environment-file host.json` |
 | `--validate-only` | Optional | Flag; off by default | Validates JSON without executing or writing results | `--validate-only` |
 | `--overwrite` | Optional | Flag; off by default | Permits replacing existing result files | `--overwrite` |
+| `--studio-progress-jsonl` | Optional | Flag; off by default | Emits the version-one Studio benchmark progress stream on stdout; requires profiling | `--studio-progress-jsonl` |
 | `--help` | Optional | Flag | Prints usage and exits | `--help` |
 
 Unknown, repeated, or inconsistent arguments are errors. Suites are the only
-supported benchmark input.
+supported benchmark input. `--studio-progress-jsonl` is invalid with
+`--validate-only`. In progress mode stdout is machine-readable JSONL and stderr
+is reserved for diagnostics; without it, the existing human-readable completion
+message is unchanged. The checked stream contract is
+`benchmarks/schema/atlas-studio-benchmark-progress-v1.schema.json`.
 
 ## Benchmark suite format
 

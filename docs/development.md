@@ -41,6 +41,8 @@ multi-backend API.
 - `src/`: implementations matching those public modules.
 - `apps/atlas/`: current mixed-graph executable and shader.
 - `apps/atlas_bench/`: suite parser, runners, analysis, and result writers.
+- `apps/atlas_studio_runner/`: strict built-in-kernel graph runner and JSONL protocol.
+- `studio/`: optional PySide6 desktop application, models, and headless tests.
 - `benchmarks/manifests/`: canonical and smoke suite definitions.
 - `benchmarks/schema/`: current suite and output schemas.
 - `tests/unit/`, `tests/feature/`, `tests/benchmark/`: behavioral tests.
@@ -126,6 +128,22 @@ v1 and result v2 records. The standard-library Python tool
 complete raw directories, computes arbitrary predeclared paired contrasts, and
 generates the final machine-readable result, tables, and SVG plots. This keeps
 research interpretation outside the Atlas library and benchmark executor.
+
+The local studio is a process-boundary PySide6 client. It validates documents,
+creates private managed run directories, and launches `atlas_studio_runner` or
+`atlas_bench` through `QProcess` without C++ bindings or raw Vulkan resources.
+Its Python code follows MVC ownership: UI-independent document and result
+models own canonical state, Qt controllers apply user intent and coordinate
+file/process services, and widgets only emit intent and render detached
+snapshots. The `AtlasProcessService` publishes bounded raw process records;
+the run controller validates each versioned JSONL record before reducing it
+into result state.
+The studio runner emits bounded machine-readable JSONL on stdout and
+diagnostics on stderr; accepted work is drained when a run is terminated.
+Studio benchmark launches opt into a separate bounded progress JSONL stream.
+Scheduled variants reuse `TraceSession`; direct variants emit equivalent
+coordinator transitions and share executor tracing. Ordinary benchmark runs do
+not attach this observer, preserving the canonical command-line path.
 
 The published collection used clean source revision `49da375e5670`, a new
 output directory per environment, an explicit `VK_DRIVER_FILES` selection

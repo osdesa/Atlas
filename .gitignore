@@ -66,12 +66,17 @@ rules.ninja
 
 # Local package-manager output
 /vcpkg_installed/
+/studio/.venv/
+/studio/web/node_modules/
+/studio/web/dist/
 
 # Analysis and coverage output
 /.cache/
+.pytest_cache/
 /coverage/
 __pycache__/
 *.pyc
+*.egg-info/
 /docs/repository-review.md
 *.gcda
 *.gcno
@@ -88,3 +93,4 @@ __pycache__/
 .DS_Store
 Thumbs.db
 docs/milestone-3-cpu-execution-backend.md
+/studio/build/

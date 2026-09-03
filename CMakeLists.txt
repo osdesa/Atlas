@@ -111,6 +111,7 @@ atlas_add_documentation()
 
 add_subdirectory(apps/atlas)
 add_subdirectory(apps/atlas_bench)
+add_subdirectory(apps/atlas_studio_runner)
 
 if(ATLAS_BUILD_TESTS)
     include(FetchContent)

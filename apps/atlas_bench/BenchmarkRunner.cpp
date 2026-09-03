@@ -56,7 +56,8 @@ namespace Atlas::Benchmark
             }
         }
 
-        RunRecord executeOne(const std::uint64_t seed, const std::size_t repetition, const std::vector<TaskDescriptor>& descriptors)
+        RunRecord executeOne(const std::uint64_t seed, const std::size_t repetition, const std::vector<TaskDescriptor>& descriptors,
+                             TraceSession* const traceSession)
         {
             if (gpuResources != nullptr)
             {
@@ -115,7 +116,7 @@ namespace Atlas::Benchmark
             }
 
             std::unique_ptr<SchedulingPolicy> policy{ createPolicy(manifest.policy) };
-            KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, *policy };
+            KahnScheduler scheduler{ graph, cpuExecutor, gpuExecutor, *policy, traceSession };
             SchedulerResult result{ scheduler.execute() };
 
             std::vector<TaskMeasurement> tasks;
@@ -175,7 +176,7 @@ namespace Atlas::Benchmark
                 const std::vector<TaskDescriptor> descriptors{ generateWorkload(manifest, seed) };
                 for (std::size_t warmup{ 0U }; warmup < manifest.warmupRuns; ++warmup)
                 {
-                    const RunRecord record{ executeOne(seed, warmup, descriptors) };
+                    const RunRecord record{ executeOne(seed, warmup, descriptors, nullptr) };
                     if (record.schedulerResult.status != SchedulerStatus::Success)
                     {
                         throw std::runtime_error{ "A benchmark warmup run failed" };
@@ -183,7 +184,7 @@ namespace Atlas::Benchmark
                 }
                 for (std::size_t repetition{ 0U }; repetition < manifest.repetitions; ++repetition)
                 {
-                    batch.records.push_back(executeOne(seed, repetition, descriptors));
+                    batch.records.push_back(executeOne(seed, repetition, descriptors, nullptr));
                     if (batch.records.back().schedulerResult.status != SchedulerStatus::Success)
                     {
                         batch.succeeded = false;
@@ -212,9 +213,9 @@ namespace Atlas::Benchmark
         return implementation->run();
     }
 
-    RunRecord BenchmarkRunner::runSingle(const std::uint64_t seed, const std::size_t repetition)
+    RunRecord BenchmarkRunner::runSingle(const std::uint64_t seed, const std::size_t repetition,
+                                         const std::vector<TaskDescriptor>& descriptors, TraceSession* const traceSession)
     {
-        const std::vector<TaskDescriptor> descriptors{ generateWorkload(implementation->manifest, seed) };
-        return implementation->executeOne(seed, repetition, descriptors);
+        return implementation->executeOne(seed, repetition, descriptors, traceSession);
     }
 } // namespace Atlas::Benchmark

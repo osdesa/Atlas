@@ -66,9 +66,9 @@ namespace Atlas::Benchmark
             }
         }
 
-        RunRecord runSingle(const std::uint64_t seed, const std::size_t repetition)
+        RunRecord runSingle(const std::uint64_t seed, const std::size_t repetition, const std::vector<TaskDescriptor>& descriptors,
+                            TraceSession* const traceSession)
         {
-            const std::vector<TaskDescriptor> descriptors{ generateWorkload(manifest, seed) };
             if (gpuResources != nullptr)
             {
                 gpuResources->reset(seed);
@@ -93,7 +93,7 @@ namespace Atlas::Benchmark
                 }
             }
 
-            CompletionChannel channel{ descriptors.size() };
+            CompletionChannel channel{ descriptors.size(), traceSession };
             std::deque<std::size_t> cpuReady;
             std::deque<std::size_t> gpuReady;
             std::size_t cpuInFlight{ 0U };
@@ -106,9 +106,31 @@ namespace Atlas::Benchmark
 
             const Clock::time_point runStart{ Clock::now() };
             Clock::time_point activeStart{ runStart };
+            const auto emit = [&](const TraceEventKind kind, const std::optional<std::size_t> index = std::nullopt,
+                                  const TaskState previous = TaskState::Unknown, const TaskState state = TaskState::Unknown)
+            {
+                if (traceSession == nullptr)
+                {
+                    return;
+                }
+                TraceEvent event{ .kind = kind, .source = TraceEventSource::Scheduler, .previousState = previous, .state = state };
+                if (index.has_value())
+                {
+                    const TaskDescriptor& descriptor{ descriptors.at(index.value()) };
+                    event.resource = descriptor.resource;
+                    event.hasTask = true;
+                    event.hasResource = true;
+                    event.graphId = graphId.getValue();
+                    event.taskId = handles.at(index.value()).getTaskID().getValue();
+                    event.priority = descriptor.priority;
+                }
+                traceSession->emit(std::move(event));
+            };
+            emit(TraceEventKind::SchedulerStarted);
             const auto enqueueReady = [&](const std::size_t index)
             {
                 DirectTaskState& state{ states.at(index) };
+                const TaskState previous{ state.state };
                 state.state = TaskState::Ready;
                 state.readyEntered = Clock::now();
                 if (!state.observedReady)
@@ -117,6 +139,7 @@ namespace Atlas::Benchmark
                     state.observedReady = true;
                 }
                 (descriptors.at(index).resource == ExecutionResource::CPU ? cpuReady : gpuReady).push_back(index);
+                emit(TraceEventKind::TaskReady, index, previous, TaskState::Ready);
             };
             for (std::size_t index{ 0U }; index < states.size(); ++index)
             {
@@ -140,6 +163,8 @@ namespace Atlas::Benchmark
                 const Clock::time_point selected{ Clock::now() };
                 state.readyWaitDuration += elapsed(state.readyEntered, selected);
                 state.state = TaskState::Running;
+                emit(TraceEventKind::TaskSelected, index, TaskState::Ready, TaskState::Running);
+                emit(TraceEventKind::SubmissionRequested, index, TaskState::Running, TaskState::Running);
                 controlActive += elapsed(activeStart, selected);
 
                 bool accepted{ false };
@@ -170,9 +195,11 @@ namespace Atlas::Benchmark
                 if (!accepted)
                 {
                     state.state = TaskState::Failure;
+                    emit(TraceEventKind::SubmissionRejected, index, TaskState::Running, TaskState::Failure);
                     markInfrastructureFailure();
                     return false;
                 }
+                emit(TraceEventKind::SubmissionAccepted, index, TaskState::Running, TaskState::Running);
                 ++totalInFlight;
                 if (resource == ExecutionResource::CPU)
                 {
@@ -252,6 +279,7 @@ namespace Atlas::Benchmark
                 }
 
                 const std::size_t index{ static_cast<std::size_t>(taskValue - 1U) };
+                emit(TraceEventKind::CompletionObserved, index, TaskState::Running, TaskState::Running);
                 DirectTaskState& state{ states.at(index) };
                 const ExecutionResource expectedResource{ descriptors.at(index).resource };
                 if (state.state != TaskState::Running || completion.resource != expectedResource || completion.workUnitIndex != 0U)
@@ -286,6 +314,7 @@ namespace Atlas::Benchmark
                 if (completion.succeeded())
                 {
                     state.state = TaskState::Success;
+                    emit(TraceEventKind::TaskSucceeded, index, TaskState::Running, TaskState::Success);
                     ++completedTasks;
                     if (state.observedReady)
                     {
@@ -312,6 +341,7 @@ namespace Atlas::Benchmark
                 else
                 {
                     state.state = TaskState::Failure;
+                    emit(TraceEventKind::TaskFailed, index, TaskState::Running, TaskState::Failure);
                     if (state.observedReady)
                     {
                         state.responseDuration = elapsed(state.firstReady, completed);
@@ -328,6 +358,7 @@ namespace Atlas::Benchmark
             }
             controlActive += elapsed(activeStart, Clock::now());
             const std::chrono::nanoseconds executionTime{ elapsed(runStart, Clock::now()) };
+            emit(TraceEventKind::SchedulerFinished);
 
             if (status == SchedulerStatus::Success && completedTasks != descriptors.size())
             {
@@ -392,8 +423,9 @@ namespace Atlas::Benchmark
 
     DirectBenchmarkRunner::~DirectBenchmarkRunner() = default;
 
-    RunRecord DirectBenchmarkRunner::runSingle(const std::uint64_t seed, const std::size_t repetition)
+    RunRecord DirectBenchmarkRunner::runSingle(const std::uint64_t seed, const std::size_t repetition,
+                                               const std::vector<TaskDescriptor>& descriptors, TraceSession* const traceSession)
     {
-        return implementation->runSingle(seed, repetition);
+        return implementation->runSingle(seed, repetition, descriptors, traceSession);
     }
 } // namespace Atlas::Benchmark

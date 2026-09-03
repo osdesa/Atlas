@@ -2,6 +2,8 @@
 #include "BaselineConfig.h"
 #include "BaselineRunner.h"
 #include "BaselineWriter.h"
+#include "BenchmarkProgress.h"
+#include "atlas/Profiling/Trace.h"
 #include "atlas/Vulkan/VulkanRuntime.h"
 
 #include <cstdlib>
@@ -23,12 +25,13 @@ namespace
         std::optional<std::filesystem::path> environmentFile;
         bool validateOnly{ false };
         bool overwrite{ false };
+        bool studioProgressJsonl{ false };
     };
 
     void printUsage(std::ostream& stream)
     {
         stream << "Usage: atlas_bench --suite <file> [--output-dir <directory>] "
-                  "[--environment-file <file>] [--validate-only] [--overwrite]\n";
+                  "[--environment-file <file>] [--validate-only] [--overwrite] [--studio-progress-jsonl]\n";
     }
 
     CommandLine parseCommandLine(const int argumentCount, char** arguments)
@@ -50,6 +53,15 @@ namespace
             if (argument == "--overwrite")
             {
                 result.overwrite = true;
+                continue;
+            }
+            if (argument == "--studio-progress-jsonl")
+            {
+                if (result.studioProgressJsonl)
+                {
+                    throw std::runtime_error{ "--studio-progress-jsonl may be supplied only once" };
+                }
+                result.studioProgressJsonl = true;
                 continue;
             }
             if (argument == "--suite" || argument == "--output-dir" || argument == "--environment-file")
@@ -99,6 +111,14 @@ namespace
         {
             throw std::runtime_error{ "--output-dir is not used with --validate-only" };
         }
+        if (result.validateOnly && result.studioProgressJsonl)
+        {
+            throw std::runtime_error{ "--studio-progress-jsonl is not used with --validate-only" };
+        }
+        if (result.studioProgressJsonl && !Atlas::profilingEnabled)
+        {
+            throw std::runtime_error{ "--studio-progress-jsonl requires an Atlas build with profiling enabled" };
+        }
         return result;
     }
 } // namespace
@@ -123,7 +143,12 @@ int main(const int argumentCount, char** arguments)
             return EXIT_SUCCESS;
         }
 
-        Atlas::Benchmark::BaselineSuiteRunner runner{ suite };
+        std::unique_ptr<Atlas::Benchmark::BenchmarkProgressWriter> progress;
+        if (commandLine.studioProgressJsonl)
+        {
+            progress = std::make_unique<Atlas::Benchmark::BenchmarkProgressWriter>(std::cout);
+        }
+        Atlas::Benchmark::BaselineSuiteRunner runner{ suite, progress.get() };
         const Atlas::Benchmark::BaselineBatch batch{ runner.run() };
         Atlas::Benchmark::BaselineWriter writer{ commandLine.outputDirectory.value(), suite, environment, batch.records,
                                                  commandLine.overwrite };
@@ -134,8 +159,15 @@ int main(const int argumentCount, char** arguments)
         if (batch.succeeded)
         {
             writer.writeSummary(Atlas::Benchmark::calculateBaselineSummary(suite, batch.records));
+            if (progress != nullptr)
+            {
+                progress->finishSuite("success");
+            }
         }
-        std::cout << "Wrote " << batch.records.size() << " baseline run(s) to " << commandLine.outputDirectory->string() << '\n';
+        if (!commandLine.studioProgressJsonl)
+        {
+            std::cout << "Wrote " << batch.records.size() << " baseline run(s) to " << commandLine.outputDirectory->string() << '\n';
+        }
         return batch.succeeded ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     catch (const std::exception& error)
