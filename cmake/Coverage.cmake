@@ -8,5 +8,8 @@ function(atlas_enable_coverage target)
     endif()
 
     target_compile_options(${target} PRIVATE --coverage -O0 -g)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${target} PRIVATE -fprofile-update=atomic)
+    endif()
     target_link_options(${target} PRIVATE --coverage)
 endfunction()
