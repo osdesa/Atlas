@@ -24,8 +24,8 @@ measurement, and comparison-suite benchmarking.
   physical/software Vulkan results and final policy conclusions.
 - [Remaining milestones](remaining-milestone.md): completed Milestones 12–16,
   skipped adaptive scheduling, and optional product scope for Milestones 17–18.
-- [Studio graph schema](../benchmarks/schema/atlas-studio-graph-v1.schema.json)
-  and [studio run schema](../benchmarks/schema/atlas-studio-run-v1.schema.json).
+- [Studio graph schema](../benchmarks/schema/atlas-studio-graph-v2.schema.json)
+  and [studio run schema](../benchmarks/schema/atlas-studio-run-v2.schema.json).
 
 The generated API reference is organized into Tasking, Executor, Scheduling,
 Vulkan, Profiling, and Extension modules. Documentation describes the current

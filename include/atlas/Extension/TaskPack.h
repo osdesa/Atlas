@@ -26,6 +26,7 @@
 namespace Atlas
 {
     class VulkanRuntime;
+    struct CustomTaskSummary;
 
     /**
      * @ingroup extension
@@ -146,6 +147,18 @@ namespace Atlas
 
         /// @brief Returns `<pack-id>/<task-id>` for diagnostics and display.
         std::string qualifiedId() const;
+
+        /** @brief Validates flat scalar parameters and inserts defaults without executing native code.
+         * @throws std::invalid_argument On invalid values or JSON exceeding 64 KiB.
+         * @return Owned canonical JSON. Concurrent calls on an immutable descriptor are safe.
+         */
+        std::string canonicalizeParameters(std::string_view json) const;
+
+        /** @brief Copies and validates a bounded scalar summary without executing native code.
+         * @throws std::runtime_error On invalid or oversized output.
+         * @return Owned summary; concurrent calls on an immutable descriptor are safe.
+         */
+        CustomTaskSummary validateSummary(std::string_view json) const;
     };
 
     /**

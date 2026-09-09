@@ -80,12 +80,13 @@ def test_graph_controller_exposes_every_runner_parameter(qtbot) -> None:
     view.selection_requested.emit("cpu-1")
     commit_text(view.node_name, "configured CPU")
     commit_uint(view.priority, 17)
-    commit_uint(view.iterations, 7654)
+    commit_text(view.parameter_fields["iterations"], "7654")
 
     view.selection_requested.emit("gpu-1")
     commit_text(view.node_name, "configured GPU")
     commit_uint(view.priority, 23)
-    commit_dimensions(view.workgroups, x=7, y=3, z=2)
+    for axis, value in (("x", 7), ("y", 3), ("z", 2)):
+        commit_text(view.parameter_fields[f"workgroups_{axis}"], str(value))
     view.slicing.setChecked(True)
     commit_dimensions(view.slice_dimensions, x=2, y=1, z=1)
 
@@ -96,8 +97,8 @@ def test_graph_controller_exposes_every_runner_parameter(qtbot) -> None:
     assert document["policy"] == {"type": "round_robin", "quantum": 13}
     assert document["runtime"] == {"validation": True}
     assert document["trace"] == {"enabled": False, "capacity": 4096}
-    assert document["nodes"][0]["kernel"] == {"type": "cpu_burn", "iterations": 7654}
-    assert document["nodes"][1]["kernel"] == {"type": "gpu_increment", "workgroups": {"x": 7, "y": 3, "z": 2}}
+    assert document["nodes"][0]["parameters"] == {"iterations": 7654}
+    assert document["nodes"][1]["parameters"] == {"workgroups_x": 7, "workgroups_y": 3, "workgroups_z": 2}
     assert document["nodes"][1]["slice_workgroups"] == {"x": 2, "y": 1, "z": 1}
     assert validate_document("graph", document) == []
 
@@ -110,6 +111,23 @@ def test_graph_controller_reverts_a_duplicate_identifier(qtbot) -> None:
     commit_text(view.node_id, "gpu-1")
     assert [node["id"] for node in model.snapshot()["nodes"]] == ["cpu-1", "gpu-1"]
     assert view.node_id.text() == "cpu-1"
+
+
+def test_descriptor_parameters_reject_invalid_edits_and_keep_controls(qtbot) -> None:
+    view = GraphView()
+    qtbot.addWidget(view)
+    model = GraphDocumentModel()
+    GraphController(model, view)
+    before = model.snapshot()
+    field = view.parameter_fields["iterations"]
+    commit_text(field, "0")
+    assert model.snapshot() == before
+    assert view.parameter_fields["iterations"] is field
+    assert field.text() == "100000"
+    view.kernel.setCurrentText("vector_add")
+    node = model.snapshot()["nodes"][0]
+    assert node["task_id"] == "vector_add" and node["resource"] == "gpu"
+    assert set(node["parameters"]) == {"element_count", "left_value", "right_value"}
 
 
 def test_benchmark_controller_preserves_and_edits_the_suite(qtbot) -> None:

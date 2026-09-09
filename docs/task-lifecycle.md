@@ -170,7 +170,11 @@ task exception and follows the same `TaskFailed` fail-stop path. Custom GPU work
 is already an ordinary or sliced `VulkanDispatch` by finalisation, so its
 completion, device-loss, progress, and cancellation behavior is unchanged.
 Pack inspection, loading, parameter validation, and preparation happen before
-graph insertion and are not task lifecycle states. Native crashes, hangs, and
+graph insertion and are not task lifecycle states. The Studio runner completes
+this preflight for all nodes before inserting any task, and emits a structured
+preflight error when it fails. Successful nodes produce bounded summaries only
+after scheduling has terminated; a summary error fails the runner output while
+preserving the scheduler result and measurements. Native crashes, hangs, and
 exceptions escaping the C ABI are unrecoverable process failures.
 
 `VK_ERROR_DEVICE_LOST` is always an executor infrastructure failure, including

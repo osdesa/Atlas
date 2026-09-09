@@ -23,6 +23,7 @@ atlas_add_test_suite(
 )
 
 add_dependencies(atlas_unit_tests atlas_task_pack_mock atlas_vector_add_shader)
+target_sources(atlas_unit_tests PRIVATE "${PROJECT_SOURCE_DIR}/apps/atlas_studio_runner/PackSnapshots.cpp")
 target_compile_definitions(
     atlas_unit_tests
     PRIVATE

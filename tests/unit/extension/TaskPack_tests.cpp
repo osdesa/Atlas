@@ -52,6 +52,20 @@ TEST_CASE("Task-pack inspection rejects traversal and symlinks", "[UNIT]")
     REQUIRE_THROWS_AS(registry.inspectDirectory(pack.directory), std::invalid_argument);
 }
 
+TEST_CASE("Descriptors validate scalar parameters and summaries without loading native code", "[UNIT]")
+{
+    Atlas::Testing::TaskPackTestPack pack;
+    Atlas::TaskPackRegistry registry;
+    const auto descriptor = registry.inspectDirectory(pack.directory).tasks.front();
+    REQUIRE(descriptor.canonicalizeParameters("{}") == R"({"amount":3})");
+    REQUIRE_THROWS_AS(descriptor.canonicalizeParameters(R"({"amount":true})"), std::invalid_argument);
+    REQUIRE_THROWS_AS(descriptor.canonicalizeParameters(R"({"amount":-1})"), std::invalid_argument);
+    REQUIRE_THROWS_AS(descriptor.canonicalizeParameters(R"({"unknown":1})"), std::invalid_argument);
+    REQUIRE(descriptor.validateSummary(R"({"value":42})").canonicalJson == R"({"value":42})");
+    REQUIRE_THROWS_AS(descriptor.validateSummary(R"({"value":101})"), std::runtime_error);
+    REQUIRE_THROWS_AS(descriptor.validateSummary(std::string(65537U, ' ')), std::runtime_error);
+}
+
 TEST_CASE("Task-pack inspection rejects overflowing and inapplicable typed fields", "[UNIT]")
 {
     Atlas::Testing::TaskPackTestPack pack;

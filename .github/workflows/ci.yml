@@ -103,9 +103,19 @@ jobs:
       - name: Run Atlas Studio graph contract
         run: |
           ./build/ci-linux/apps/atlas_studio_runner/atlas_studio_runner \
-            --config studio/examples/all-kernels-graph-v1.json \
+            --config studio/examples/all-kernels-graph-v2.json \
             --control build/ci-linux/studio-cancel > build/ci-linux/studio-run.jsonl
           python3 -c "import json, pathlib; records=[json.loads(line) for line in pathlib.Path('build/ci-linux/studio-run.jsonl').read_text().splitlines()]; assert records[0]['record_type']=='header'; assert records[-1]['record_type']=='footer'; assert any(record.get('record_type')=='result' and record.get('status')=='Success' for record in records)"
+
+      - name: Test native pack schemas and runner contracts
+        env:
+          ATLAS_STUDIO_RUNNER: ${{ github.workspace }}/build/ci-linux/apps/atlas_studio_runner/atlas_studio_runner
+          ATLAS_TASK_PACK_CONTRACT: ${{ github.workspace }}/build/ci-linux/tests/atlas_task_pack_contract
+          PYTHONPATH: studio
+        run: |
+          python3 -m venv /tmp/atlas-pack-tests
+          /tmp/atlas-pack-tests/bin/pip install 'jsonschema>=4.23,<5' 'pytest>=8.3,<9'
+          /tmp/atlas-pack-tests/bin/python -m pytest -q studio/tests/test_task_packs.py
 
       - name: Run benchmark smoke suite
         run: |

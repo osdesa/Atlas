@@ -21,10 +21,10 @@ class BoundedLineBuffer:
             self._buffer = bytearray(remainder)
             line = line.removesuffix(b"\r")
             if len(line) > self._maximum_line_bytes:
-                raise ValueError("process output line exceeds 2 MiB")
+                raise ValueError("process output line exceeds its byte limit")
             lines.append(bytes(line))
         if len(self._buffer) > self._maximum_line_bytes:
-            raise ValueError("process output contains an unterminated line exceeding 2 MiB")
+            raise ValueError("process output contains an unterminated line exceeding its byte limit")
         return lines
 
     def finish(self) -> bytes:

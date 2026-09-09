@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import copy
 
+from .descriptors import BUILTINS, default_parameters
 from .documents import DocumentError, DocumentModel, JsonObject, ResourceKind
 
 _GRAPH_TEMPLATE: JsonObject = {
-    "schema_version": 1,
+    "schema_version": 2,
+    "packs": [],
     "graph_id": "studio-example",
     "seed": 42,
     "runtime": {"validation": False},
@@ -20,14 +22,18 @@ _GRAPH_TEMPLATE: JsonObject = {
             "name": "CPU work",
             "resource": "cpu",
             "priority": 0,
-            "kernel": {"type": "cpu_burn", "iterations": 100_000},
+            "pack_id": "atlas.builtin",
+            "task_id": "cpu_burn",
+            "parameters": default_parameters(BUILTINS["cpu_burn"]),
         },
         {
             "id": "gpu-1",
             "name": "GPU work",
             "resource": "gpu",
             "priority": 0,
-            "kernel": {"type": "gpu_increment", "workgroups": {"x": 64, "y": 1, "z": 1}},
+            "pack_id": "atlas.builtin",
+            "task_id": "gpu_increment",
+            "parameters": default_parameters(BUILTINS["gpu_increment"]),
             "slice_workgroups": None,
         },
     ],
@@ -63,7 +69,9 @@ class GraphDocumentModel(DocumentModel):
                 "name": identifier,
                 "resource": "cpu",
                 "priority": 0,
-                "kernel": {"type": "cpu_burn", "iterations": 10_000},
+                "pack_id": "atlas.builtin",
+                "task_id": "cpu_burn",
+                "parameters": default_parameters(BUILTINS["cpu_burn"]),
             }
         else:
             node = {
@@ -71,7 +79,9 @@ class GraphDocumentModel(DocumentModel):
                 "name": identifier,
                 "resource": "gpu",
                 "priority": 0,
-                "kernel": {"type": "gpu_increment", "workgroups": {"x": 64, "y": 1, "z": 1}},
+                "pack_id": "atlas.builtin",
+                "task_id": "gpu_increment",
+                "parameters": default_parameters(BUILTINS["gpu_increment"]),
                 "slice_workgroups": None,
             }
         candidate["nodes"].append(node)

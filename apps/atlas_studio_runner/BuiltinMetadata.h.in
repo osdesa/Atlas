@@ -1,0 +1,3 @@
+#pragma once
+/** @brief Built-in descriptors shared with Studio, embedded at configure time. */
+inline constexpr const char* builtinMetadata = R"atlas(@ATLAS_BUILTIN_METADATA@)atlas";

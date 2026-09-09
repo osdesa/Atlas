@@ -9,6 +9,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
+from .descriptors import BUILTINS, validate_parameters
 from .documents import DocumentKind, JsonObject
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -46,7 +47,7 @@ SCHEMAS = SchemaRegistry()
 def validate_document(kind: DocumentKind, document: JsonObject) -> list[str]:
     """Return schema and semantic errors for a user-authored document."""
     schema_name = (
-        "atlas-studio-graph-v1.schema.json" if kind == "graph" else "atlas-baseline-suite-v1.schema.json"
+        "atlas-studio-graph-v2.schema.json" if kind == "graph" else "atlas-baseline-suite-v1.schema.json"
     )
     errors = [
         f"{'.'.join(map(str, error.absolute_path)) or '$'}: {error.message}"
@@ -61,11 +62,11 @@ def validate_document(kind: DocumentKind, document: JsonObject) -> list[str]:
 
 def detect_document_kind(document: JsonObject) -> DocumentKind:
     """Identify one supported versioned document shape."""
-    if document.get("schema_version") == 1 and isinstance(document.get("nodes"), list):
+    if document.get("schema_version") == 2 and isinstance(document.get("nodes"), list):
         return "graph"
     if document.get("schema_version") == 1 and isinstance(document.get("cases"), list):
         return "benchmark"
-    raise ValueError("file is not an Atlas graph-v1 or benchmark-suite-v1 document")
+    raise ValueError("file is not an Atlas graph-v2 or benchmark-suite-v1 document")
 
 
 def _graph_semantic_errors(document: JsonObject) -> list[str]:
@@ -107,20 +108,24 @@ def _graph_semantic_errors(document: JsonObject) -> list[str]:
         errors.append("graph dependencies contain a cycle")
     if document.get("policy", {}).get("type") == "round_robin" and "quantum" not in document["policy"]:
         errors.append("round_robin policy requires quantum")
+    packs = document["packs"]
+    pack_ids = [pack["pack_id"] for pack in packs]
+    if len(set(pack_ids)) != len(pack_ids) or "atlas.builtin" in pack_ids:
+        errors.append("duplicate or reserved pack declaration")
+    referenced = {node["pack_id"] for node in nodes} - {"atlas.builtin"}
+    if referenced != set(pack_ids):
+        errors.append("pack declarations must exactly match referenced custom packs")
     for index, node in enumerate(nodes):
-        resource = node["resource"]
-        kernel = node["kernel"]
-        kernel_type = kernel["type"]
         path = f"nodes[{index}]"
-        if resource == "cpu" and kernel_type != "cpu_burn":
-            errors.append(f"{path}: CPU resource requires cpu_burn")
-        if resource == "gpu" and kernel_type not in {"gpu_increment", "vector_add"}:
-            errors.append(f"{path}: GPU resource requires a Vulkan kernel")
-        if resource == "cpu" and node.get("slice_workgroups") is not None:
+        if node["resource"] == "cpu" and node.get("slice_workgroups") is not None:
             errors.append(f"{path}: CPU work cannot be sliced")
-        required = {"cpu_burn": "iterations", "gpu_increment": "workgroups", "vector_add": "element_count"}[
-            kernel_type
-        ]
-        if required not in kernel:
-            errors.append(f"{path}: {kernel_type} requires {required}")
+        if node["pack_id"] != "atlas.builtin":
+            continue
+        descriptor = BUILTINS.get(node["task_id"])
+        if descriptor is None:
+            errors.append(f"{path}: unknown built-in task")
+            continue
+        if descriptor["resource"] != node["resource"]:
+            errors.append(f"{path}: resource does not match descriptor")
+        errors.extend(f"{path}: {error}" for error in validate_parameters(descriptor, node["parameters"]))
     return errors

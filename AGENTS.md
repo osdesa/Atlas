@@ -26,8 +26,9 @@ PySide6 desktop studio and its strict built-in-kernel graph runner.
 The Atlas library also exposes the Part A trusted native task-pack API: packs
 are inspected and content-hashed before explicit loading, CPU callbacks and
 declarative storage-buffer GPU tasks become existing graph payloads, and
-summaries are bounded and typed. Runner and Studio pack integration is not yet
-implemented.
+summaries are bounded and typed. Part B adds graph/run v2, runner-private
+verified snapshots, exact pack provenance, shared built-in descriptors, and
+bounded task summaries. Studio pack management and trust UI remain planned.
 
 The supported executables are:
 

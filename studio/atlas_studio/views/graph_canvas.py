@@ -74,7 +74,7 @@ class GraphCanvas(QGraphicsView):
         self.scene().clear()
         self.items_by_id.clear()
         for index, node in enumerate(document["nodes"]):
-            label = f"{node.get('name', node['id'])}\n{node['resource'].upper()} · {node['kernel']['type']}"
+            label = f"{node.get('name', node['id'])}\n{node['resource'].upper()} · {node['pack_id']}/{node['task_id']}"
             item = TaskItem(node["id"], label, node["resource"], self._redraw_edges, self._palette)
             item.setPos(self.positions.get(node["id"], QPointF((index % 3) * 235, (index // 3) * 115)))
             self.scene().addItem(item)

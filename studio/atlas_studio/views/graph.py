@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..models.descriptors import BUILTINS, default_parameters
 from ..models.documents import JsonObject
 from .fields import DimensionsEditor, UIntEdit
 from .graph_canvas import GraphCanvas
@@ -95,28 +96,23 @@ class GraphView(QWidget):
         self.resource = QLineEdit()
         self.resource.setReadOnly(True)
         self.kernel = QComboBox()
-        self.kernel.addItems(["cpu_burn", "gpu_increment", "vector_add"])
+        self.kernel.addItems(list(BUILTINS))
         self.priority = UIntEdit(0, 2**32 - 1)
-        self.iterations = UIntEdit(1)
-        self.element_count = UIntEdit(256)
-        self.left_value = QLineEdit("4")
-        self.right_value = QLineEdit("7")
         for label, widget in (
             ("ID", self.node_id),
             ("Name", self.node_name),
             ("Resource", self.resource),
             ("Kernel", self.kernel),
             ("Priority", self.priority),
-            ("Iterations", self.iterations),
-            ("Element count", self.element_count),
-            ("Left value", self.left_value),
-            ("Right value", self.right_value),
         ):
             task_form.addRow(label, widget)
-        self.workgroups = DimensionsEditor("Workgroups")
+        self.parameter_group = QGroupBox("Parameters")
+        self.parameter_form = QFormLayout(self.parameter_group)
+        self.parameter_fields: dict[str, QWidget] = {}
+        self._parameter_key: tuple[str, str] | None = None
         self.slicing = QCheckBox("Cooperative slicing")
         self.slice_dimensions = DimensionsEditor("Slice workgroups")
-        task_form.addRow(self.workgroups)
+        task_form.addRow(self.parameter_group)
         task_form.addRow(self.slicing)
         task_form.addRow(self.slice_dimensions)
         controls_layout.addWidget(task_group)
@@ -155,11 +151,6 @@ class GraphView(QWidget):
         self.node_name.editingFinished.connect(self._update_task)
         self.kernel.currentTextChanged.connect(self._kernel_changed)
         self.priority.value_changed.connect(self._update_task)
-        self.iterations.value_changed.connect(self._update_task)
-        self.element_count.value_changed.connect(self._update_task)
-        self.left_value.editingFinished.connect(self._update_task)
-        self.right_value.editingFinished.connect(self._update_task)
-        self.workgroups.changed.connect(self._update_task)
         self.slicing.toggled.connect(self._update_task)
         self.slice_dimensions.changed.connect(self._update_task)
 
@@ -184,21 +175,56 @@ class GraphView(QWidget):
         if node is None:
             return
         self._updating = True
-        kernel = node["kernel"]
+        descriptor = BUILTINS.get(node["task_id"]) if node["pack_id"] == "atlas.builtin" else None
         self.node_id.setText(node["id"])
         self.node_name.setText(node.get("name", node["id"]))
         self.resource.setText(node["resource"])
-        self.kernel.setCurrentText(kernel["type"])
+        self.kernel.setEnabled(descriptor is not None)
+        if self.kernel.findText(node["task_id"]) < 0:
+            self.kernel.addItem(node["task_id"])
+        self.kernel.setCurrentText(node["task_id"])
         self.priority.set_value(int(node.get("priority", 0)))
-        self.iterations.set_value(int(kernel.get("iterations", 1)))
-        self.element_count.set_value(int(kernel.get("element_count", 256)))
-        self.left_value.setText(str(kernel.get("left_value", 4.0)))
-        self.right_value.setText(str(kernel.get("right_value", 7.0)))
-        self.workgroups.set_dimensions(kernel.get("workgroups", {"x": 1, "y": 1, "z": 1}))
+        key = (node["pack_id"], node["task_id"])
+        if key != self._parameter_key:
+            while self.parameter_form.rowCount():
+                row = self.parameter_form.takeRow(0)
+                for item in (row.labelItem, row.fieldItem):
+                    if item and item.widget():
+                        item.widget().hide()
+                        item.widget().deleteLater()
+            self.parameter_fields = {}
+            self._parameter_key = key
+        for field in descriptor["parameters"] if descriptor else []:
+            value = node["parameters"].get(field["id"], field.get("default"))
+            kind = field["type"]
+            widget = self.parameter_fields.get(field["id"])
+            if widget is None:
+                if kind == "boolean":
+                    widget = QCheckBox()
+                    widget.toggled.connect(self._update_task)
+                elif kind == "enum":
+                    widget = QComboBox()
+                    widget.addItems(field["values"])
+                    widget.currentTextChanged.connect(self._update_task)
+                else:
+                    widget = QLineEdit()
+                    if kind == "string":
+                        widget.setMaxLength(field["max_length"])
+                    widget.editingFinished.connect(self._update_task)
+                self.parameter_fields[field["id"]] = widget
+                self.parameter_form.addRow(field.get("name", field["id"]), widget)
+            if kind == "boolean":
+                widget.setChecked(bool(value))
+            elif kind == "enum":
+                widget.setCurrentText(str(value))
+            else:
+                widget.setText(str(value))
         sliced = node.get("slice_workgroups") is not None
         self.slicing.setChecked(sliced)
         self.slice_dimensions.set_dimensions(node.get("slice_workgroups") or {"x": 1, "y": 1, "z": 1})
-        self._set_kernel_visibility(kernel["type"])
+        slicing = bool(descriptor and descriptor["supports_slicing"])
+        self.slicing.setVisible(slicing)
+        self.slice_dimensions.setVisible(slicing and sliced)
         self._updating = False
         self.canvas.select_node(self.selected_id)
 
@@ -229,27 +255,17 @@ class GraphView(QWidget):
         node = self._selected_node()
         if node is None:
             return
-        if kernel_type == "cpu_burn":
-            replacement: JsonObject = {
-                **node,
-                "resource": "cpu",
-                "kernel": {"type": kernel_type, "iterations": 10_000},
-            }
-            replacement.pop("slice_workgroups", None)
-        elif kernel_type == "gpu_increment":
-            replacement = {
-                **node,
-                "resource": "gpu",
-                "kernel": {"type": kernel_type, "workgroups": {"x": 64, "y": 1, "z": 1}},
-                "slice_workgroups": None,
-            }
-        else:
-            replacement = {
-                **node,
-                "resource": "gpu",
-                "kernel": {"type": kernel_type, "element_count": 256, "left_value": 4.0, "right_value": 7.0},
-                "slice_workgroups": None,
-            }
+        if kernel_type not in BUILTINS:
+            return
+        descriptor = BUILTINS[kernel_type]
+        replacement: JsonObject = {
+            **node,
+            "resource": descriptor["resource"],
+            "pack_id": "atlas.builtin",
+            "task_id": kernel_type,
+            "parameters": default_parameters(descriptor),
+        }
+        replacement.pop("slice_workgroups", None)
         self.task_update_requested.emit(self.selected_id, replacement)
 
     def _update_task(self, *_args: Any) -> None:
@@ -266,24 +282,29 @@ class GraphView(QWidget):
             "name": self.node_name.text(),
             "priority": self.priority.value(),
         }
-        kernel_type = node["kernel"]["type"]
-        if kernel_type == "cpu_burn":
-            replacement["kernel"] = {"type": kernel_type, "iterations": self.iterations.value()}
-            replacement.pop("slice_workgroups", None)
-        elif kernel_type == "gpu_increment":
-            replacement["kernel"] = {"type": kernel_type, "workgroups": self.workgroups.dimensions()}
-        else:
+        descriptor = BUILTINS.get(node["task_id"]) if node["pack_id"] == "atlas.builtin" else None
+        if descriptor:
+            parameters: JsonObject = {}
             try:
-                left, right = float(self.left_value.text()), float(self.right_value.text())
+                for field in descriptor["parameters"]:
+                    widget = self.parameter_fields[field["id"]]
+                    kind = field["type"]
+                    if kind == "boolean":
+                        value = widget.isChecked()
+                    elif kind == "enum":
+                        value = widget.currentText()
+                    elif kind in {"integer", "unsigned_integer"}:
+                        value = int(widget.text())
+                    elif kind == "number":
+                        value = float(widget.text())
+                    else:
+                        value = widget.text()
+                    parameters[field["id"]] = value
             except ValueError:
-                self.message.emit("vector values must be numbers")
+                self.message.emit("Parameter must match its declared type")
+                self._refresh_task()
                 return
-            replacement["kernel"] = {
-                "type": kernel_type,
-                "element_count": self.element_count.value(),
-                "left_value": left,
-                "right_value": right,
-            }
+            replacement["parameters"] = parameters
         if replacement["resource"] == "gpu":
             replacement["slice_workgroups"] = (
                 self.slice_dimensions.dimensions() if self.slicing.isChecked() else None
@@ -293,17 +314,6 @@ class GraphView(QWidget):
 
     def _selected_node(self) -> JsonObject | None:
         return next((node for node in self._snapshot["nodes"] if node["id"] == self.selected_id), None)
-
-    def _set_kernel_visibility(self, kernel_type: str) -> None:
-        self.iterations.setVisible(kernel_type == "cpu_burn")
-        self.workgroups.setVisible(kernel_type == "gpu_increment")
-        vector = kernel_type == "vector_add"
-        self.element_count.setVisible(vector)
-        self.left_value.setVisible(vector)
-        self.right_value.setVisible(vector)
-        gpu = kernel_type != "cpu_burn"
-        self.slicing.setVisible(gpu)
-        self.slice_dimensions.setVisible(gpu and self.slicing.isChecked())
 
     def _toggle_connecting(self, enabled: bool) -> None:
         self.canvas.set_connecting(enabled)

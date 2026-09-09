@@ -226,6 +226,10 @@ class ResultsSessionModel:
             task = dict(record)
             task.setdefault("state", "unknown")
             self.tasks[task_id] = task
+        elif record_type == "task_summary":
+            self.tasks.setdefault(int(record["task_id"]), {"task_id": record["task_id"]})["summary"] = record[
+                "summary"
+            ]
         elif record_type == "event":
             self.events.append(record)
             if "task_id" in record:

@@ -76,9 +76,9 @@ fails with an explicit diagnostic.
 ## C++ task-pack extension API
 
 The Atlas library exposes `atlas/Extension/TaskPack.h` for explicitly trusted
-local task packs. This is currently a library API only: `atlas`,
-`atlas_studio_runner`, `atlas_bench`, and Atlas Studio do not accept pack
-arguments or custom-pack graph documents yet.
+local task packs. The `atlas_studio_runner` process also executes custom packs
+through graph v2 and repeated `--task-pack` arguments. `atlas` and `atlas_bench`
+do not accept packs. Studio pack installation and trust management remain planned.
 
 `TaskPackRegistry::inspectDirectory()` performs bounded manifest, path, regular-
 file, platform, typed-field, and canonical SHA-256 validation without loading
@@ -87,6 +87,10 @@ library matching the current `linux`/`windows` and `x86_64`/`aarch64` triple.
 The native task metadata and resource types must exactly match the manifest and
 the complete digest is executable identity; a display version is not.
 
+The pack format is described by `benchmarks/schema/atlas-task-pack-v1.schema.json`.
+Inspection also checks relational constraints (unique IDs, referenced paths,
+field defaults and bounds, shader/readback references) and filesystem limits
+that JSON Schema cannot express. String limits are UTF-8 bytes.
 The current library manifest is strict JSON with these required root fields:
 `schema_version: 1`, `abi_version: 1`, `pack_id`, `version`, `platforms`,
 `shaders`, and `tasks`; `name` and `description` are optional. Platform entries
@@ -163,11 +167,13 @@ latest 500 timeline events, and latest 2,000 stream records. The Studio shows
 when one of these presentation limits is active; validated result state and
 benchmark artifacts retain their existing bounds. Set `ATLAS_STUDIO_RUNNER` or
 `ATLAS_BENCH` when the executables are outside the normal build tree. The
-application accepts only versioned built-in-kernel documents and does not
-accept arbitrary C++, shaders, task-level live control, or runtime graph
-mutation. The graph contract is
-`benchmarks/schema/atlas-studio-graph-v1.schema.json`; live runner output is the
-versioned `atlas-studio-run-v1` JSONL stream.
+application edits versioned graph documents with shared built-in descriptors.
+Custom nodes can be preserved in documents, but launching them requires the
+runner CLI until Studio pack management is implemented. Arbitrary source
+compilation, task-level live control, and runtime graph mutation are unavailable.
+The graph contract is
+`benchmarks/schema/atlas-studio-graph-v2.schema.json`; live runner output is the
+versioned `atlas-studio-run-v2` JSONL stream.
 
 Task Studio exposes CPU burn and Vulkan increment/vector-add kernels, task
 metadata, explicit edges, worker capacity, policies, slicing, seeds, Vulkan
@@ -194,6 +200,69 @@ in a selector; warmups are displayed live but are not retained. This
 instrumentation adds observer overhead, so clear **Show live benchmark tasks**
 for a timing-focused GUI run. The aggregate result files remain the
 authoritative output in either mode.
+
+### `atlas_studio_runner`
+
+Run a built-in graph or explicitly trusted native packs:
+
+```bash
+./build/apps/atlas_studio_runner/atlas_studio_runner \
+  --config studio/examples/all-kernels-graph-v2.json \
+  --control /tmp/atlas-cancel
+
+./build/apps/atlas_studio_runner/atlas_studio_runner \
+  --config my-graph.json --control /tmp/atlas-cancel \
+  --task-pack /absolute/path/to/trusted-pack
+```
+
+Both `--config` and `--control` are required; `--task-pack` may repeat (up to
+128 directories). Supplying a pack explicitly authorizes native loading for
+its exact referenced digest. Native code runs with your privileges and can
+access files/network, hang, crash, or terminate the process; a separate process
+is not a sandbox. Built-ins need no pack directory or trust declaration.
+The control path should initially be absent. Creating it requests cancellation;
+a pre-existing file cancels before submissions. Accepted work is drained.
+
+Graph v2 requires `schema_version: 2`, `packs`, `nodes`, and `edges`. Each
+node has `id`, `name`, `resource`, `priority`, `pack_id`, `task_id`, a flat
+`parameters` object, and optional `slice_workgroups` dimensions. Built-in
+`pack_id` is `atlas.builtin`; its tasks are `cpu_burn` (`iterations`),
+`gpu_increment` (`workgroups_x/y/z`), and `vector_add` (`element_count`,
+`left_value`, `right_value`). Scalar defaults and bounds come from the shared
+`studio/atlas_studio/resources/builtin-tasks.json` descriptor collection.
+Built-in GPU buffer allocations are bounded to 256 MiB per node.
+
+The `packs` array lists exactly the referenced custom packs as
+`{"pack_id":"example.pack","version":"1.0","digest":"<64 lowercase hex characters>"}`.
+Obtain that digest with `TaskPackRegistry::inspectDirectory()`. Only one
+digest per pack ID may appear in a graph; display versions do not substitute
+for digests. Nodes resolve by exact pack ID, digest, and task ID. The runner
+inspects supplied directories without loading code, copies only referenced
+assets of selected packs into private temporary storage, reinspects and
+compares digests, and loads only verified snapshots. Normal exit or a caught
+error removes snapshots after module/resource destruction; forced process
+termination may leave temporary files for operating-system cleanup.
+
+The entire graph, descriptors, parameters, resources, and slicing must validate
+and every task must prepare before graph insertion and execution. Missing host
+binaries, missing packs, digest/ABI mismatches, and preparation failures emit a
+single `error` record with `studio_schema_version: 2`, `phase: "preflight"`,
+and a bounded `message`; they return nonzero without execution records.
+
+Run v2 begins with a header containing exact executed pack provenance. Task
+records include `pack_id` and `pack_task_id`; numeric `task_id` continues to
+identify the graph task in trace events. Successful tasks emit separate
+`task_summary` records with validated scalar JSON. Failed/unexecuted tasks
+have no summary. Summary errors use `phase: "summary"`, preserve scheduler
+measurements in the result, and make the footer/exit status fail. The footer
+reports completion and trace drops. A missing footer indicates an incomplete
+stream, including a possible native crash. Trace event schema remains v1.
+
+Graphs are bounded to 16 MiB, 10,000 nodes, 50,000 edges, and 128 packs. Node
+IDs are bounded to 128 bytes, names to 4 KiB, parameter/summary JSON to 64 KiB,
+and error messages to 4 KiB. Studio JSONL records allow up to 16 MiB to retain
+measurements for large graphs; total input remains 128 MiB and one million
+records. The runner accepts only graph v2 and Studio accepts only run v2.
 
 ### `atlas`
 

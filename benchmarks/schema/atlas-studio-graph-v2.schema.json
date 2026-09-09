@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.local/schema/atlas-studio-graph-v2.schema.json",
+  "title": "Atlas local studio graph version 2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "nodes",
+    "edges",
+    "packs"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "graph_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "validation": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "cpu_executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "synchronous",
+            "worker_pool"
+          ],
+          "default": "synchronous"
+        },
+        "worker_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "fifo",
+            "static_priority",
+            "round_robin"
+          ]
+        },
+        "quantum": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "resource",
+          "priority",
+          "pack_id",
+          "task_id",
+          "parameters"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "resource": {
+            "enum": [
+              "cpu",
+              "gpu"
+            ]
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "slice_workgroups": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/dimensions"
+              }
+            ]
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "task_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "parameters": {
+            "type": "object",
+            "maxProperties": 128,
+            "propertyNames": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.-]+$"
+            },
+            "additionalProperties": {
+              "type": [
+                "boolean",
+                "integer",
+                "number",
+                "string"
+              ],
+              "maxLength": 4096
+            }
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 50000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "packs": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/pack"
+      }
+    }
+  },
+  "$defs": {
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "z": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "pack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pack_id",
+        "version",
+        "digest"
+      ],
+      "properties": {
+        "pack_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

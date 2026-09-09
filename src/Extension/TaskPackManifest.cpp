@@ -909,6 +909,8 @@ namespace Atlas::Detail
 
     CustomTaskSummary validateSummary(const CustomTaskDescriptor& descriptor, const std::string_view summaryJson)
     {
+        if (summaryJson.size() > maximumTaskPackSummaryBytes)
+            throw std::runtime_error{ "Custom-task summary exceeds its bound" };
         Json supplied;
         try
         {
@@ -982,6 +984,16 @@ namespace Atlas::Detail
 
 namespace Atlas
 {
+    std::string CustomTaskDescriptor::canonicalizeParameters(const std::string_view json) const
+    {
+        return Detail::canonicalParameters(*this, json);
+    }
+
+    CustomTaskSummary CustomTaskDescriptor::validateSummary(const std::string_view json) const
+    {
+        return Detail::validateSummary(*this, json);
+    }
+
     std::string CustomTaskDescriptor::qualifiedId() const
     {
         return packId + "/" + taskId;

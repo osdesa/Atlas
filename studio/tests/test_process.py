@@ -71,8 +71,10 @@ def test_process_service_decodes_stdout_off_the_gui_thread(qtbot, tmp_path: Path
     script = tmp_path / "fake_runner.py"
     script.write_text(
         "import sys\n"
-        'print(\'{"record_type":"header","studio_schema_version":1,'
+        'print(\'{"record_type":"header","studio_schema_version":2,"packs":[],'
         '"trace_schema_version":1}\', flush=True)\n'
+        'print(\'{"record_type":"error","studio_schema_version":2,"phase":"execution",'
+        '"message":"test error"}\', flush=True)\n'
         'print(\'{"record_type":"footer","status":"success","accepted_events":0,'
         '"dropped_events":0,"complete":true}\', flush=True)\n'
         "print('diagnostic text', file=sys.stderr, flush=True)\n",
@@ -89,7 +91,7 @@ def test_process_service_decodes_stdout_off_the_gui_thread(qtbot, tmp_path: Path
         assert service._worker is not None
         assert service._worker.thread() is not service.thread()
     records = [record for batch in batches for record in batch]
-    assert [record["record_type"] for record in records] == ["header", "footer"]
+    assert [record["record_type"] for record in records] == ["header", "error", "footer"]
     assert any("diagnostic text" in diagnostic for diagnostic in diagnostics)
 
 

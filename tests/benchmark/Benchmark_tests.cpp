@@ -141,7 +141,7 @@ TEST_CASE("Checked benchmark schemas are syntactically valid JSON", "[BENCHMARK]
         REQUIRE(schema.is_object());
         ++count;
     }
-    REQUIRE(count == 11U);
+    REQUIRE(count == 12U);
 }
 
 TEST_CASE("Studio benchmark progress serializes bounded direct lifecycle records", "[BENCHMARK][PROFILING]")

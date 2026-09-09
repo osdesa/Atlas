@@ -2,9 +2,14 @@
 
 ## Implementation status and handoff
 
-**Part A is complete on `Milestone-Custom-Task`.** It is a library-only
-feature: no executable, runner protocol, graph document, or Studio UI accepts a
-custom pack yet. Parts B through D remain planned work.
+**Parts A and B are complete.** The library and runner execute trusted native
+CPU/GPU tasks through the existing graph payloads. Graph v2 and run v2 replace
+the old application contracts. The runner resolves exact digests, verifies
+private snapshots before loading, prepares all nodes before insertion, and
+emits provenance, structured errors, and bounded per-task summaries. Built-in
+parameter forms and runner preparation share descriptor metadata and scalar
+validation. Part C pack management, trust UI, custom palettes, and launch
+integration remain planned.
 
 The completed library contract is the starting point for all later work:
 
@@ -162,7 +167,7 @@ A custom GPU task may expose slicing only when its descriptor declares
 `supports_slicing`. The pack author remains responsible for proving that
 separate dispatches preserve the algorithm’s semantics.
 
-# Part B — Task-pack format and runner
+# Part B — Task-pack format and runner — complete
 
 ## Part B handoff and order of work
 
@@ -174,10 +179,9 @@ order is B1, B2 snapshotting, B5 graph document, B3 preflight, B4 built-in
 unification, then the run-stream portion of B5. This keeps every graph path on
 one descriptor/preparation route before the Studio begins using it.
 
-Keep the existing built-in-only graph-v1 and run-stream-v1 behavior until graph
-v2 and stream-v2 replace them atomically. Atlas has no compatibility promise:
-once v2 is complete, remove v1 parsing, schemas, examples, tests, and UI
-branches instead of maintaining dual formats.
+Graph v2 and stream v2 are the only supported application formats. The old
+parsing, schemas, examples, and hard-coded built-in parameter forms have been
+removed. Trace event schema v1 and benchmark protocols are unchanged.
 
 ## B1. Pack directory format
 
@@ -287,8 +291,8 @@ Replace the Studio run stream v1 with v2:
 - trace event schema v1 remains unchanged because lifecycle semantics do not
   change.
 
-Start with `benchmarks/schema/atlas-studio-graph-v1.schema.json`,
-`benchmarks/schema/atlas-studio-run-v1.schema.json`, runner JSONL emission, and
+Start with `benchmarks/schema/atlas-studio-graph-v2.schema.json`,
+`benchmarks/schema/atlas-studio-run-v2.schema.json`, runner JSONL emission, and
 the matching `studio/atlas_studio/models/` protocol/document code. Define
 bounded field sizes and an explicit v2 error record before implementation.
 Provenance must contain the exact executed pack ID and digest, not a directory
@@ -384,12 +388,12 @@ JSON, not arbitrary plugin-controlled rich text.
 
 # Part D — Delivery sequence
 
-The completed Part A work covers the library contracts, native ABI, CPU/GPU
-preparation, mock-pack coverage, and Vulkan hardening. It intentionally does
-not claim completion of runner schemas, snapshots, built-in unification, or
-Studio integration. Resume delivery with the next stage below.
+Completed Parts A and B cover the library contracts, native ABI, CPU/GPU
+preparation, mock-pack coverage, Vulkan hardening, runner schemas/snapshots,
+and built-in descriptor unification. Remaining delivery stages below include
+Part C GUI work; runner portions of Stages 1, 2, 4, and 5 are complete.
 
-## Next Stage 1: runner contracts and skeleton
+## Completed Stage 1: runner contracts and skeleton
 
 Keep the completed library manifest, C ABI, descriptor types, digest logic, and
 mock modules unchanged. Add graph/run v2 schemas that match those contracts and

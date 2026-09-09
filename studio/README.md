@@ -36,9 +36,14 @@ is used directly. When the selected directory already contains files, the
 Studio preserves them and writes the run to a new
 `testRun-YYYYMMDD-HHMMSS` child directory.
 
-The Atlas C++ library has a trusted native task-pack API, but the current Studio
-and `atlas_studio_runner` remain restricted to built-in kernels. They do not
-import, trust, load, or pass custom packs yet.
+The runner accepts graph v2 with exact custom-pack provenance and repeated
+`--task-pack` arguments, and loads only digest-verified private snapshots. Studio
+uses shared descriptors for built-in parameter forms and reads run v2 summaries.
+It preserves custom nodes in graph documents; pack installation, trust UI, and
+custom-pack launch integration remain planned. Python never loads native packs.
+See the User Guide for the runner CLI and native-code trust boundary.
+Studio bounds each JSONL record to 16 MiB, each task summary to 64 KiB, and
+each complete stream to 128 MiB/one million records.
 
 ## Architecture
 

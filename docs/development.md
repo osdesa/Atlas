@@ -47,7 +47,7 @@ multi-backend API.
 - `src/`: implementations matching those public modules.
 - `apps/atlas/`: current mixed-graph executable and shader.
 - `apps/atlas_bench/`: suite parser, runners, analysis, and result writers.
-- `apps/atlas_studio_runner/`: strict built-in-kernel graph runner and JSONL protocol.
+- `apps/atlas_studio_runner/`: strict descriptor-based graph runner and JSONL protocol.
 - `studio/`: optional PySide6 desktop application, models, and headless tests.
 - `benchmarks/manifests/`: canonical and smoke suite definitions.
 - `benchmarks/schema/`: current suite and output schemas.
@@ -163,7 +163,14 @@ are not rebuilt, and snapshots cap live visual data independently of the larger
 retained result bounds. Its Python code otherwise follows MVC ownership:
 UI-independent document and result models own canonical state, Qt controllers
 apply user intent, and widgets only emit intent and render detached snapshots.
-The studio runner emits bounded machine-readable JSONL on stdout and
+The studio runner resolves graph-v2 custom packs by exact digest, copies their
+referenced files into private temporary directories, and reinspects before native
+loading. One registry and all prepared instances survive execution and summary
+collection; snapshots outlive graphs and native modules. Every node prepares
+before graph insertion. The internal built-in adapter uses the public descriptor
+scalar validators and the same prepared-node/summary route, with metadata shared
+with Studio forms. Python never loads native pack modules.
+The studio runner emits bounded run-v2 machine-readable JSONL on stdout and
 diagnostics on stderr; accepted work is drained when a run is terminated.
 Studio benchmark launches opt into a separate bounded progress JSONL stream.
 Scheduled variants reuse `TraceSession`; direct variants emit equivalent

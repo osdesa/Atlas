@@ -1,3 +1,5 @@
+#include "BuiltinMetadata.h"
+#include "PackSnapshots.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Executor/VulkanExecutor.h"
 #include "atlas/Executor/WorkerpoolExecutor.h"
@@ -12,18 +14,22 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <set>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -37,8 +43,8 @@
  * @file main.cpp
  * @brief Implements the strict process-boundary runner used by Atlas Studio.
  *
- * The runner accepts one validated built-in-kernel graph, executes it once,
- * emits bounded version-one JSONL to standard output, and reserves standard
+ * The runner accepts one validated descriptor-based graph, executes it once,
+ * emits bounded version-two JSONL to standard output, and reserves standard
  * error for diagnostics. All Vulkan resources remain process-owned.
  */
 
@@ -46,12 +52,38 @@ namespace
 {
     using Json = nlohmann::json;
 
+    /** @brief Produces valid UTF-8 diagnostics bounded to 4 KiB even for arbitrary native error bytes. */
+    std::string boundedMessage(const std::string_view message)
+    {
+        std::string text = Json::parse(Json(message).dump(-1, ' ', false, Json::error_handler_t::replace)).get<std::string>();
+        if (text.empty())
+            return "Runner operation failed";
+        if (text.size() > 4096U)
+        {
+            std::size_t end = 4096U;
+            while ((static_cast<unsigned char>(text[end]) & 0xc0U) == 0x80U)
+                --end;
+            text.resize(end);
+        }
+        return text;
+    }
+
     struct Dimensions
     {
         std::uint32_t x{ 1U };
         std::uint32_t y{ 1U };
         std::uint32_t z{ 1U };
     };
+
+    /** @brief Rejects signed, floating, boolean, and overflowing document integers before conversion. */
+    template <typename Integer>
+    Integer unsignedValue(const Json& value, const std::string& path, const Integer minimum = 0,
+                          const Integer maximum = std::numeric_limits<Integer>::max())
+    {
+        if (!value.is_number_unsigned() || value.get<std::uint64_t>() < minimum || value.get<std::uint64_t>() > maximum)
+            throw std::runtime_error{ path + " must be an unsigned integer within bounds" };
+        return value.get<Integer>();
+    }
 
     const char* stateName(const Atlas::TaskState value) noexcept
     {
@@ -63,13 +95,14 @@ namespace
 
     Dimensions dimensions(const Json& value, const std::string& path)
     {
-        if (!value.is_object() || !value.contains("x") || !value.contains("y") || !value.contains("z") ||
+        if (!value.is_object() || value.size() != 3U || !value.contains("x") || !value.contains("y") || !value.contains("z") ||
             !value.at("x").is_number_unsigned() || !value.at("y").is_number_unsigned() || !value.at("z").is_number_unsigned())
         {
             throw std::runtime_error{ path + " must contain unsigned x, y, and z dimensions" };
         }
         const auto result =
-            Dimensions{ value.at("x").get<std::uint32_t>(), value.at("y").get<std::uint32_t>(), value.at("z").get<std::uint32_t>() };
+            Dimensions{ unsignedValue<std::uint32_t>(value.at("x"), path, 1U), unsignedValue<std::uint32_t>(value.at("y"), path, 1U),
+                        unsignedValue<std::uint32_t>(value.at("z"), path, 1U) };
         if (result.x == 0U || result.y == 0U || result.z == 0U)
         {
             throw std::runtime_error{ path + " dimensions must be non-zero" };
@@ -115,9 +148,10 @@ namespace
         std::string id;
         std::string name;
         std::string resource;
-        std::string kernel;
+        std::string taskId;
+        std::string packId;
+        Json parameters;
         std::uint32_t priority{ 0U };
-        std::uint64_t iterations{ 1U };
         std::uint64_t elementCount{ 0U };
         float leftValue{ 0.0F };
         float rightValue{ 0.0F };
@@ -132,10 +166,11 @@ namespace
         bool validation{ false };
         bool tracing{ true };
         std::size_t traceCapacity{ 65'536U };
-        bool synchronousCpu{ false };
+        bool synchronousCpu{ true };
         std::uint32_t workerCount{ 1U };
         std::string policy{ "fifo" };
         std::size_t quantum{ 1U };
+        Json packs = Json::array();
         std::vector<NodeConfig> nodes;
         std::vector<std::pair<std::string, std::string>> edges;
     };
@@ -185,22 +220,44 @@ namespace
         {
             throw std::runtime_error{ "unable to open studio graph: " + path };
         }
+        if (std::filesystem::file_size(path) > 16U * 1024U * 1024U)
+            throw std::runtime_error{ "Studio graph exceeds 16 MiB" };
         Json root;
         input >> root;
-        rejectUnknown(root, { "schema_version", "graph_id", "seed", "runtime", "cpu_executor", "policy", "trace", "nodes", "edges" },
-                      "graph");
-        if (required(root, "schema_version", "graph").get<std::uint32_t>() != 1U)
+        input >> std::ws;
+        if (!input.eof())
+            throw std::runtime_error{ "Trailing content after studio graph" };
+        rejectUnknown(
+            root, { "schema_version", "graph_id", "seed", "runtime", "cpu_executor", "policy", "trace", "nodes", "edges", "packs" },
+            "graph");
+        if (unsignedValue<std::uint32_t>(required(root, "schema_version", "graph"), "schema_version") != 2U)
         {
-            throw std::runtime_error{ "only atlas-studio-graph schema version 1 is supported" };
+            throw std::runtime_error{ "only atlas-studio-graph schema version 2 is supported" };
         }
         Config config;
+        config.packs = required(root, "packs", "graph");
+        if (!config.packs.is_array() || config.packs.size() > 128U)
+            throw std::runtime_error{ "graph.packs must be a bounded array" };
+        std::set<std::string> packIds;
+        for (const auto& pack : config.packs)
+        {
+            rejectUnknown(pack, { "pack_id", "version", "digest" }, "graph.packs[]");
+            const auto id = required(pack, "pack_id", "pack").get<std::string>();
+            const auto version = required(pack, "version", "pack").get<std::string>();
+            const auto digest = required(pack, "digest", "pack").get<std::string>();
+            if (id.empty() || id.size() > 128U || id == "atlas.builtin" || !packIds.insert(id).second || version.empty() ||
+                version.size() > 128U || digest.size() != 64U || digest.find_first_not_of("0123456789abcdef") != std::string::npos)
+                throw std::runtime_error{ "Invalid or duplicate graph pack identity" };
+        }
         if (root.contains("graph_id"))
         {
             config.id = root.at("graph_id").get<std::string>();
         }
+        if (config.id.empty() || config.id.size() > 128U || config.id.find('\0') != std::string::npos)
+            throw std::runtime_error{ "Invalid graph_id" };
         if (root.contains("seed"))
         {
-            config.seed = root.at("seed").get<std::uint64_t>();
+            config.seed = unsignedValue<std::uint64_t>(root.at("seed"), "graph.seed");
         }
         if (root.contains("runtime"))
         {
@@ -216,7 +273,8 @@ namespace
             {
                 throw std::runtime_error{ "graph.cpu_executor.mode must be synchronous or worker_pool" };
             }
-            config.workerCount = root.at("cpu_executor").value("worker_count", 1U);
+            config.workerCount =
+                unsignedValue<std::uint32_t>(root.at("cpu_executor").value("worker_count", Json(1U)), "worker_count", 1U);
             if (config.workerCount == 0U)
             {
                 throw std::runtime_error{ "graph.cpu_executor.worker_count must be positive" };
@@ -228,7 +286,7 @@ namespace
             config.policy = required(root.at("policy"), "type", "graph.policy").get<std::string>();
             if (config.policy == "round_robin")
             {
-                config.quantum = required(root.at("policy"), "quantum", "graph.policy").get<std::size_t>();
+                config.quantum = unsignedValue<std::size_t>(required(root.at("policy"), "quantum", "graph.policy"), "quantum", 1U);
                 if (config.quantum == 0U)
                 {
                     throw std::runtime_error{ "graph.policy.quantum must be positive" };
@@ -238,12 +296,15 @@ namespace
             {
                 throw std::runtime_error{ "graph.policy.type is unsupported" };
             }
+            if (root.at("policy").contains("quantum"))
+                static_cast<void>(unsignedValue<std::size_t>(root.at("policy").at("quantum"), "quantum", 1U));
         }
         if (root.contains("trace"))
         {
             rejectUnknown(root.at("trace"), { "enabled", "capacity" }, "graph.trace");
             config.tracing = root.at("trace").value("enabled", true);
-            config.traceCapacity = root.at("trace").value("capacity", 65'536U);
+            config.traceCapacity =
+                unsignedValue<std::size_t>(root.at("trace").value("capacity", Json(65'536U)), "trace.capacity", 1U, 1'000'000U);
             if (config.tracing && config.traceCapacity == 0U)
             {
                 throw std::runtime_error{ "graph.trace.capacity must be positive" };
@@ -258,52 +319,26 @@ namespace
         {
             const std::string nodePath = "graph.nodes[" + std::to_string(index) + "]";
             const Json& node = nodes.at(index);
-            rejectUnknown(node, { "id", "name", "resource", "kernel", "priority", "slice_workgroups" }, nodePath);
+            rejectUnknown(node, { "id", "name", "resource", "pack_id", "task_id", "parameters", "priority", "slice_workgroups" },
+                          nodePath);
             NodeConfig parsed;
             parsed.id = required(node, "id", nodePath).get<std::string>();
             if (parsed.id.empty())
                 throw std::runtime_error{ nodePath + ".id must not be empty" };
             if (std::any_of(config.nodes.begin(), config.nodes.end(), [&](const NodeConfig& prior) { return prior.id == parsed.id; }))
                 throw std::runtime_error{ "graph.nodes contains duplicate id '" + parsed.id + "'" };
-            parsed.name = node.value("name", parsed.id);
+            parsed.name = required(node, "name", nodePath).get<std::string>();
             parsed.resource = required(node, "resource", nodePath).get<std::string>();
-            parsed.priority = node.value("priority", 0U);
-            const Json& kernel = required(node, "kernel", nodePath);
-            rejectUnknown(kernel, { "type", "iterations", "workgroups", "element_count", "left_value", "right_value" },
-                          nodePath + ".kernel");
-            parsed.kernel = required(kernel, "type", nodePath + ".kernel").get<std::string>();
-            if (parsed.resource == "cpu" && parsed.kernel == "cpu_burn")
-            {
-                parsed.iterations = kernel.value("iterations", 1U);
-                if (parsed.iterations == 0U)
-                {
-                    throw std::runtime_error{ nodePath + ".kernel.iterations must be positive" };
-                }
-            }
-            else if (parsed.resource == "gpu" && parsed.kernel == "gpu_increment")
-            {
-                parsed.workgroups = dimensions(required(kernel, "workgroups", nodePath + ".kernel"), nodePath + ".kernel.workgroups");
-            }
-            else if (parsed.resource == "gpu" && parsed.kernel == "vector_add")
-            {
-                parsed.elementCount = kernel.value("element_count", 256U);
-                parsed.leftValue = kernel.value("left_value", 4.0F);
-                parsed.rightValue = kernel.value("right_value", 7.0F);
-                if (parsed.elementCount == 0U)
-                {
-                    throw std::runtime_error{ nodePath + ".kernel.element_count must be positive" };
-                }
-                if (parsed.elementCount > std::numeric_limits<std::uint64_t>::max() - 63U)
-                    throw std::runtime_error{ nodePath + ".kernel.element_count is too large" };
-                const std::uint64_t groups = (parsed.elementCount + 63U) / 64U;
-                if (groups > std::numeric_limits<std::uint32_t>::max())
-                    throw std::runtime_error{ nodePath + ".kernel.element_count exceeds Vulkan dispatch limits" };
-                parsed.workgroups = Dimensions{ static_cast<std::uint32_t>(groups), 1U, 1U };
-            }
-            else
-            {
-                throw std::runtime_error{ nodePath + " has an unsupported resource/kernel combination" };
-            }
+            parsed.priority = unsignedValue<std::uint32_t>(required(node, "priority", nodePath), nodePath + ".priority");
+            parsed.packId = required(node, "pack_id", nodePath).get<std::string>();
+            parsed.taskId = required(node, "task_id", nodePath).get<std::string>();
+            parsed.parameters = required(node, "parameters", nodePath);
+            if (parsed.id.size() > 128U || parsed.name.empty() || parsed.name.size() > 4096U ||
+                parsed.id.find('\0') != std::string::npos || parsed.name.find('\0') != std::string::npos || parsed.packId.empty() ||
+                parsed.packId.size() > 128U || parsed.taskId.empty() || parsed.taskId.size() > 128U ||
+                (parsed.resource != "cpu" && parsed.resource != "gpu") || !parsed.parameters.is_object() ||
+                parsed.parameters.dump().size() > 65536U || (parsed.packId != "atlas.builtin" && !packIds.contains(parsed.packId)))
+                throw std::runtime_error{ nodePath + " has invalid task identity or parameters" };
             if (node.contains("slice_workgroups") && !node.at("slice_workgroups").is_null())
             {
                 parsed.slice = dimensions(node.at("slice_workgroups"), nodePath + ".slice_workgroups");
@@ -321,19 +356,50 @@ namespace
             config.edges.emplace_back(required(edge, "from", "graph.edges[]").get<std::string>(),
                                       required(edge, "to", "graph.edges[]").get<std::string>());
         }
+        std::map<std::string, std::size_t> indices;
+        for (std::size_t i = 0; i < config.nodes.size(); ++i)
+            indices.emplace(config.nodes[i].id, i);
+        std::vector<std::vector<std::size_t>> successors(config.nodes.size());
+        std::vector<std::size_t> indegree(config.nodes.size());
+        std::set<std::pair<std::string, std::string>> seen;
+        for (const auto& edge : config.edges)
+        {
+            if (!indices.contains(edge.first) || !indices.contains(edge.second) || edge.first == edge.second ||
+                !seen.insert(edge).second)
+                throw std::runtime_error{ "Invalid, duplicate, or unknown dependency" };
+            successors[indices.at(edge.first)].push_back(indices.at(edge.second));
+            ++indegree[indices.at(edge.second)];
+        }
+        std::vector<std::size_t> ready;
+        for (std::size_t i = 0; i < indegree.size(); ++i)
+            if (indegree[i] == 0U)
+                ready.push_back(i);
+        for (std::size_t i = 0; i < ready.size(); ++i)
+            for (const auto next : successors[ready[i]])
+                if (--indegree[next] == 0U)
+                    ready.push_back(next);
+        if (ready.size() != config.nodes.size())
+            throw std::runtime_error{ "Studio graph contains a cycle" };
+        for (const auto& id : packIds)
+            if (std::none_of(config.nodes.begin(), config.nodes.end(), [&](const NodeConfig& node) { return node.packId == id; }))
+                throw std::runtime_error{ "Graph declares an unused pack" };
         return config;
     }
 
     class StudioTrace final
     {
       public:
-        explicit StudioTrace(const std::size_t capacity) : buffer{ capacity }, session{ buffer }, consumer{ [this] { consume(); } }
+        explicit StudioTrace(const std::size_t capacity, const Json& packs)
+            : buffer{ capacity }, session{ buffer }, consumer{ [this] { consume(); } }
         {
-            std::cout << R"({"record_type":"header","studio_schema_version":1,"trace_schema_version":1})" << std::endl;
+            write(Json{
+                { "record_type", "header" }, { "studio_schema_version", 2 }, { "trace_schema_version", 1 }, { "packs", packs } });
         }
         ~StudioTrace()
         {
-            finish("abandoned", nullptr);
+            buffer.close();
+            if (consumer.joinable())
+                consumer.join();
         }
         Atlas::TraceSession* sessionPtr() noexcept
         {
@@ -363,8 +429,11 @@ namespace
         }
         void write(const Json& record)
         {
+            const auto encoded = record.dump(-1, ' ', false, Json::error_handler_t::replace);
+            if (encoded.size() > 16U * 1024U * 1024U)
+                throw std::runtime_error{ "Studio output record exceeds 16 MiB" };
             std::lock_guard lock{ outputMutex };
-            std::cout << record.dump() << std::endl;
+            std::cout << encoded << std::endl;
         }
 
       private:
@@ -476,6 +545,140 @@ namespace
         float leftValue, rightValue;
     };
 
+    /** @brief Constructs internal descriptors from the same trusted metadata used by Studio forms. */
+    Atlas::CustomTaskDescriptor builtinDescriptor(const std::string& id)
+    {
+        for (const auto& metadata : Json::parse(builtinMetadata))
+        {
+            if (metadata.at("task_id") != id)
+                continue;
+            Atlas::CustomTaskDescriptor descriptor;
+            descriptor.packId = "atlas.builtin";
+            descriptor.taskId = id;
+            descriptor.displayName = metadata.at("name");
+            descriptor.resource = metadata.at("resource") == "cpu" ? Atlas::ExecutionResource::CPU : Atlas::ExecutionResource::GPU;
+            descriptor.supportsSlicing = metadata.at("supports_slicing");
+            for (const auto* key : { "parameters", "summaries" })
+            {
+                auto& fields = std::string_view{ key } == "parameters" ? descriptor.parameters : descriptor.summaries;
+                for (const auto& value : metadata.at(key))
+                {
+                    Atlas::TaskPackFieldDescriptor field;
+                    field.id = value.at("id");
+                    field.displayName = value.value("name", field.id);
+                    field.required = value.value("required", true);
+                    const std::string type = value.at("type");
+                    if (type == "unsigned_integer")
+                    {
+                        field.type = Atlas::TaskPackFieldType::UnsignedInteger;
+                        if (value.contains("minimum"))
+                            field.minimumUnsigned = value.at("minimum").get<std::uint64_t>();
+                        if (value.contains("maximum"))
+                            field.maximumUnsigned = value.at("maximum").get<std::uint64_t>();
+                        if (value.contains("default"))
+                            field.defaultValue = value.at("default").get<std::uint64_t>();
+                    }
+                    else if (type == "number")
+                    {
+                        field.type = Atlas::TaskPackFieldType::Number;
+                        if (value.contains("minimum"))
+                            field.minimumNumber = value.at("minimum").get<double>();
+                        if (value.contains("maximum"))
+                            field.maximumNumber = value.at("maximum").get<double>();
+                        if (value.contains("default"))
+                            field.defaultValue = value.at("default").get<double>();
+                    }
+                    else if (type == "boolean")
+                        field.type = Atlas::TaskPackFieldType::Boolean;
+                    else
+                        throw std::logic_error{ "Unsupported internal built-in field" };
+                    fields.push_back(std::move(field));
+                }
+            }
+            return descriptor;
+        }
+        throw std::runtime_error{ "Unknown atlas.builtin task: " + id };
+    }
+
+    /** @brief Common prepared-node adapter. Closures retain payload and summary ownership through execution.
+     * add is invoked exactly once after every node has prepared; summary only after successful execution.
+     */
+    struct PreparedTask
+    {
+        std::function<std::optional<Atlas::TaskHandle>(Atlas::TaskGraph&, Atlas::TaskOptions)> add;
+        std::function<Atlas::CustomTaskSummary()> summary;
+    };
+
+    PreparedTask prepareBuiltin(NodeConfig node, const Atlas::CustomTaskDescriptor& descriptor, Atlas::VulkanRuntime& runtime,
+                                const std::uint64_t seed, const std::size_t index)
+    {
+        const Json parameters = Json::parse(descriptor.canonicalizeParameters(node.parameters.dump()));
+        if (node.taskId == "cpu_burn")
+        {
+            auto value = std::make_shared<std::uint64_t>(0U);
+            const auto iterations = parameters.at("iterations").get<std::uint64_t>();
+            return { [value, seed, index, iterations](Atlas::TaskGraph& graph, Atlas::TaskOptions options)
+                     {
+                         return graph.addCpuTask([value, seed, index, iterations]
+                                                 { *value = runCpuKernel(seed ^ (index + 1U), iterations); }, std::move(options));
+                     },
+                     [value, descriptor] { return descriptor.validateSummary(Json{ { "value", *value } }.dump()); } };
+        }
+        std::optional<Atlas::VulkanDispatch> dispatch;
+        std::function<Atlas::CustomTaskSummary()> summary;
+        if (node.taskId == "gpu_increment")
+        {
+            node.workgroups = { parameters.at("workgroups_x"), parameters.at("workgroups_y"), parameters.at("workgroups_z") };
+            const auto count = checkedProduct(node.workgroups, "gpu_increment workgroups");
+            if (count > (256U * 1024U * 1024U - 16U) / sizeof(std::uint32_t))
+                throw std::runtime_error{ "gpu_increment allocation exceeds 256 MiB" };
+            const auto pipeline = runtime.createComputePipeline(
+                Atlas::ComputeShader{ shaderWords(ATLAS_STUDIO_BENCHMARK_SPIRV_PATH),
+                                      "main",
+                                      { { 0U, Atlas::BufferAccess::ReadOnly }, { 1U, Atlas::BufferAccess::ReadWrite } } });
+            const auto dimensionsBuffer = runtime.createBuffer(4U * sizeof(std::uint32_t));
+            const auto output = runtime.createBuffer(checkedBytes(count, sizeof(std::uint32_t), "gpu_increment"));
+            const std::vector<std::uint32_t> dimensionsData{ node.workgroups.x, node.workgroups.y, node.workgroups.z, 0U };
+            runtime.upload(dimensionsBuffer, std::as_bytes(std::span{ dimensionsData }));
+            std::vector<std::uint32_t> zeros(static_cast<std::size_t>(count), 0U);
+            runtime.upload(output, std::as_bytes(std::span{ zeros }));
+            dispatch.emplace(pipeline,
+                             std::vector<Atlas::BufferBinding>{ { 0U, dimensionsBuffer, Atlas::BufferAccess::ReadOnly },
+                                                                { 1U, output, Atlas::BufferAccess::ReadWrite } },
+                             Atlas::DispatchDimensions{ node.workgroups.x, node.workgroups.y, node.workgroups.z });
+            summary = [&runtime, output, count, descriptor]
+            {
+                std::vector<std::uint32_t> values(static_cast<std::size_t>(count));
+                runtime.download(output, std::as_writable_bytes(std::span{ values }));
+                if (!std::all_of(values.begin(), values.end(), [](const auto value) { return value == 1013904223U; }))
+                    throw std::runtime_error{ "gpu_increment output validation failed" };
+                return descriptor.validateSummary(R"({"ok":true})");
+            };
+        }
+        else
+        {
+            node.elementCount = parameters.at("element_count");
+            node.leftValue = parameters.at("left_value");
+            node.rightValue = parameters.at("right_value");
+            node.workgroups = { static_cast<std::uint32_t>((node.elementCount + 63U) / 64U), 1U, 1U };
+            auto resources = std::make_shared<VectorAddResources>(runtime, node);
+            dispatch = resources->dispatch;
+            summary = [resources, descriptor]
+            {
+                resources->verify();
+                return descriptor.validateSummary(R"({"ok":true})");
+            };
+        }
+        if (node.slice)
+        {
+            Atlas::SlicedVulkanDispatch sliced{ *dispatch, { node.slice->x, node.slice->y, node.slice->z } };
+            return { [sliced](Atlas::TaskGraph& graph, Atlas::TaskOptions options)
+                     { return graph.addGpuTask(sliced, std::move(options)); }, std::move(summary) };
+        }
+        return { [work = *dispatch](Atlas::TaskGraph& graph, Atlas::TaskOptions options)
+                 { return graph.addGpuTask(work, std::move(options)); }, std::move(summary) };
+    }
+
     Json resultJson(const Atlas::SchedulerResult& result, const Atlas::VulkanRuntime& runtime, const Config& config,
                     const Atlas::TaskGraph& graph, const std::vector<Atlas::TaskHandle>& handles)
     {
@@ -516,121 +719,148 @@ namespace
 
 int main(int argc, char** argv)
 {
+    std::unique_ptr<StudioTrace> trace;
+    std::string phase = "preflight";
     try
     {
-        if (argc != 5 || std::string_view{ argv[1] } != "--config" || std::string_view{ argv[3] } != "--control")
+        std::string configPath, controlPath;
+        std::vector<std::filesystem::path> packPaths;
+        for (int i = 1; i < argc; ++i)
         {
-            throw std::invalid_argument{ "Usage: atlas_studio_runner --config <graph.json> --control <cancel-file>" };
+            const std::string_view option{ argv[i] };
+            if (i + 1 >= argc)
+                throw std::invalid_argument{ "Missing runner argument value" };
+            const std::string value{ argv[++i] };
+            if (option == "--config" && configPath.empty())
+                configPath = value;
+            else if (option == "--control" && controlPath.empty())
+                controlPath = value;
+            else if (option == "--task-pack" && packPaths.size() < 128U)
+                packPaths.emplace_back(value);
+            else
+                throw std::invalid_argument{ "Unknown or duplicate runner argument" };
         }
-        // The config path is intentionally selected by the local user through the documented CLI.
-        // codeql[cpp/path-injection]
-        const Config config = loadConfig(argv[2]);
-        StudioTrace trace{ config.tracing ? config.traceCapacity : 1U };
+        if (configPath.empty() || controlPath.empty())
+            throw std::invalid_argument{
+                "Usage: atlas_studio_runner --config <graph.json> --control <cancel-file> [--task-pack <trusted-directory>]..."
+            };
+        const Config config = loadConfig(configPath);
+        Atlas::Studio::PackSnapshots snapshots;
+        Atlas::TaskPackRegistry registry;
+        std::vector<Atlas::TaskPackManifest> available;
+        for (const auto& path : packPaths)
+            available.push_back(registry.inspectDirectory(path));
+        std::map<std::string, std::string> digests;
+        std::vector<std::filesystem::path> selected;
+        // Resolve and verify every snapshot before executing any native loader.
+        for (const auto& requested : config.packs)
+        {
+            const std::string id = requested.at("pack_id"), digest = requested.at("digest");
+            const auto found = std::find_if(
+                available.begin(), available.end(), [&](const auto& pack)
+                { return pack.packId == id && pack.digest == digest && pack.version == requested.at("version").get<std::string>(); });
+            if (found == available.end())
+                throw std::runtime_error{ "Missing exact task pack: " + id + " digest " + digest };
+            selected.push_back(snapshots.copy(*found, registry));
+            digests.emplace(id, digest);
+        }
+        for (const auto& path : selected)
+        {
+            const auto& loaded = registry.loadDirectory(path);
+            if (!digests.contains(loaded.packId) || digests.at(loaded.packId) != loaded.digest)
+                throw std::runtime_error{ "Loaded snapshot identity differs from graph provenance" };
+        }
+        std::vector<Atlas::CustomTaskDescriptor> descriptors;
+        for (const auto& node : config.nodes)
+        {
+            Atlas::CustomTaskDescriptor descriptor;
+            if (node.packId == "atlas.builtin")
+                descriptor = builtinDescriptor(node.taskId);
+            else
+            {
+                const auto* found = registry.findTask(node.packId, digests.at(node.packId), node.taskId);
+                if (found == nullptr)
+                    throw std::runtime_error{ "Unknown exact task descriptor: " + node.packId + "/" + node.taskId };
+                descriptor = *found;
+            }
+            if ((descriptor.resource == Atlas::ExecutionResource::CPU ? "cpu" : "gpu") != node.resource ||
+                (node.slice && !descriptor.supportsSlicing))
+                throw std::runtime_error{ "Task resource or slicing does not match descriptor: " + node.id };
+            static_cast<void>(descriptor.canonicalizeParameters(node.parameters.dump()));
+            descriptors.push_back(std::move(descriptor));
+        }
         Atlas::VulkanRuntime runtime{ Atlas::VulkanRuntimeOptions{
             .enableValidation = config.validation, .deviceSelector = {}, .validationCallback = {} } };
         Atlas::TaskGraph graph;
-        std::vector<Atlas::TaskHandle> handles;
-        std::vector<std::unique_ptr<VectorAddResources>> vectorResources;
-        std::vector<Atlas::VulkanDispatch> gpuDispatches;
-        std::vector<std::optional<Atlas::SlicedVulkanDispatch>> slicedDispatches;
-        handles.reserve(config.nodes.size());
-        gpuDispatches.reserve(config.nodes.size());
-        slicedDispatches.reserve(config.nodes.size());
-        auto cpuResults = std::make_shared<std::vector<std::uint64_t>>(config.nodes.size(), 0U);
-        for (std::size_t index = 0; index < config.nodes.size(); ++index)
+        std::vector<PreparedTask> prepared;
+        for (std::size_t i = 0; i < config.nodes.size(); ++i)
         {
-            const NodeConfig& node = config.nodes.at(index);
-            std::optional<Atlas::TaskHandle> handle;
-            const Atlas::TaskOptions options{ node.name,
-                                              node.resource == "cpu" ? Atlas::ExecutionResource::CPU : Atlas::ExecutionResource::GPU,
-                                              node.priority };
-            if (node.kernel == "cpu_burn")
-            {
-                handle = graph.addCpuTask([cpuResults, index, seed = config.seed, iterations = node.iterations]
-                                          { cpuResults->at(index) = runCpuKernel(seed ^ (index + 1U), iterations); }, options);
-            }
-            else if (node.kernel == "gpu_increment")
-            {
-                const Atlas::VulkanComputePipeline pipeline{ runtime.createComputePipeline(
-                    Atlas::ComputeShader{ shaderWords(ATLAS_STUDIO_BENCHMARK_SPIRV_PATH),
-                                          "main",
-                                          { { 0U, Atlas::BufferAccess::ReadOnly }, { 1U, Atlas::BufferAccess::ReadWrite } } }) };
-                const Atlas::VulkanBuffer dimensionsBuffer{ runtime.createBuffer(4U * sizeof(std::uint32_t)) };
-                const std::uint64_t count = checkedProduct(node.workgroups, node.id + ".workgroups");
-                const Atlas::VulkanBuffer output{ runtime.createBuffer(
-                    checkedBytes(count, sizeof(std::uint32_t), node.id + " output buffer")) };
-                const std::vector<std::uint32_t> dimensionsData{ node.workgroups.x, node.workgroups.y, node.workgroups.z, 0U };
-                runtime.upload(dimensionsBuffer, std::as_bytes(std::span{ dimensionsData }));
-                gpuDispatches.emplace_back(pipeline,
-                                           std::vector<Atlas::BufferBinding>{ { 0U, dimensionsBuffer, Atlas::BufferAccess::ReadOnly },
-                                                                              { 1U, output, Atlas::BufferAccess::ReadWrite } },
-                                           Atlas::DispatchDimensions{ node.workgroups.x, node.workgroups.y, node.workgroups.z });
-                if (node.slice.has_value())
-                {
-                    slicedDispatches.emplace_back(Atlas::SlicedVulkanDispatch{
-                        gpuDispatches.back(), Atlas::DispatchDimensions{ node.slice->x, node.slice->y, node.slice->z } });
-                    handle = graph.addGpuTask(slicedDispatches.back().value(), options);
-                }
-                else
-                {
-                    slicedDispatches.emplace_back(std::nullopt);
-                    handle = graph.addGpuTask(gpuDispatches.back(), options);
-                }
-            }
+            const auto& node = config.nodes[i];
+            if (node.packId == "atlas.builtin")
+                prepared.push_back(prepareBuiltin(node, descriptors[i], runtime, config.seed, i));
             else
             {
-                vectorResources.push_back(std::make_unique<VectorAddResources>(runtime, node));
-                if (node.slice.has_value())
-                {
-                    handle = graph.addGpuTask(
-                        Atlas::SlicedVulkanDispatch{ vectorResources.back()->dispatch,
-                                                     Atlas::DispatchDimensions{ node.slice->x, node.slice->y, node.slice->z } },
-                        options);
-                }
-                else
-                {
-                    handle = graph.addGpuTask(vectorResources.back()->dispatch, options);
-                }
+                Atlas::CustomTaskCreateInfo info;
+                info.parameterJson = node.parameters.dump();
+                info.graphSeed = config.seed;
+                info.stableNodeIndex = i;
+                info.vulkanRuntime = &runtime;
+                if (node.slice)
+                    info.sliceDimensions = Atlas::DispatchDimensions{ node.slice->x, node.slice->y, node.slice->z };
+                auto instance = std::make_shared<Atlas::CustomTaskInstance>(
+                    registry.createTask(node.packId, digests.at(node.packId), node.taskId, info));
+                prepared.push_back({ [instance](Atlas::TaskGraph& target, Atlas::TaskOptions options)
+                                     { return instance->addToGraph(target, std::move(options)); },
+                                     [instance] { return instance->collectSummary(); } });
             }
-            if (!handle.has_value())
-                throw std::runtime_error{ "unable to add studio task" };
-            handles.push_back(handle.value());
-            trace.write(Json{ { "record_type", "task" },
-                              { "node_id", node.id },
-                              { "task_id", handles.back().getTaskID().getValue() },
-                              { "name", node.name },
-                              { "resource", node.resource },
-                              { "priority", node.priority } });
+        }
+        std::vector<Atlas::TaskHandle> handles;
+        std::map<std::string, std::size_t> indices;
+        for (std::size_t i = 0; i < config.nodes.size(); ++i)
+        {
+            const auto& node = config.nodes[i];
+            const auto handle = prepared[i].add(graph, Atlas::TaskOptions{ node.name, descriptors[i].resource, node.priority });
+            if (!handle)
+                throw std::runtime_error{ "Unable to add prepared task" };
+            handles.push_back(*handle);
+            indices.emplace(node.id, i);
         }
         for (const auto& [from, to] : config.edges)
-        {
-            const auto fromIndex =
-                std::find_if(config.nodes.begin(), config.nodes.end(), [&](const NodeConfig& node) { return node.id == from; });
-            const auto toIndex =
-                std::find_if(config.nodes.begin(), config.nodes.end(), [&](const NodeConfig& node) { return node.id == to; });
-            if (fromIndex == config.nodes.end() || toIndex == config.nodes.end())
-                throw std::runtime_error{ "edge references unknown node" };
-            if (!graph.addDependency(handles.at(static_cast<std::size_t>(toIndex - config.nodes.begin())),
-                                     handles.at(static_cast<std::size_t>(fromIndex - config.nodes.begin()))))
-                throw std::runtime_error{ "invalid or duplicate graph edge" };
-        }
+            if (!graph.addDependency(handles[indices.at(to)], handles[indices.at(from)]))
+                throw std::runtime_error{ "Invalid graph dependency" };
         if (!graph.finishTaskGraph())
-            throw std::runtime_error{ "studio graph is cyclic or invalid" };
-
+            throw std::runtime_error{ "Studio graph is cyclic or invalid" };
         std::unique_ptr<Atlas::CpuExecutor> cpu;
         if (config.synchronousCpu)
             cpu = std::make_unique<Atlas::SynchronousCpuExecutor>();
         else
             cpu = std::make_unique<Atlas::WorkerpoolExecutor>(config.workerCount);
         Atlas::VulkanExecutor gpu{ runtime };
-        std::unique_ptr<Atlas::SchedulingPolicy> schedulingPolicy = policy(config);
-        Atlas::KahnScheduler scheduler{ graph, *cpu, gpu, *schedulingPolicy, config.tracing ? trace.sessionPtr() : nullptr };
-        const std::filesystem::path controlPath{ argv[4] };
+        auto schedulingPolicy = policy(config);
+        trace = std::make_unique<StudioTrace>(config.tracing ? config.traceCapacity : 1U, config.packs);
+        phase = "execution";
+        for (std::size_t i = 0; i < handles.size(); ++i)
+        {
+            const auto& node = config.nodes[i];
+            trace->write(Json{ { "record_type", "task" },
+                               { "node_id", node.id },
+                               { "task_id", handles[i].getTaskID().getValue() },
+                               { "name", node.name },
+                               { "resource", node.resource },
+                               { "priority", node.priority },
+                               { "pack_id", node.packId },
+                               { "pack_task_id", node.taskId } });
+        }
+        Atlas::KahnScheduler scheduler{ graph, *cpu, gpu, *schedulingPolicy, config.tracing ? trace->sessionPtr() : nullptr };
+        if (std::filesystem::exists(controlPath))
+            for (const auto handle : handles)
+                static_cast<void>(scheduler.requestCancellation(handle));
         std::jthread control{ [&](std::stop_token stop)
                               {
                                   while (!stop.stop_requested())
                                   {
-                                      if (std::filesystem::exists(controlPath))
+                                      std::error_code error;
+                                      if (std::filesystem::exists(controlPath, error))
                                       {
                                           for (const auto handle : handles)
                                               static_cast<void>(scheduler.requestCancellation(handle));
@@ -639,19 +869,51 @@ int main(int argc, char** argv)
                                       std::this_thread::sleep_for(std::chrono::milliseconds{ 50 });
                                   }
                               } };
-        const Atlas::SchedulerResult result = scheduler.execute();
+        const auto result = scheduler.execute();
         control.request_stop();
-        for (const auto& resource : vectorResources)
+        control.join();
+        bool summaryFailed = false;
+        phase = "summary";
+        for (std::size_t i = 0; i < prepared.size(); ++i)
         {
-            if (result.status == Atlas::SchedulerStatus::Success)
-                resource->verify();
+            if (graph.snapshotTask(handles[i])->executionInfo.state != Atlas::TaskState::Success)
+                continue;
+            try
+            {
+                const auto summary = prepared[i].summary();
+                trace->write(Json{ { "record_type", "task_summary" },
+                                   { "node_id", config.nodes[i].id },
+                                   { "task_id", handles[i].getTaskID().getValue() },
+                                   { "summary", Json::parse(summary.canonicalJson) } });
+            }
+            catch (const std::exception& error)
+            {
+                summaryFailed = true;
+                trace->write(Json{ { "record_type", "error" },
+                                   { "studio_schema_version", 2 },
+                                   { "phase", "summary" },
+                                   { "message", boundedMessage(config.nodes[i].id + ": " + error.what()) } });
+            }
         }
-        const Json resultRecord = resultJson(result, runtime, config, graph, handles);
-        trace.finish(result.status == Atlas::SchedulerStatus::Success ? "success" : "failed", &resultRecord);
-        return result.status == Atlas::SchedulerStatus::Success ? EXIT_SUCCESS : EXIT_FAILURE;
+        const auto resultRecord = resultJson(result, runtime, config, graph, handles);
+        const bool success = result.status == Atlas::SchedulerStatus::Success && !summaryFailed;
+        trace->finish(success ? "success" : "failed", &resultRecord);
+        return success ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     catch (const std::exception& error)
     {
+        const Json record{
+            { "record_type", "error" }, { "studio_schema_version", 2 }, { "phase", phase }, { "message", boundedMessage(error.what()) }
+        };
+        if (trace)
+        {
+            trace->write(record);
+            trace->finish("failed", nullptr);
+        }
+        else
+        {
+            std::cout << record.dump(-1, ' ', false, Json::error_handler_t::replace) << std::endl;
+        }
         std::cerr << "atlas_studio_runner: " << error.what() << '\n';
         return EXIT_FAILURE;
     }
