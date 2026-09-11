@@ -109,6 +109,14 @@ jobs:
           ruff check atlas_studio tests
           python -m pytest -q --junitxml=../studio.junit.xml
 
+      - name: Verify native Windows desktop workflow
+        if: runner.os == 'Windows'
+        working-directory: studio
+        env:
+          QT_QPA_PLATFORM: windows
+          ATLAS_DESKTOP_EVIDENCE_DIR: ${{ github.workspace }}/desktop-evidence
+        run: python -m pytest -q tests/test_task_packs.py -k desktop_pack_delivery --junitxml=../desktop.junit.xml
+
       - name: Upload Studio and Windows native evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -118,6 +126,8 @@ jobs:
             studio.junit.xml
             build/windows/native.junit.xml
             build/windows/Testing/Temporary/LastTest.log
+            desktop.junit.xml
+            desktop-evidence/
 
   format:
     name: ClangFormat

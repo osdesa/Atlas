@@ -946,12 +946,22 @@ def test_desktop_pack_delivery_workflow(qtbot, tmp_path, pack, store, monkeypatc
     qtbot.addWidget(window)
     controller = studio.StudioController(window)
     window.show()
+
+    def capture(name, widget=window):
+        evidence = os.environ.get("ATLAS_DESKTOP_EVIDENCE_DIR")
+        if evidence:
+            directory = Path(evidence) / ("sliced" if sliced else "ordinary")
+            directory.mkdir(parents=True, exist_ok=True)
+            QApplication.processEvents()
+            assert widget.grab().save(str(directory / f"{name}.png"))
+
     qtbot.waitUntil(lambda: controller.pack_jobs.thread is None)
     with qtbot.waitSignal(controller.pack_jobs.finished, timeout=10000) as imported:
         controller.pack_manager.import_requested.emit(str(pack[0]))
     assert imported.args == [""]
     digest = pack[1]
     assert digest in store.installed and not store.trusted(digest)
+    capture("01-import", controller.pack_manager)
 
     # Exercise both responses to the real modal warning, including its safe default.
     for answer in (QMessageBox.No, QMessageBox.Yes):
@@ -962,6 +972,7 @@ def test_desktop_pack_delivery_workflow(qtbot, tmp_path, pack, store, monkeypatc
             warnings.append(
                 (dialog.text(), dialog.standardButton(dialog.defaultButton()), dialog.textFormat())
             )
+            capture("02-trust-warning", dialog)
             dialog.done(answer)
 
         QtCore.QTimer.singleShot(0, respond)
@@ -988,6 +999,7 @@ def test_desktop_pack_delivery_workflow(qtbot, tmp_path, pack, store, monkeypatc
     document = controller.graph.model.snapshot()
     assert document["nodes"][-2]["parameters"] == {"amount": 7}
     assert bool(document["nodes"][-1].get("slice_workgroups")) == sliced
+    capture("03-graph")
     path = tmp_path / "saved.json"
     monkeypatch.setattr(window, "choose_save_file", lambda *_args: path)
     window.actions["save"].trigger()
@@ -1018,13 +1030,16 @@ def test_desktop_pack_delivery_workflow(qtbot, tmp_path, pack, store, monkeypatc
     assert summary is not None
     assert summary.child(0).text(1) == "true"
     assert summary.child(1).text(0) == "Raw JSON"
+    capture("04-summary")
 
     window.show_workspace("graph")
     controller.pack_manager.trust_requested.emit(digest, False)
     assert not window.actions["run"].isEnabled()
     assert "Untrusted" in view.pack_status.text()
+    capture("05-revoked")
     controller.pack_manager.remove_requested.emit(digest)
     assert not window.actions["run"].isEnabled()
     assert "Missing" in view.pack_status.text()
+    capture("06-missing")
     window.actions["save"].trigger()
     assert json.loads(path.read_text()) == document

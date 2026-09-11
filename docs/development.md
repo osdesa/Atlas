@@ -265,6 +265,10 @@ lifetime boundary. Native fault tests use the test pack's process-local
 `ATLAS_TEST_PACK_FAULT` input to exercise malformed ABI/GPU callbacks and abrupt
 process exit. The production loader and runner expose no fault controls. Shader
 contract tests compile valid unsupported interfaces using `glslc` on `PATH`.
+Windows CI additionally runs the desktop delivery cases with Qt's native
+`windows` platform plugin. `ATLAS_DESKTOP_EVIDENCE_DIR` selects a test-only output
+directory for import, trust, graph, summary, revocation, and missing-pack
+screenshots; CI retains them with the desktop JUnit log.
 
 For an optional local physical-GPU run, select an installed ICD externally and
 use the same build rather than checking a machine path into the repository:
