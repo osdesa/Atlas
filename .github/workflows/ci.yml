@@ -19,7 +19,6 @@ jobs:
         os: [ubuntu-24.04, windows-2022]
     runs-on: ${{ matrix.os }}
     env:
-      QT_QPA_PLATFORM: offscreen
       ATLAS_REQUIRE_NATIVE_TESTS: "1"
 
     steps:
@@ -104,6 +103,8 @@ jobs:
 
       - name: Test desktop application
         working-directory: studio
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           ruff format --check atlas_studio tests
           ruff check atlas_studio tests

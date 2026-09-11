@@ -244,8 +244,9 @@ It has no schedule and does not gate ordinary pull requests.
 
 The existing Studio CI matrix builds native contracts on Ubuntu and Windows x64,
 selects real Mesa Lavapipe through a discovered `VK_DRIVER_FILES` manifest, and
-runs the full PySide6 suite with `QT_QPA_PLATFORM=offscreen`. Windows uses MSVC,
-the Vulkan SDK, and vcpkg SPIRV-Tools, then runs all C++ tests and `atlas` before
+runs the full PySide6 suite with `QT_QPA_PLATFORM=offscreen` scoped to the test
+step so the Qt-based Vulkan SDK installer uses the native Windows platform.
+Windows uses MSVC, the Vulkan SDK, and vcpkg SPIRV-Tools, then runs all C++ tests and `atlas` before
 Studio tests. Native fixtures are actual shared libraries (`.dll` on Windows).
 CI sets `ATLAS_REQUIRE_NATIVE_TESTS=1`: missing runner/probe binaries and missing
 symlink privileges fail instead of skipping required coverage. Windows hosts
