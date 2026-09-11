@@ -58,6 +58,7 @@ target_compile_definitions(atlas_task_pack_contract PRIVATE
 add_dependencies(atlas_task_pack_contract atlas_task_pack_mock atlas_vector_add_shader)
 atlas_set_project_warnings(atlas_task_pack_contract)
 atlas_enable_sanitizers(atlas_task_pack_contract)
+atlas_enable_coverage(atlas_task_pack_contract)
 
 add_subdirectory(unit)
 add_subdirectory(feature)

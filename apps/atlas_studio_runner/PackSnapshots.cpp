@@ -108,7 +108,7 @@ namespace Atlas::Studio
                 parent.fd = next;
             }
             SourceFile input{ ::openat(parent.fd, relative.filename().c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC) };
-            struct stat status{};
+            struct stat status = {};
             if (::fstat(input.fd, &status) != 0 || !S_ISREG(status.st_mode))
                 throw std::runtime_error{ "Snapshot source changed to a special file" };
             for (;;)
