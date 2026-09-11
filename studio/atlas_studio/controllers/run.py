@@ -43,9 +43,9 @@ class RunController(QObject):
     def active(self) -> bool:
         return self.service.active
 
-    def start_graph(self, document: JsonObject) -> None:
+    def start_graph(self, document: JsonObject, task_packs: tuple[Path, ...] = ()) -> None:
         self._prepare()
-        self.service.start_graph(document)
+        self.service.start_graph(document, task_packs)
 
     def start_benchmark(
         self,

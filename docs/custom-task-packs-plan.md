@@ -2,14 +2,15 @@
 
 ## Implementation status and handoff
 
-**Parts A and B are complete.** The library and runner execute trusted native
+**Parts A, B, and C are implemented.** The library and runner execute trusted native
 CPU/GPU tasks through the existing graph payloads. Graph v2 and run v2 replace
 the old application contracts. The runner resolves exact digests, verifies
 private snapshots before loading, prepares all nodes before insertion, and
 emits provenance, structured errors, and bounded per-task summaries. Built-in
 parameter forms and runner preparation share descriptor metadata and scalar
-validation. Part C pack management, trust UI, custom palettes, and launch
-integration remain planned.
+validation. Part C adds content-addressed import, per-digest QSettings trust, descriptor
+palettes/forms, unresolved-node diagnostics, exact launch integration, and
+expandable task summaries. Safe metadata export uses the runner inspection mode.
 
 The completed library contract is the starting point for all later work:
 
@@ -299,7 +300,7 @@ Provenance must contain the exact executed pack ID and digest, not a directory
 path or display version. Add fixtures for built-in-only, CPU-pack, GPU-pack,
 missing-pack, wrong-digest, and incomplete-crash streams before deleting v1.
 
-# Part C — Atlas Studio GUI
+# Part C — Atlas Studio GUI — implemented
 
 ## Part C handoff and order of work
 
@@ -390,8 +391,8 @@ JSON, not arbitrary plugin-controlled rich text.
 
 Completed Parts A and B cover the library contracts, native ABI, CPU/GPU
 preparation, mock-pack coverage, Vulkan hardening, runner schemas/snapshots,
-and built-in descriptor unification. Remaining delivery stages below include
-Part C GUI work; runner portions of Stages 1, 2, 4, and 5 are complete.
+and built-in descriptor unification. Part C completes GUI integration for Stages 2, 4, and 5. Stage 6 retains
+release-wide platform validation beyond local Linux correctness checks.
 
 ## Completed Stage 1: runner contracts and skeleton
 
@@ -401,7 +402,7 @@ convert built-ins to internal descriptors without changing execution behavior.
 
 Acceptance: built-in-only graph v2 executes with unchanged scheduler results.
 
-## Next Stage 2: CPU runner vertical slice
+## Completed Stage 2: CPU runner vertical slice
 
 Implement snapshot-backed runner resolution of the completed native loading and
 CPU-instance APIs, then add a sample CPU pack, provenance, and minimal Studio
@@ -417,7 +418,7 @@ are implemented for all callers, with updated built-ins and Vulkan tests.
 
 Acceptance: all existing Vulkan behavior passes with reflected interfaces.
 
-## Next Stage 4: GPU runner vertical slice
+## Completed Stage 4: GPU runner vertical slice
 
 Connect the completed GPU preparation callbacks, host-owned resources,
 readbacks, slicing checks, and summaries to runner snapshots/protocols. Add a
@@ -426,7 +427,7 @@ sample GPU pack, Lavapipe coverage, and Studio GPU descriptors.
 Acceptance: mixed custom CPU/GPU graphs run unsliced and sliced on Lavapipe
 with verified summaries.
 
-## Next Stage 5: GUI and protocol completion
+## Completed Stage 5: GUI and protocol completion
 
 Finish pack management, missing-pack states, trust revocation, result
 presentation, imports, diagnostics, JSONL bounds, and removal of v1 handling
@@ -435,13 +436,90 @@ and hard-coded forms.
 Acceptance: saved graph v2 documents resolve reproducibly by digest and all
 abnormal pack states are actionable without loading code into the GUI.
 
-## Next Stage 6: robustness and documentation
+## Stage 6: robustness and delivery validation
 
-Run sanitizers, repeated TSan, real Vulkan tests, Studio headless tests, and
-platform loader CI. Update README, User Guide, Development Guide, Task
-Lifecycle, Studio README, AGENTS.md, Doxygen, UML, schemas, and examples.
+Implementation and Linux validation are complete; cross-platform release
+acceptance remains open until the Windows job is verified.
 
-# Part E — Tests by boundary
+- The existing Studio Linux/Windows matrix now builds native fixtures and runner,
+  requires headless native coverage, and uses real Lavapipe. Windows runs the full
+  native suite and example before Studio. The redundant Linux-only pack test step
+  is removed; it lacked the new PySide6 dependency.
+- Windows loader compilation suppresses Windows min/max macros. Symlink rejection
+  can no longer report success without executing its native check. Studio splits
+  symlink and changed-copy tests, verifies QSettings persistence/revocation using
+  separate settings instances, and checks unavailable-platform launch rejection.
+- Manual robustness now includes all Studio tests against sanitized native packs,
+  retains leak detection, and uploads JUnit evidence.
+- The desktop delivery regression exercises safe import, both responses to the
+  native trust warning, palette insertion, parameter edits, graph save/reopen,
+  mixed built-in/custom CPU/GPU execution, exact provenance, summary selection,
+  trust revocation, and removal while preserving unresolved documents. It runs
+  with ordinary and sliced GPU work in the Linux/Windows Studio matrix and
+  against sanitized native executables in robustness CI.
+- Repeated pack-manager jobs assert worker destruction before completion is
+  announced, covering the Qt worker-wrapper lifetime fix.
+
+Validation on the current dirty checkout (2026-09-10, Linux x64, Mesa Lavapipe
+LLVM 22.1.8): 183 normal C++ tests; 183 ASan/UBSan tests with leak detection
+**enabled** outside the sandbox; 76 headless Studio tests against each of the
+normal and sanitized builds, without skips; the 10,000-round seed-684453 soak
+(all three STRESS tests); the verified `atlas` example and benchmark smoke suite.
+The initial sandboxed ASan build failed LeakSanitizer discovery; rerunning outside
+the sandbox succeeded without disabling leaks. Test evidence is under
+`/tmp/atlas-stage6-*` locally and is not a published release artifact.
+
+The retained September 10 TSan log reports all 30 concurrency tests passing
+twenty repetitions, including independent native CPU contexts. The scripted
+Linux desktop run completed import/trust, mixed execution, summaries, revocation,
+missing-pack and changed/unavailable-pack checks; its screenshots and normal-exit
+debugger log remain under `/tmp/atlas-stage6-*`.
+
+September 11 follow-up validation adds the reproducible desktop regression:
+183 normal native tests and 79 Studio tests against each of the normal and
+ASan/UBSan builds pass on Lavapipe, without skips and with leak detection enabled
+outside the sandbox. The custom CPU concurrency test passes another twenty TSan
+repetitions. Current JUnit evidence is `/tmp/atlas-part-d-*.xml`.
+
+Outstanding: Windows execution has not run on this Linux host. Run the modified
+CI job on a Windows x64 host and retain its native/Studio JUnit logs. Workflow
+configuration and Linux desktop automation do not establish Windows acceptance.
+
+# Part E — Tests by boundary — implemented
+
+Coverage now includes the following executable checks in addition to the
+delivery workflow from Part D:
+
+| Boundary | Coverage and test source |
+| --- | --- |
+| Common / CPU | `tests/unit/extension/TaskPack_tests.cpp` checks graph-owned callback lifetime after registry/instance destruction and independent, single-use contexts. `studio/tests/test_task_packs.py` checks relocated digests, changes to every referenced asset, filesystem bounds, POSIX special files, malformed ABI tables, callbacks, metadata, contexts, statuses, and bounded output. |
+| GPU | `tests/feature/vulkan/TaskPackGpu_feature_tests.cpp` runs ordinary and four-unit sliced dispatches after registry destruction, then checks readback summaries and fail-stop device loss. Runner tests reject invalid GPU preparation structures, allocation/dispatch requests, readback declarations, initialization, writers, and summary callbacks. |
+| SPIR-V | Runner tests compile valid Vulkan 1.1 shaders with missing/extra bindings, another set, uniforms, descriptor arrays, access mismatches, push constants, specialization constants, images, or a vertex entry point, and assert the intended reflection diagnostic. Existing Vulkan tests reject malformed binaries. |
+| Runner / GUI | Native process exit leaves a headered stream with no result/footer. Callback faults retain the appropriate preflight, execution, or summary phase. Decoder tests reject misattributed, repeated, nested, nonfinite, or oversized UTF-8 summaries. Existing Studio tests cover trust, forms, launch arguments, display limits, and document preservation. |
+
+Fault selection uses `ATLAS_TEST_PACK_FAULT` only in the test fixture library;
+each runner fault case receives a separate process environment. Atlas itself
+has no fault-selection option. Deliberate native exit uses `_Exit` to exercise
+an incomplete stream without a crash dialog or core dump. Shader fixtures are
+compiled with the existing required `glslc` dependency.
+
+The expanded suite exposed an intermittent process-worker destruction crash.
+Studio now joins the finished process thread before releasing its Python worker
+wrapper or announcing run completion. A fifty-launch regression checks worker
+destruction and permits each subsequent launch only after completion.
+
+Linux validation uses real Lavapipe, normal and ASan/UBSan native executables,
+and repeated TSan native-context tests. Windows test execution remains the
+cross-platform acceptance item recorded in Part D; these tests are included in
+the existing Windows matrix but have not been executed on this Linux host.
+
+Verified September 11 on Linux x64 / Mesa Lavapipe: 185 native tests and 153
+Studio tests pass against both normal and ASan/UBSan builds with leak detection
+enabled. Four focused native lifetime/concurrency/device-loss tests pass twenty
+TSan repetitions each. Ten repetitions of six Studio launch/teardown/delivery
+cases also pass after the worker-lifetime fix. The `atlas` example, documentation
+build, ClangFormat, Ruff, and whitespace checks pass. Local evidence is under
+`/tmp/atlas-part-e-*`; it is not published cross-platform release evidence.
 
 ## Atlas common and CPU
 

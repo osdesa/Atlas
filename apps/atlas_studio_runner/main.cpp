@@ -1,4 +1,5 @@
 #include "BuiltinMetadata.h"
+#include "PackInspection.h"
 #include "PackSnapshots.h"
 #include "atlas/Executor/SynchronousCpuExecutor.h"
 #include "atlas/Executor/VulkanExecutor.h"
@@ -723,6 +724,12 @@ int main(int argc, char** argv)
     std::string phase = "preflight";
     try
     {
+        if (argc == 3 && std::string_view{ argv[1] } == "--inspect-task-pack")
+        {
+            Atlas::TaskPackRegistry registry;
+            std::cout << Atlas::Studio::inspectJson(registry.inspectDirectory(argv[2])).dump() << '\n';
+            return 0;
+        }
         std::string configPath, controlPath;
         std::vector<std::filesystem::path> packPaths;
         for (int i = 1; i < argc; ++i)
@@ -742,7 +749,8 @@ int main(int argc, char** argv)
         }
         if (configPath.empty() || controlPath.empty())
             throw std::invalid_argument{
-                "Usage: atlas_studio_runner --config <graph.json> --control <cancel-file> [--task-pack <trusted-directory>]..."
+                "Usage: atlas_studio_runner --config <graph.json> --control <cancel-file> [--task-pack <trusted-directory>]... "
+                "or atlas_studio_runner --inspect-task-pack <directory>"
             };
         const Config config = loadConfig(configPath);
         Atlas::Studio::PackSnapshots snapshots;

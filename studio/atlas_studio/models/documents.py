@@ -8,7 +8,6 @@ from typing import Any, Literal
 
 DocumentKind = Literal["graph", "benchmark"]
 WorkspaceKind = Literal["graph", "benchmark", "results"]
-ResourceKind = Literal["cpu", "gpu"]
 JsonObject = dict[str, Any]
 
 

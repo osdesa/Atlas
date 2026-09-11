@@ -169,7 +169,16 @@ loading. One registry and all prepared instances survive execution and summary
 collection; snapshots outlive graphs and native modules. Every node prepares
 before graph insertion. The internal built-in adapter uses the public descriptor
 scalar validators and the same prepared-node/summary route, with metadata shared
-with Studio forms. Python never loads native pack modules.
+with Studio forms. Python never loads native pack modules. The exclusive `--inspect-task-pack`
+runner mode serializes library-owned descriptors without runtime initialization.
+Studio's pack service copies bounded inspected files, reinspects staging content,
+and atomically installs a digest directory. A manager worker owns blocking
+inspection/import operations; QSettings trust decisions remain explicit UI intent.
+Graph models resolve descriptors by exact provenance and preserve unresolved
+nodes for open/save. All parameter edits pass the same atomic graph transaction.
+Run selection retains active digests against removal until process completion,
+and the process worker rechecks QSettings immediately before launch. Results
+render scalar summaries and bounded raw JSON as plain text.
 The studio runner emits bounded run-v2 machine-readable JSONL on stdout and
 diagnostics on stderr; accepted work is drained when a run is terminated.
 Studio benchmark launches opt into a separate bounded progress JSONL stream.
@@ -232,6 +241,30 @@ ATLAS_STRESS_SEED=684453 ATLAS_STRESS_ROUNDS=10000 \
 The manual `Manual robustness` workflow runs this 10,000-round soak on
 Lavapipe, the full ASan/UBSan suite, and the TSan concurrency suite twenty times.
 It has no schedule and does not gate ordinary pull requests.
+
+The existing Studio CI matrix builds native contracts on Ubuntu and Windows x64,
+selects real Mesa Lavapipe through a discovered `VK_DRIVER_FILES` manifest, and
+runs the full PySide6 suite with `QT_QPA_PLATFORM=offscreen`. Windows uses MSVC,
+the Vulkan SDK, and vcpkg SPIRV-Tools, then runs all C++ tests and `atlas` before
+Studio tests. Native fixtures are actual shared libraries (`.dll` on Windows).
+CI sets `ATLAS_REQUIRE_NATIVE_TESTS=1`: missing runner/probe binaries and missing
+symlink privileges fail instead of skipping required coverage. Windows hosts
+must permit symlink creation (developer mode or symlink privileges).
+Set `ATLAS_STUDIO_RUNNER` and `ATLAS_TASK_PACK_CONTRACT` to the matching build's
+executables when reproducing these tests locally. The manual robustness workflow
+also runs the full Studio suite against ASan/UBSan native executables and packs,
+with leak detection enabled. JUnit and CTest logs are uploaded as CI artifacts.
+The `desktop_pack_delivery` regression drives the main window and real native
+runner through import/trust, palette edits, save/reopen, ordinary/sliced mixed
+execution, summaries, revocation, and removal. It isolates QSettings and installed
+packs in the test temporary directory. The repeated pack-job test checks that
+worker destruction completes before another operation can start.
+The process service likewise joins its finished thread before releasing the
+worker wrapper and announcing completion; a fifty-launch regression checks this
+lifetime boundary. Native fault tests use the test pack's process-local
+`ATLAS_TEST_PACK_FAULT` input to exercise malformed ABI/GPU callbacks and abrupt
+process exit. The production loader and runner expose no fault controls. Shader
+contract tests compile valid unsupported interfaces using `glslc` on `PATH`.
 
 For an optional local physical-GPU run, select an installed ICD externally and
 use the same build rather than checking a machine path into the repository:

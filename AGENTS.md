@@ -28,7 +28,9 @@ are inspected and content-hashed before explicit loading, CPU callbacks and
 declarative storage-buffer GPU tasks become existing graph payloads, and
 summaries are bounded and typed. Part B adds graph/run v2, runner-private
 verified snapshots, exact pack provenance, shared built-in descriptors, and
-bounded task summaries. Studio pack management and trust UI remain planned.
+bounded task summaries. Part C adds Studio content-addressed pack management, explicit per-digest trust,
+descriptor palettes/forms, unresolved-node diagnostics, and trusted launch integration.
+The runner inspection endpoint exports metadata without loading native modules.
 
 The supported executables are:
 

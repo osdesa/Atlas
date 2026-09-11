@@ -39,8 +39,13 @@ Studio preserves them and writes the run to a new
 The runner accepts graph v2 with exact custom-pack provenance and repeated
 `--task-pack` arguments, and loads only digest-verified private snapshots. Studio
 uses shared descriptors for built-in parameter forms and reads run v2 summaries.
-It preserves custom nodes in graph documents; pack installation, trust UI, and
-custom-pack launch integration remain planned. Python never loads native packs.
+The Task Packs manager imports directories into Qt's per-user application-data
+store by verified digest, persists explicit digest trust in QSettings, and supports
+revocation/removal. The palette and scalar forms use inspected descriptors.
+Missing/untrusted/platform-unavailable tasks remain saveable with exact provenance
+and disable Run. Select a result task for expandable plain-text summaries and raw
+JSON. Python never loads native packs. Pack import/inspection uses a dedicated
+worker; graph launch rechecks trust and the runner verifies private snapshots.
 See the User Guide for the runner CLI and native-code trust boundary.
 Studio bounds each JSONL record to 16 MiB, each task summary to 64 KiB, and
 each complete stream to 128 MiB/one million records.
@@ -74,6 +79,20 @@ Run the headless Studio tests with:
 ```bash
 QT_QPA_PLATFORM=offscreen python3 -m pytest
 ```
+
+
+The existing Studio CI matrix builds native contracts on Ubuntu and Windows x64,
+selects real Mesa Lavapipe through a discovered `VK_DRIVER_FILES` manifest, and
+runs the full PySide6 suite with `QT_QPA_PLATFORM=offscreen`. Windows uses MSVC,
+the Vulkan SDK, and vcpkg SPIRV-Tools, then runs all C++ tests and `atlas` before
+Studio tests. Native fixtures are actual shared libraries (`.dll` on Windows).
+CI sets `ATLAS_REQUIRE_NATIVE_TESTS=1`: missing runner/probe binaries and missing
+symlink privileges fail instead of skipping required coverage. Windows hosts
+must permit symlink creation (developer mode or symlink privileges).
+Set `ATLAS_STUDIO_RUNNER` and `ATLAS_TASK_PACK_CONTRACT` to the matching build's
+executables when reproducing these tests locally. The manual robustness workflow
+also runs the full Studio suite against ASan/UBSan native executables and packs,
+with leak detection enabled. JUnit and CTest logs are uploaded as CI artifacts.
 
 Formatting and static readability checks use Ruff:
 

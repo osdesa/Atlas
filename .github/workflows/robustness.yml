@@ -53,6 +53,19 @@ jobs:
           cmake --build --preset asan-ubsan-linux --parallel
           ctest --preset asan-ubsan-linux --output-junit build/asan-ubsan-linux/tests.junit.xml
 
+      - name: Test Studio against sanitized native packs
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ATLAS_REQUIRE_NATIVE_TESTS: "1"
+          ATLAS_STUDIO_RUNNER: ${{ github.workspace }}/build/asan-ubsan-linux/apps/atlas_studio_runner/atlas_studio_runner
+          ATLAS_TASK_PACK_CONTRACT: ${{ github.workspace }}/build/asan-ubsan-linux/tests/atlas_task_pack_contract
+        run: |
+          sudo apt-get install --yes python3-venv libegl1
+          python3 -m venv /tmp/atlas-studio-tests
+          /tmp/atlas-studio-tests/bin/pip install -r studio/requirements.lock
+          /tmp/atlas-studio-tests/bin/pip install --no-deps -e studio
+          /tmp/atlas-studio-tests/bin/python -m pytest -q studio/tests --junitxml=build/asan-ubsan-linux/studio.junit.xml
+
       - name: Run repeated TSan concurrency tests
         run: |
           cmake --preset tsan-linux

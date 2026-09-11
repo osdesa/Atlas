@@ -6,6 +6,7 @@ from atlas_studio.models import (
     default_benchmark,
     validate_document,
 )
+from atlas_studio.models.descriptors import BUILTINS
 from atlas_studio.models.results import (
     MAX_PRESENTED_EVENTS,
     MAX_PRESENTED_RECORDS,
@@ -53,7 +54,7 @@ def test_graph_controller_adds_tasks_and_rejects_a_cycle_atomically(qtbot) -> No
     messages: list[str] = []
     view.message.connect(messages.append)
 
-    view.task_add_requested.emit("cpu")
+    view.descriptor_add_requested.emit(BUILTINS["cpu_burn"], None)
     assert len(model.snapshot()["nodes"]) == 3
     before = model.snapshot()
     view.dependency_add_requested.emit("gpu-1", "cpu-1")

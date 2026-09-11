@@ -1,4 +1,4 @@
-"""Built-in scalar descriptors shared with the runner; no native loading."""
+"""Shared built-in metadata and scalar rules for inspected task descriptors."""
 
 from __future__ import annotations
 
@@ -16,8 +16,25 @@ BUILTINS = {
 
 
 def default_parameters(descriptor: JsonObject) -> JsonObject:
-    """Copy descriptor defaults for an atomic node creation or replacement."""
-    return {field["id"]: copy.deepcopy(field["default"]) for field in descriptor["parameters"]}
+    """Copy defaults, initializing required fields without defaults to a valid scalar."""
+    parameters = {}
+    for field in descriptor["parameters"]:
+        if "default" in field:
+            value = copy.deepcopy(field["default"])
+        elif field["type"] == "boolean":
+            value = False
+        elif field["type"] == "enum":
+            value = field["values"][0]
+        elif field["type"] == "string":
+            value = ""
+        else:
+            value = 0
+            if "minimum" in field:
+                value = max(value, field["minimum"])
+            if "maximum" in field:
+                value = min(value, field["maximum"])
+        parameters[field["id"]] = value
+    return parameters
 
 
 def validate_parameters(descriptor: JsonObject, parameters: JsonObject) -> list[str]:
@@ -31,7 +48,7 @@ def validate_parameters(descriptor: JsonObject, parameters: JsonObject) -> list[
     for field in descriptor["parameters"]:
         identifier = field["id"]
         if identifier not in parameters:
-            if "default" not in field:
+            if "default" not in field and field.get("required", True):
                 errors.append(f"missing parameter: {identifier}")
             continue
         value = parameters[identifier]

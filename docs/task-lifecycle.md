@@ -169,6 +169,9 @@ A custom CPU callback that returns the ABI error status becomes an ordinary C++
 task exception and follows the same `TaskFailed` fail-stop path. Custom GPU work
 is already an ordinary or sliced `VulkanDispatch` by finalisation, so its
 completion, device-loss, progress, and cancellation behavior is unchanged.
+Studio installation, digest trust/revocation, and descriptor resolution are
+authoring and launch prerequisites; they never change graph task states.
+Revoking trust prevents future launches and does not interrupt accepted work.
 Pack inspection, loading, parameter validation, and preparation happen before
 graph insertion and are not task lifecycle states. The Studio runner completes
 this preflight for all nodes before inserting any task, and emits a structured

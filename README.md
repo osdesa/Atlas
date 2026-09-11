@@ -15,8 +15,9 @@ The C++ library can also inspect and explicitly load trusted native task packs,
 prepare their CPU callbacks or declarative storage-buffer GPU work as existing
 Atlas payloads, and collect bounded typed summaries. The Studio runner accepts graph v2 documents and explicitly selected trusted
 pack directories, verifies private snapshots by exact digest, and emits run v2
-provenance and per-task summaries. Studio uses descriptor-driven built-in forms;
-its pack manager and trust UI remain planned.
+provenance and per-task summaries. Studio imports packs into a per-user content-addressed store, records explicit
+per-digest trust, and supplies a task palette, typed forms, resolution diagnostics,
+and expandable per-task summaries. Python never loads native pack modules.
 Canonical physical Intel and Lavapipe evaluation supports FIFO and
 quantum-one round-robin as transparent defaults, rejects static priority as a
 general default, and finds cooperative slicing costly enough to require an

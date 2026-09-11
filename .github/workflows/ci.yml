@@ -20,6 +20,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       QT_QPA_PLATFORM: offscreen
+      ATLAS_REQUIRE_NATIVE_TESTS: "1"
 
     steps:
       - name: Check out repository
@@ -46,12 +47,77 @@ jobs:
           python -m pip install --disable-pip-version-check -r studio/requirements.lock
           python -m pip install --disable-pip-version-check --no-deps -e studio
 
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install --yes ninja-build libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers glslc spirv-tools
+          lavapipe_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -type f -name 'lvp_icd*.json' -print -quit)"
+          test -n "${lavapipe_icd}"
+          echo "VK_DRIVER_FILES=${lavapipe_icd}" >> "${GITHUB_ENV}"
+
+      - name: Install Windows Vulkan SDK and Lavapipe
+        if: runner.os == 'Windows'
+        uses: jakoch/install-vulkan-sdk-action@v1
+        with:
+          install_runtime: true
+          install_lavapipe: true
+          lavapipe_destination: '${{ runner.temp }}/lavapipe'
+          stripdown: false
+
+      - name: Set up Windows compiler
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Windows SPIRV-Tools and select Lavapipe
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install spirv-tools:x64-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $icds = @(Get-ChildItem "${{ runner.temp }}/lavapipe" -Recurse -Filter 'lvp_icd*.json')
+          if ($icds.Count -ne 1) { throw "Expected exactly one Lavapipe ICD" }
+          "VK_DRIVER_FILES=$($icds[0].FullName)" >> $env:GITHUB_ENV
+          "${env:VCPKG_INSTALLATION_ROOT}/installed/x64-windows/bin" >> $env:GITHUB_PATH
+
+      - name: Build native Studio contracts on Linux
+        if: runner.os == 'Linux'
+        run: |
+          cmake --preset ci-linux
+          cmake --build --preset ci-linux --parallel
+          echo "ATLAS_STUDIO_RUNNER=${GITHUB_WORKSPACE}/build/ci-linux/apps/atlas_studio_runner/atlas_studio_runner" >> "${GITHUB_ENV}"
+          echo "ATLAS_TASK_PACK_CONTRACT=${GITHUB_WORKSPACE}/build/ci-linux/tests/atlas_task_pack_contract" >> "${GITHUB_ENV}"
+
+      - name: Build and test native Windows DLLs and Vulkan
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DATLAS_WARNINGS_AS_ERRORS=ON "-DCMAKE_TOOLCHAIN_FILE=${env:VCPKG_INSTALLATION_ROOT}/scripts/buildsystems/vcpkg.cmake"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/windows --parallel
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir build/windows --output-on-failure --output-junit native.junit.xml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./build/windows/apps/atlas/atlas.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "ATLAS_STUDIO_RUNNER=${env:GITHUB_WORKSPACE}/build/windows/apps/atlas_studio_runner/atlas_studio_runner.exe" >> $env:GITHUB_ENV
+          "ATLAS_TASK_PACK_CONTRACT=${env:GITHUB_WORKSPACE}/build/windows/tests/atlas_task_pack_contract.exe" >> $env:GITHUB_ENV
+
       - name: Test desktop application
         working-directory: studio
         run: |
           ruff format --check atlas_studio tests
           ruff check atlas_studio tests
-          python -m pytest -q
+          python -m pytest -q --junitxml=../studio.junit.xml
+
+      - name: Upload Studio and Windows native evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atlas-studio-${{ matrix.os }}
+          path: |
+            studio.junit.xml
+            build/windows/native.junit.xml
+            build/windows/Testing/Temporary/LastTest.log
 
   format:
     name: ClangFormat
@@ -106,16 +172,6 @@ jobs:
             --config studio/examples/all-kernels-graph-v2.json \
             --control build/ci-linux/studio-cancel > build/ci-linux/studio-run.jsonl
           python3 -c "import json, pathlib; records=[json.loads(line) for line in pathlib.Path('build/ci-linux/studio-run.jsonl').read_text().splitlines()]; assert records[0]['record_type']=='header'; assert records[-1]['record_type']=='footer'; assert any(record.get('record_type')=='result' and record.get('status')=='Success' for record in records)"
-
-      - name: Test native pack schemas and runner contracts
-        env:
-          ATLAS_STUDIO_RUNNER: ${{ github.workspace }}/build/ci-linux/apps/atlas_studio_runner/atlas_studio_runner
-          ATLAS_TASK_PACK_CONTRACT: ${{ github.workspace }}/build/ci-linux/tests/atlas_task_pack_contract
-          PYTHONPATH: studio
-        run: |
-          python3 -m venv /tmp/atlas-pack-tests
-          /tmp/atlas-pack-tests/bin/pip install 'jsonschema>=4.23,<5' 'pytest>=8.3,<9'
-          /tmp/atlas-pack-tests/bin/python -m pytest -q studio/tests/test_task_packs.py
 
       - name: Run benchmark smoke suite
         run: |

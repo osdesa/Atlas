@@ -117,3 +117,25 @@ def test_bounded_line_buffer_frames_fragments_and_rejects_oversize_lines() -> No
 
     with pytest.raises(ValueError, match="unterminated"):
         BoundedLineBuffer(3).feed(b"four")
+
+
+def test_repeated_runs_finish_after_worker_destruction(qtbot, tmp_path, monkeypatch):
+    from threading import Event
+
+    from PySide6.QtCore import Qt
+
+    runner = tmp_path / "preflight.py"
+    runner.write_text(
+        'print(\'{"record_type":"error","studio_schema_version":2,'
+        '"phase":"preflight","message":"requested failure"}\')\n'
+    )
+    monkeypatch.setenv("ATLAS_STUDIO_RUNNER", str(runner))
+    service = AtlasProcessService()
+    for _ in range(50):
+        destroyed = Event()
+        with qtbot.waitSignal(service.run_finished, timeout=5000):
+            service.start_graph(default_graph())
+            service._worker.destroyed.connect(destroyed.set, Qt.DirectConnection)
+        assert destroyed.is_set()
+        assert service._worker is None and service._thread is None
+        assert not service.active

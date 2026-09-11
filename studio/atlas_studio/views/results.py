@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QSplitter,
     QTableView,
     QTabWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -179,6 +181,10 @@ class ResultsView(QWidget):
         self.tasks.setModel(self.task_model)
         self.tasks.horizontalHeader().setStretchLastSection(True)
 
+        self.task_summaries = QTreeWidget()
+        self.task_summaries.setHeaderLabels(["Summary field", "Value"])
+        self.summary_descriptors: dict[tuple[str, str], JsonObject] = {}
+        self.tasks.clicked.connect(self._show_task_summary)
         self.timeline = TimelineView()
         self.event_log = QPlainTextEdit()
         self.event_log.setReadOnly(True)
@@ -194,6 +200,7 @@ class ResultsView(QWidget):
 
         live_split = QSplitter(Qt.Vertical)
         live_split.addWidget(self.tasks)
+        live_split.addWidget(self.task_summaries)
         live_split.addWidget(self.timeline)
         live_split.setSizes([360, 160])
         self.tabs = QTabWidget()
@@ -217,6 +224,27 @@ class ResultsView(QWidget):
         layout.addLayout(controls)
         layout.addWidget(self.display_limit)
         layout.addWidget(top)
+
+    def _show_task_summary(self, index) -> None:
+        """Expand scalar summaries for one selected task; all plugin text stays plain."""
+        self.task_summaries.clear()
+        if self._snapshot is None or index.row() >= len(self._snapshot.tasks):
+            return
+        task = self._snapshot.tasks[index.row()]
+        summary = task.get("summary")
+        root = QTreeWidgetItem([str(task.get("name", task.get("task_id"))), ""])
+        self.task_summaries.addTopLevelItem(root)
+        if summary is None:
+            QTreeWidgetItem(root, ["Summary", "Not available"])
+        else:
+            descriptor = self.summary_descriptors.get((task.get("pack_id"), task.get("pack_task_id")), {})
+            fields = {field["id"]: field for field in descriptor.get("summaries", [])}
+            for key, value in summary.items():
+                field = fields.get(key, {})
+                QTreeWidgetItem(root, [field.get("name") or key, json.dumps(value, ensure_ascii=False)])
+            raw = QTreeWidgetItem(root, ["Raw JSON", ""])
+            QTreeWidgetItem(raw, [json.dumps(summary, ensure_ascii=False), ""])
+        root.setExpanded(True)
 
     def _selected_run_changed(self, _index: int) -> None:
         if not self._updating_selector:
@@ -265,7 +293,12 @@ class ResultsView(QWidget):
         if snapshot is None:
             return
         if index == 0:
+            selected = self.tasks.currentIndex()
             self.task_model.set_rows(snapshot.tasks)
+            if selected.isValid():
+                self._show_task_summary(selected)
+            else:
+                self.task_summaries.clear()
             self.timeline.render_events(snapshot.events)
         elif index == 1 and snapshot.records != self._rendered_records:
             self.event_log.setPlainText(

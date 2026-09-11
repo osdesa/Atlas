@@ -25,6 +25,7 @@ class _RunRequest:
     output_directory: Path | None = None
     environment_file: Path | None = None
     live_tracing: bool = True
+    task_packs: tuple[Path, ...] = ()
 
 
 class _AtlasProcessWorker(QObject):
@@ -118,10 +119,24 @@ class _AtlasProcessWorker(QObject):
                 raise FileNotFoundError(
                     "atlas_studio_runner was not found; build Atlas or set ATLAS_STUDIO_RUNNER"
                 )
+            if self._request.task_packs:
+                from PySide6.QtCore import QSettings
+
+                settings = QSettings("Atlas", "Atlas Studio")
+                settings.sync()
+                for pack in self._request.document["packs"]:
+                    if not settings.value(f"task-pack-trust/{pack['digest']}", False, type=bool):
+                        raise ValueError(f"Task pack trust was revoked: {pack['digest']}")
             config_path = directory / "graph.json"
             config_path.write_text(json.dumps(self._request.document, indent=2), encoding="utf-8")
             self._control_path = directory / "cancel"
-            return executable, ["--config", str(config_path), "--control", str(self._control_path)]
+            return executable, [
+                "--config",
+                str(config_path),
+                "--control",
+                str(self._control_path),
+                *[argument for path in self._request.task_packs for argument in ("--task-pack", str(path))],
+            ]
 
         executable = discover_executable("ATLAS_BENCH", "apps/atlas_bench/atlas_bench")
         if executable is None:
@@ -211,11 +226,13 @@ class _AtlasProcessWorker(QObject):
             if self._output_failed
             else ("cancelled" if self._stopping else ("complete" if exit_code == 0 else "failed"))
         )
-        if self._decoder is not None and state == "complete":
+        if self._decoder is not None and not self._output_failed:
             try:
                 self._decoder.finish()
             except ValueError as error:
-                self.diagnostic_received.emit(str(error))
+                self.diagnostic_received.emit(
+                    f"Incomplete runner stream (possible native crash or forced termination): {error}"
+                )
                 state = "failed"
         self._load_results()
         self._finish_run(exit_code, state)
@@ -300,8 +317,8 @@ class AtlasProcessService(QObject):
     def output_directory(self) -> Path | None:
         return self._output_directory
 
-    def start_graph(self, document: JsonObject) -> None:
-        self._launch(_RunRequest("graph", document))
+    def start_graph(self, document: JsonObject, task_packs: tuple[Path, ...] = ()) -> None:
+        self._launch(_RunRequest("graph", document, task_packs=task_packs))
 
     def start_benchmark(
         self,
@@ -356,6 +373,10 @@ class AtlasProcessService(QObject):
     def _thread_finished(self) -> None:
         completion = self._pending_completion or (-1, "failed")
         thread = self._thread
+        if thread is not None:
+            # QThread.finished precedes deferred deletion and thread-local cleanup.
+            # Keep the Python worker wrapper alive until native destruction ends.
+            thread.wait()
         self._worker = None
         self._thread = None
         self._active = False

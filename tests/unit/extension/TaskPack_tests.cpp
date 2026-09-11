@@ -44,11 +44,8 @@ TEST_CASE("Task-pack inspection rejects traversal and symlinks", "[UNIT]")
     pack.writeManifest(pack.manifest);
     std::error_code symlinkError;
     std::filesystem::create_symlink(pack.directory / "shaders" / "vector_add.spv", pack.directory / "linked.spv", symlinkError);
-    if (symlinkError)
-    {
-        SUCCEED("This host does not permit test symlink creation");
-        return;
-    }
+    INFO("Symlink creation requires developer mode or symlink privileges on Windows: " << symlinkError.message());
+    REQUIRE_FALSE(symlinkError);
     REQUIRE_THROWS_AS(registry.inspectDirectory(pack.directory), std::invalid_argument);
 }
 
@@ -170,4 +167,20 @@ TEST_CASE("Worker-pool custom CPU nodes use independent prepared contexts", "[UN
     REQUIRE(scheduler.execute().status == Atlas::SchedulerStatus::Success);
     REQUIRE(first.collectSummary().canonicalJson == R"({"value":42})");
     REQUIRE(second.collectSummary().canonicalJson == R"({"value":42})");
+}
+
+TEST_CASE("Graph CPU payload retains native context after registry and instance destruction", "[UNIT]")
+{
+    Atlas::Testing::TaskPackTestPack pack;
+    Atlas::TaskGraph graph;
+    {
+        Atlas::TaskPackRegistry registry;
+        const auto& manifest{ registry.loadDirectory(pack.directory) };
+        auto instance{ registry.createTask(manifest.packId, manifest.digest, "cpu_success", {}) };
+        REQUIRE(instance.addToGraph(graph).has_value());
+    }
+    REQUIRE(graph.finishTaskGraph());
+    Atlas::SynchronousCpuExecutor executor;
+    Atlas::KahnScheduler scheduler{ graph, executor, Atlas::Test::unusedVulkanDispatchExecutor };
+    REQUIRE(scheduler.execute().status == Atlas::SchedulerStatus::Success);
 }

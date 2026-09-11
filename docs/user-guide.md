@@ -78,7 +78,7 @@ fails with an explicit diagnostic.
 The Atlas library exposes `atlas/Extension/TaskPack.h` for explicitly trusted
 local task packs. The `atlas_studio_runner` process also executes custom packs
 through graph v2 and repeated `--task-pack` arguments. `atlas` and `atlas_bench`
-do not accept packs. Studio pack installation and trust management remain planned.
+do not accept packs. Studio provides pack installation and explicit per-digest trust management.
 
 `TaskPackRegistry::inspectDirectory()` performs bounded manifest, path, regular-
 file, platform, typed-field, and canonical SHA-256 validation without loading
@@ -168,8 +168,9 @@ when one of these presentation limits is active; validated result state and
 benchmark artifacts retain their existing bounds. Set `ATLAS_STUDIO_RUNNER` or
 `ATLAS_BENCH` when the executables are outside the normal build tree. The
 application edits versioned graph documents with shared built-in descriptors.
-Custom nodes can be preserved in documents, but launching them requires the
-runner CLI until Studio pack management is implemented. Arbitrary source
+Custom nodes resolve against installed packs by exact digest. Missing, untrusted,
+or unavailable packs remain editable and saveable; Run is disabled until every
+node resolves and its parameters and trust validate. Arbitrary source
 compilation, task-level live control, and runtime graph mutation are unavailable.
 The graph contract is
 `benchmarks/schema/atlas-studio-graph-v2.schema.json`; live runner output is the
@@ -201,7 +202,57 @@ instrumentation adds observer overhead, so clear **Show live benchmark tasks**
 for a timing-focused GUI run. The aggregate result files remain the
 authoritative output in either mode.
 
+### Studio Task Packs
+
+Open **Task Packs** from the toolbar and choose **Import directory**. Studio
+invokes the runner's safe inspection endpoint, copies only referenced regular
+files, verifies the copied digest, and installs the directory under Qt's per-user
+application-data location in `task-packs/<sha256>`. Import and inspection run on
+a worker thread and never load native code. The manager lists exact digests,
+versions, tasks, descriptions, resource/slicing capabilities, host availability,
+and trust. Multiple digests of one pack may be installed.
+
+Select **Trust digest** to accept the mandatory native-code warning. Code runs
+with your privileges; process isolation does not restrict files or network.
+CPU tasks may hang or crash, GPU tasks may hang or lose the Vulkan device, and
+validation does not make hostile code safe. Trust is stored by SHA-256 in
+`QSettings` for Atlas / Atlas Studio. Changed content requires a fresh import
+and new explicit trust. **Revoke trust** prevents subsequent launches; an
+already executing process must be stopped with **Stop**. **Remove** removes
+installed content and its trust decision, and rejects packs referenced by an
+active launch. Damaged installations are shown with diagnostics in the manager.
+
+Choose a task from the **Built-in** or **Installed Packs** palette, then use
+**Add selected task**. Nodes retain their CPU/GPU coloring and show pack/task
+identity; a warning marker and tooltip identify resolution problems. The
+inspector creates controls for boolean, integer, unsigned integer, finite number,
+UTF-8 string, and enum fields. Defaults come from descriptors; required fields
+without defaults start with a valid zero/empty/first-enum value within their
+bounds. Invalid edits restore the previous node atomically. Slicing controls
+appear only for GPU descriptors that support it.
+
+Graphs preserve exact pack ID, version, digest, task ID, and parameters even
+when packs cannot resolve. Studio never substitutes another installed digest.
+Run rechecks trust in the process worker and passes only referenced installed
+directories; the runner verifies private snapshots before native loading.
+Select a task in Results to expand its scalar summary and bounded raw JSON.
+Summary text is plain text. A missing completion footer is reported as an
+incomplete stream, including possible native crash or forced termination;
+normal task failures retain scheduler measurements and a complete footer.
+
 ### `atlas_studio_runner`
+
+Inspect a directory without loading its native library or initializing Vulkan:
+
+```bash
+./build/apps/atlas_studio_runner/atlas_studio_runner --inspect-task-pack /path/to/pack
+```
+
+This exclusive mode writes one JSON object with `inspection_schema_version: 1`,
+exact identity, supported platform triples, referenced files, and serialized
+parameter/summary descriptors. It applies the library's bounded inspection
+contract; errors use the existing structured preflight error and nonzero exit.
+It does not execute a graph or provide a CPU-only execution mode.
 
 Run a built-in graph or explicitly trusted native packs:
 
@@ -215,7 +266,7 @@ Run a built-in graph or explicitly trusted native packs:
   --task-pack /absolute/path/to/trusted-pack
 ```
 
-Both `--config` and `--control` are required; `--task-pack` may repeat (up to
+For execution, both `--config` and `--control` are required; `--task-pack` may repeat (up to
 128 directories). Supplying a pack explicitly authorizes native loading for
 its exact referenced digest. Native code runs with your privileges and can
 access files/network, hang, crash, or terminate the process; a separate process
@@ -234,7 +285,8 @@ Built-in GPU buffer allocations are bounded to 256 MiB per node.
 
 The `packs` array lists exactly the referenced custom packs as
 `{"pack_id":"example.pack","version":"1.0","digest":"<64 lowercase hex characters>"}`.
-Obtain that digest with `TaskPackRegistry::inspectDirectory()`. Only one
+Obtain that digest with `TaskPackRegistry::inspectDirectory()` or the inspection
+command below. Only one
 digest per pack ID may appear in a graph; display versions do not substitute
 for digests. Nodes resolve by exact pack ID, digest, and task ID. The runner
 inspects supplied directories without loading code, copies only referenced
@@ -527,3 +579,29 @@ python3 tools/atlas_evaluation.py verify \
   native publisher and contents you explicitly trust.
 - **Existing output:** choose an empty directory or explicitly pass
   `--overwrite`.
+
+## Task-pack delivery validation
+
+Studio CI builds and runs native task-pack contracts on Linux and Windows x64
+with real Mesa Lavapipe and headless PySide6. Windows needs MSVC, the Vulkan SDK,
+SPIRV-Tools development files, and permission to create test symlinks. The
+native runner and contract probe must come from the same build; set
+`ATLAS_STUDIO_RUNNER` and `ATLAS_TASK_PACK_CONTRACT` to their executable paths.
+Use `ATLAS_REQUIRE_NATIVE_TESTS=1` for release validation so missing native
+executables or symlink privileges fail required tests. The manual robustness
+workflow includes Studio against sanitized native executables in addition to
+the sanitizer, repeated concurrency, and generated-DAG soak checks.
+
+The Studio delivery test covers import, explicit trust and rejection, palette
+editing, save/reopen, mixed CPU/GPU execution with ordinary and sliced dispatches,
+summary display, revocation, and missing-pack preservation. Run it alone with
+`python -m pytest -q studio/tests/test_task_packs.py -k desktop_pack_delivery`
+after setting the executable paths above. It uses an isolated temporary pack
+store and trust settings; headless execution also needs `QT_QPA_PLATFORM=offscreen`.
+The full Studio suite also requires `glslc` on `PATH` to compile shader rejection
+fixtures. It checks native ABI/output failures and abrupt runner termination.
+Run completion is announced after the process worker thread has fully exited,
+so another run cannot overlap destruction of the previous worker.
+
+Current verified results and outstanding platform/desktop acceptance are recorded
+in [the task-pack plan](custom-task-packs-plan.md#stage-6-robustness-and-delivery-validation).
