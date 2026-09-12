@@ -90,17 +90,6 @@ namespace Atlas
                     }
                 }
 
-                const VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                                                     context->properties.limits.maxDescriptorSetStorageBuffers };
-                const VkDescriptorPoolCreateInfo poolInfo{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                                                           .pNext = nullptr,
-                                                           .flags = 0U,
-                                                           .maxSets = 1U,
-                                                           .poolSizeCount = 1U,
-                                                           .pPoolSizes = &poolSize };
-                context->checkDeviceResult(vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool),
-                                           "vkCreateDescriptorPool");
-
                 const VkCommandBufferAllocateInfo commandInfo{ .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                                                                .pNext = nullptr,
                                                                .commandPool = context->commandPool,
@@ -144,6 +133,7 @@ namespace Atlas
             {
                 vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
                 descriptorPool = VK_NULL_HANDLE;
+                descriptorPoolStorageBufferCount = 0U;
             }
             if (timestampQueryPool != VK_NULL_HANDLE)
             {
@@ -310,6 +300,7 @@ namespace Atlas
             }
 
             std::lock_guard queueLock{ context->queueMutex };
+            ensureDescriptorPool(dispatch.buffers().size());
             context->checkDeviceResult(vkResetDescriptorPool(context->device, descriptorPool, 0U), "vkResetDescriptorPool");
             context->checkDeviceResult(vkResetCommandBuffer(commandBuffer, 0U), "vkResetCommandBuffer");
             context->checkDeviceResult(vkResetFences(context->device, 1U, &fence), "vkResetFences");
@@ -478,6 +469,35 @@ namespace Atlas
             return deviceDuration;
         }
 
+        /// @brief Grows the reusable pool only when a validated dispatch needs more storage buffers.
+        void ensureDescriptorPool(const std::size_t storageBufferCount)
+        {
+            if (storageBufferCount == 0U || storageBufferCount > std::numeric_limits<std::uint32_t>::max())
+            {
+                throw std::invalid_argument{ "Vulkan dispatch storage-buffer count is invalid" };
+            }
+            if (descriptorPool != VK_NULL_HANDLE && descriptorPoolStorageBufferCount >= storageBufferCount)
+            {
+                return;
+            }
+            if (descriptorPool != VK_NULL_HANDLE)
+            {
+                vkDestroyDescriptorPool(context->device, descriptorPool, nullptr);
+                descriptorPool = VK_NULL_HANDLE;
+                descriptorPoolStorageBufferCount = 0U;
+            }
+            const VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, static_cast<std::uint32_t>(storageBufferCount) };
+            const VkDescriptorPoolCreateInfo poolInfo{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                                                       .pNext = nullptr,
+                                                       .flags = 0U,
+                                                       .maxSets = 1U,
+                                                       .poolSizeCount = 1U,
+                                                       .pPoolSizes = &poolSize };
+            context->checkDeviceResult(vkCreateDescriptorPool(context->device, &poolInfo, nullptr, &descriptorPool),
+                                       "vkCreateDescriptorPool");
+            descriptorPoolStorageBufferCount = storageBufferCount;
+        }
+
         /// @brief Runtime context borrowed by all submitted resources.
         std::shared_ptr<Detail::VulkanContext> context;
         /// @brief Guards lifecycle, queues, and unfinished-work accounting.
@@ -496,6 +516,8 @@ namespace Atlas
         VkQueryPool timestampQueryPool{ VK_NULL_HANDLE };
         /// @brief Reused descriptor allocation reset after each completed dispatch.
         VkDescriptorPool descriptorPool{ VK_NULL_HANDLE };
+        /// @brief Number of storage-buffer descriptors available in the reusable pool.
+        std::size_t descriptorPoolStorageBufferCount{ 0U };
         /// @brief Reused primary command buffer reset between dispatches.
         VkCommandBuffer commandBuffer{ VK_NULL_HANDLE };
         /// @brief Reused fence reset before each queue submission.
