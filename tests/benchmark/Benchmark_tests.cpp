@@ -383,5 +383,7 @@ TEST_CASE("Baseline writer emits scalar optional values and all successful suite
     nlohmann::json summary;
     comparisons >> summary;
     REQUIRE(summary.at("summary_schema_version") == 2U);
+    comparisons.close();
+    runs.close();
     std::filesystem::remove_all(outputDirectory);
 }
