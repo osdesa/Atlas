@@ -2,6 +2,10 @@ file(GLOB ATLAS_STUDIO_RUNNER_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_
 list(SORT ATLAS_STUDIO_RUNNER_SOURCES)
 
 add_executable(atlas_studio_runner ${ATLAS_STUDIO_RUNNER_SOURCES})
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/studio/atlas_studio/resources/builtin-tasks.json")
+file(READ "${PROJECT_SOURCE_DIR}/studio/atlas_studio/resources/builtin-tasks.json" ATLAS_BUILTIN_METADATA)
+configure_file(BuiltinMetadata.h.in "${CMAKE_CURRENT_BINARY_DIR}/BuiltinMetadata.h" @ONLY)
+target_include_directories(atlas_studio_runner PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_features(atlas_studio_runner PRIVATE cxx_std_20)
 target_link_libraries(atlas_studio_runner PRIVATE Atlas::Atlas nlohmann_json::nlohmann_json)
 target_compile_definitions(

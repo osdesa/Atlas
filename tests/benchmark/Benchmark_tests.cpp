@@ -141,7 +141,7 @@ TEST_CASE("Checked benchmark schemas are syntactically valid JSON", "[BENCHMARK]
         REQUIRE(schema.is_object());
         ++count;
     }
-    REQUIRE(count == 11U);
+    REQUIRE(count == 12U);
 }
 
 TEST_CASE("Studio benchmark progress serializes bounded direct lifecycle records", "[BENCHMARK][PROFILING]")
@@ -383,5 +383,7 @@ TEST_CASE("Baseline writer emits scalar optional values and all successful suite
     nlohmann::json summary;
     comparisons >> summary;
     REQUIRE(summary.at("summary_schema_version") == 2U);
+    comparisons.close();
+    runs.close();
     std::filesystem::remove_all(outputDirectory);
 }

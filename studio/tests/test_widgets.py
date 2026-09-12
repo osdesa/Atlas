@@ -6,7 +6,13 @@ from atlas_studio.models import (
     default_benchmark,
     validate_document,
 )
-from atlas_studio.models.results import ResultsSessionModel
+from atlas_studio.models.descriptors import BUILTINS
+from atlas_studio.models.results import (
+    MAX_PRESENTED_EVENTS,
+    MAX_PRESENTED_RECORDS,
+    MAX_PRESENTED_TASKS,
+    ResultsSessionModel,
+)
 from atlas_studio.views import BenchmarkView, GraphView, MainWindow, ResultsView
 
 
@@ -48,7 +54,7 @@ def test_graph_controller_adds_tasks_and_rejects_a_cycle_atomically(qtbot) -> No
     messages: list[str] = []
     view.message.connect(messages.append)
 
-    view.task_add_requested.emit("cpu")
+    view.descriptor_add_requested.emit(BUILTINS["cpu_burn"], None)
     assert len(model.snapshot()["nodes"]) == 3
     before = model.snapshot()
     view.dependency_add_requested.emit("gpu-1", "cpu-1")
@@ -75,12 +81,13 @@ def test_graph_controller_exposes_every_runner_parameter(qtbot) -> None:
     view.selection_requested.emit("cpu-1")
     commit_text(view.node_name, "configured CPU")
     commit_uint(view.priority, 17)
-    commit_uint(view.iterations, 7654)
+    commit_text(view.parameter_fields["iterations"], "7654")
 
     view.selection_requested.emit("gpu-1")
     commit_text(view.node_name, "configured GPU")
     commit_uint(view.priority, 23)
-    commit_dimensions(view.workgroups, x=7, y=3, z=2)
+    for axis, value in (("x", 7), ("y", 3), ("z", 2)):
+        commit_text(view.parameter_fields[f"workgroups_{axis}"], str(value))
     view.slicing.setChecked(True)
     commit_dimensions(view.slice_dimensions, x=2, y=1, z=1)
 
@@ -91,8 +98,8 @@ def test_graph_controller_exposes_every_runner_parameter(qtbot) -> None:
     assert document["policy"] == {"type": "round_robin", "quantum": 13}
     assert document["runtime"] == {"validation": True}
     assert document["trace"] == {"enabled": False, "capacity": 4096}
-    assert document["nodes"][0]["kernel"] == {"type": "cpu_burn", "iterations": 7654}
-    assert document["nodes"][1]["kernel"] == {"type": "gpu_increment", "workgroups": {"x": 7, "y": 3, "z": 2}}
+    assert document["nodes"][0]["parameters"] == {"iterations": 7654}
+    assert document["nodes"][1]["parameters"] == {"workgroups_x": 7, "workgroups_y": 3, "workgroups_z": 2}
     assert document["nodes"][1]["slice_workgroups"] == {"x": 2, "y": 1, "z": 1}
     assert validate_document("graph", document) == []
 
@@ -105,6 +112,23 @@ def test_graph_controller_reverts_a_duplicate_identifier(qtbot) -> None:
     commit_text(view.node_id, "gpu-1")
     assert [node["id"] for node in model.snapshot()["nodes"]] == ["cpu-1", "gpu-1"]
     assert view.node_id.text() == "cpu-1"
+
+
+def test_descriptor_parameters_reject_invalid_edits_and_keep_controls(qtbot) -> None:
+    view = GraphView()
+    qtbot.addWidget(view)
+    model = GraphDocumentModel()
+    GraphController(model, view)
+    before = model.snapshot()
+    field = view.parameter_fields["iterations"]
+    commit_text(field, "0")
+    assert model.snapshot() == before
+    assert view.parameter_fields["iterations"] is field
+    assert field.text() == "100000"
+    view.kernel.setCurrentText("vector_add")
+    node = model.snapshot()["nodes"][0]
+    assert node["task_id"] == "vector_add" and node["resource"] == "gpu"
+    assert set(node["parameters"]) == {"element_count", "left_value", "right_value"}
 
 
 def test_benchmark_controller_preserves_and_edits_the_suite(qtbot) -> None:
@@ -186,6 +210,22 @@ def benchmark_record(run_id: int, record_type: str, **values) -> dict:
     return {"record_type": record_type, **context, **values}
 
 
+def test_results_snapshot_caps_only_the_live_visual_projection() -> None:
+    model = ResultsSessionModel()
+    model.tasks = {task_id: {"task_id": task_id} for task_id in range(MAX_PRESENTED_TASKS + 1)}
+    model.events.extend({"sequence": index} for index in range(MAX_PRESENTED_EVENTS + 1))
+    model.records.extend({"record": index} for index in range(MAX_PRESENTED_RECORDS + 1))
+
+    snapshot = model.snapshot()
+
+    assert len(snapshot.tasks) == MAX_PRESENTED_TASKS
+    assert len(snapshot.events) == MAX_PRESENTED_EVENTS
+    assert len(snapshot.records) == MAX_PRESENTED_RECORDS
+    assert snapshot.total_task_count == MAX_PRESENTED_TASKS + 1
+    assert snapshot.total_event_count == MAX_PRESENTED_EVENTS + 1
+    assert snapshot.total_record_count == MAX_PRESENTED_RECORDS + 1
+
+
 def test_results_controller_retains_last_twenty_benchmark_runs(qtbot) -> None:
     view = ResultsView()
     qtbot.addWidget(view)
@@ -243,9 +283,12 @@ def test_results_controller_retains_last_twenty_benchmark_runs(qtbot) -> None:
             )
         )
 
+    controller.render()
     assert len(model.history) == 20
     assert view.run_selector.count() == 21
-    assert view.benchmark_runs.rowCount() == 22
-    assert view.tasks.item(0, 0).text() == "task-21"
+    view.tabs.setCurrentIndex(3)
+    assert view.benchmark_run_model.rowCount() == 22
+    view.tabs.setCurrentIndex(0)
+    assert view.task_model.data(view.task_model.index(0, 0)) == "task-21"
     view.run_selector.setCurrentIndex(view.run_selector.count() - 1)
-    assert view.tasks.item(0, 0).text() == "task-2"
+    assert view.task_model.data(view.task_model.index(0, 0)) == "task-2"

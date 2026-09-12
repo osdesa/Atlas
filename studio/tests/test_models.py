@@ -225,5 +225,5 @@ def test_incremental_decoder_enforces_configurable_bounds() -> None:
     header = json.dumps(benchmark_progress_records()[0]).encode()
     with pytest.raises(ValueError, match="128 MiB"):
         JsonlRecordDecoder(maximum_bytes=len(header)).decode(header)
-    with pytest.raises(ValueError, match="2 MiB"):
+    with pytest.raises(ValueError, match="byte limit"):
         JsonlRecordDecoder(maximum_line_bytes=4).decode(header)

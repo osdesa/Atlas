@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from atlas_studio.controllers import ResultsController, RunController
+from atlas_studio.controllers import run as run_module
 from atlas_studio.models import default_benchmark, default_graph
 from atlas_studio.models.results import ResultsSessionModel
 from atlas_studio.services.process import AtlasProcessService
@@ -51,3 +52,28 @@ def test_non_live_benchmark_stdout_remains_diagnostic_text(qtbot, tmp_path: Path
 
     assert finished.args[1] == "complete"
     assert any("benchmark complete" in diagnostic for diagnostic in model.diagnostics)
+
+
+def test_run_controller_reduces_large_worker_batches_in_bounded_slices(qtbot, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    controller, model = build_run_controller(qtbot)
+    monkeypatch.setattr(run_module, "_RECORD_SLICE_SECONDS", 60)
+    records = tuple(
+        {
+            "record_type": "task",
+            "node_id": f"task-{task_id}",
+            "task_id": task_id,
+            "name": f"Task {task_id}",
+            "resource": "cpu",
+            "priority": 0,
+        }
+        for task_id in range(1, 1_001)
+    )
+
+    controller._records_received(records)
+    controller._record_timer.stop()
+    controller._drain_records()
+    controller._record_timer.stop()
+
+    assert len(model.records) == 256
+    assert len(controller._pending_records) == 744
+    controller._pending_records.clear()

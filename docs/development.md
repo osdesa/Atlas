@@ -20,6 +20,10 @@ Atlas separates immutable graph work, backend execution, and scheduler control:
   metrics. It always receives both CPU and Vulkan executors.
 - `VulkanRuntime` owns the instance/device/queue context. Public buffers and
   pipelines retain that context without exposing raw owning handles.
+- `TaskPackRegistry` validates and hashes pack directories without loading code,
+  then loads only explicitly requested host binaries through the version-one C
+  ABI. `CustomTaskInstance` prepares exactly one existing Atlas payload and
+  retains native module/context state through execution and summary collection.
 - `TraceSession` timestamps fixed-size events from scheduler and executor
   producers. `BoundedTraceBuffer` provides best-effort non-blocking publication,
   while `TraceJsonlWriter` drains records on its own thread.
@@ -38,10 +42,12 @@ multi-backend API.
 - `include/atlas/Scheduler/`: scheduler and policy APIs.
 - `include/atlas/Vulkan/`: opaque resource and runtime APIs.
 - `include/atlas/Profiling/`: trace event, buffer, session, and JSONL writer APIs.
+- `include/atlas/Extension/`: task-pack descriptors, registry/instance APIs, and
+  the pure-C native ABI.
 - `src/`: implementations matching those public modules.
 - `apps/atlas/`: current mixed-graph executable and shader.
 - `apps/atlas_bench/`: suite parser, runners, analysis, and result writers.
-- `apps/atlas_studio_runner/`: strict built-in-kernel graph runner and JSONL protocol.
+- `apps/atlas_studio_runner/`: strict descriptor-based graph runner and JSONL protocol.
 - `studio/`: optional PySide6 desktop application, models, and headless tests.
 - `benchmarks/manifests/`: canonical and smoke suite definitions.
 - `benchmarks/schema/`: current suite and output schemas.
@@ -69,6 +75,22 @@ work, and joins owned threads.
 Vulkan buffers and pipelines belong to one runtime context. Cross-context
 dispatch resources are rejected before queue submission. Destruction order is
 private RAII state; a resource or `VulkanExecutor` retains the context it needs.
+
+Task packs are trusted in-process native code. Inspection rejects unsafe paths,
+symlinks, special files, duplicate identities, invalid typed fields, excessive
+sizes, and unsupported platform triples without loading a library. Loading
+cross-checks exact structure sizes, ABI version, callbacks, task IDs, and
+resources against the manifest. Each prepared node owns an independent plugin
+context. Shared module state outlives every CPU callable, anchored custom GPU
+dispatch, and result callback that uses it. A plugin must catch its exceptions;
+a native crash, hang, process exit, or exception escaping the C ABI is outside
+the recoverable scheduler contract.
+
+SPIRV-Tools validates every compute module against Vulkan 1.1 before Vulkan
+object creation. The strict reflector accepts exactly set-zero, non-arrayed
+storage-buffer declarations for the selected compute entry point and rejects
+push constants, specialization constants, images, samplers, other descriptor
+sets/types, duplicate bindings, and declared/reflected access differences.
 
 Tracing is an optional borrowed association: the writer/session must outlive
 the scheduler and all accepted executor work. The completion channel carries
@@ -129,16 +151,35 @@ complete raw directories, computes arbitrary predeclared paired contrasts, and
 generates the final machine-readable result, tables, and SVG plots. This keeps
 research interpretation outside the Atlas library and benchmark executor.
 
-The local studio is a process-boundary PySide6 client. It validates documents,
-creates private managed run directories, and launches `atlas_studio_runner` or
-`atlas_bench` through `QProcess` without C++ bindings or raw Vulkan resources.
-Its Python code follows MVC ownership: UI-independent document and result
-models own canonical state, Qt controllers apply user intent and coordinate
-file/process services, and widgets only emit intent and render detached
-snapshots. The `AtlasProcessService` publishes bounded raw process records;
-the run controller validates each versioned JSONL record before reducing it
-into result state.
-The studio runner emits bounded machine-readable JSONL on stdout and
+The local studio is a process-boundary PySide6 client. Its GUI thread owns all
+widgets and presentation state. For each run, `AtlasProcessService` creates a
+dedicated `QThread` whose worker prepares managed files, owns `QProcess`,
+launches `atlas_studio_runner` or `atlas_bench`, validates bounded JSONL, and
+loads final benchmark artifacts without C++ bindings or raw Vulkan resources.
+Validated records cross to the GUI in batches, and the run controller reduces
+them into result state in bounded event-loop time slices. Presentation refreshes
+are coalesced, large task and benchmark tables use virtual models, inactive tabs
+are not rebuilt, and snapshots cap live visual data independently of the larger
+retained result bounds. Its Python code otherwise follows MVC ownership:
+UI-independent document and result models own canonical state, Qt controllers
+apply user intent, and widgets only emit intent and render detached snapshots.
+The studio runner resolves graph-v2 custom packs by exact digest, copies their
+referenced files into private temporary directories, and reinspects before native
+loading. One registry and all prepared instances survive execution and summary
+collection; snapshots outlive graphs and native modules. Every node prepares
+before graph insertion. The internal built-in adapter uses the public descriptor
+scalar validators and the same prepared-node/summary route, with metadata shared
+with Studio forms. Python never loads native pack modules. The exclusive `--inspect-task-pack`
+runner mode serializes library-owned descriptors without runtime initialization.
+Studio's pack service copies bounded inspected files, reinspects staging content,
+and atomically installs a digest directory. A manager worker owns blocking
+inspection/import operations; QSettings trust decisions remain explicit UI intent.
+Graph models resolve descriptors by exact provenance and preserve unresolved
+nodes for open/save. All parameter edits pass the same atomic graph transaction.
+Run selection retains active digests against removal until process completion,
+and the process worker rechecks QSettings immediately before launch. Results
+render scalar summaries and bounded raw JSON as plain text.
+The studio runner emits bounded run-v2 machine-readable JSONL on stdout and
 diagnostics on stderr; accepted work is drained when a run is terminated.
 Studio benchmark launches opt into a separate bounded progress JSONL stream.
 Scheduled variants reuse `TraceSession`; direct variants emit equivalent
@@ -200,6 +241,35 @@ ATLAS_STRESS_SEED=684453 ATLAS_STRESS_ROUNDS=10000 \
 The manual `Manual robustness` workflow runs this 10,000-round soak on
 Lavapipe, the full ASan/UBSan suite, and the TSan concurrency suite twenty times.
 It has no schedule and does not gate ordinary pull requests.
+
+The existing Studio CI matrix builds native contracts on Ubuntu and Windows x64,
+selects real Mesa Lavapipe through a discovered `VK_DRIVER_FILES` manifest, and
+runs the full PySide6 suite with `QT_QPA_PLATFORM=offscreen` scoped to the test
+step so the Qt-based Vulkan SDK installer uses the native Windows platform.
+Windows uses MSVC, the Vulkan SDK, and vcpkg SPIRV-Tools, then runs all C++ tests and `atlas` before
+Studio tests. Native fixtures are actual shared libraries (`.dll` on Windows).
+CI sets `ATLAS_REQUIRE_NATIVE_TESTS=1`: missing runner/probe binaries and missing
+symlink privileges fail instead of skipping required coverage. Windows hosts
+must permit symlink creation (developer mode or symlink privileges).
+Set `ATLAS_STUDIO_RUNNER` and `ATLAS_TASK_PACK_CONTRACT` to the matching build's
+executables when reproducing these tests locally. The manual robustness workflow
+also runs the full Studio suite against ASan/UBSan native executables and packs,
+with leak detection enabled. JUnit and CTest logs are uploaded as CI artifacts.
+The `desktop_pack_delivery` regression drives the main window and real native
+runner through import/trust, palette edits, save/reopen, ordinary/sliced mixed
+execution, summaries, revocation, and removal. It isolates QSettings and installed
+packs in the test temporary directory. The repeated pack-job test checks that
+worker destruction completes before another operation can start.
+The process service likewise joins its finished thread before releasing the
+worker wrapper and announcing completion; a fifty-launch regression checks this
+lifetime boundary. Native fault tests use the test pack's process-local
+`ATLAS_TEST_PACK_FAULT` input to exercise malformed ABI/GPU callbacks and abrupt
+process exit. The production loader and runner expose no fault controls. Shader
+contract tests compile valid unsupported interfaces using `glslc` on `PATH`.
+Windows CI additionally runs the desktop delivery cases with Qt's native
+`windows` platform plugin. `ATLAS_DESKTOP_EVIDENCE_DIR` selects a test-only output
+directory for import, trust, graph, summary, revocation, and missing-pack
+screenshots; CI retains them with the desktop JUnit log.
 
 For an optional local physical-GPU run, select an installed ICD externally and
 use the same build rather than checking a machine path into the repository:

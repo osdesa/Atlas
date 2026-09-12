@@ -21,3 +21,12 @@ atlas_add_test_suite(
     TIMEOUT 1800
     SOURCES ${ATLAS_STRESS_TEST_SOURCE}
 )
+
+add_dependencies(atlas_unit_tests atlas_task_pack_mock atlas_vector_add_shader)
+target_sources(atlas_unit_tests PRIVATE "${PROJECT_SOURCE_DIR}/apps/atlas_studio_runner/PackSnapshots.cpp")
+target_compile_definitions(
+    atlas_unit_tests
+    PRIVATE
+        ATLAS_TASK_PACK_MOCK_PATH="$<TARGET_FILE:atlas_task_pack_mock>"
+        ATLAS_TASK_PACK_TEST_SPIRV_PATH="${ATLAS_VECTOR_ADD_SPIRV}"
+)

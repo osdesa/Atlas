@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Qt
+from PySide6.QtWidgets import QMessageBox
 
 from ..models.benchmark import BenchmarkDocumentModel
 from ..models.documents import DocumentError, StudioSessionModel
@@ -14,9 +15,12 @@ from ..models.results import ResultsSessionModel
 from ..models.validation import validate_document
 from ..services.documents import DocumentRepository
 from ..services.imports import DocumentImport, RecordStreamImport, StudioImporter
+from ..services.packs import TRUST_WARNING, PackStore
 from ..services.process import AtlasProcessService
+from ..views.packs import PackManagerView
 from .benchmark import BenchmarkController
 from .graph import GraphController
+from .packs import PackJobs
 from .results import ResultsController
 from .run import RunController
 
@@ -35,6 +39,15 @@ class StudioController(QObject):
         self.benchmark = BenchmarkController(BenchmarkDocumentModel(), window.benchmark_view, self.session)
         self.results = ResultsController(ResultsSessionModel(), window.results_view)
         self.run = RunController(AtlasProcessService(self), self.results)
+        self.packs = PackStore()
+        self.pack_jobs = PackJobs(self)
+        self.pack_jobs.finished.connect(self._pack_job_finished)
+        self.pack_manager = PackManagerView(window)
+        self.pack_manager.import_requested.connect(self._import_pack)
+        self.pack_manager.trust_requested.connect(self._trust_pack)
+        self.pack_manager.remove_requested.connect(self._remove_pack)
+        window.packs_requested.connect(self._show_packs)
+        self.graph.changed.connect(self._pack_state)
         self._close_after_run = False
 
         window.open_requested.connect(self.open_file)
@@ -49,6 +62,83 @@ class StudioController(QObject):
         self.run.run_started.connect(self._run_started)
         self.run.run_finished.connect(self._run_finished)
         self._workspace_changed("graph")
+        if self.packs.root.exists():
+            self._pack_operation(self.packs.refresh)
+
+    def _pack_state(self) -> None:
+        self.graph.model.catalog = self.packs.installed
+        statuses = {
+            digest: ("Available" if self.packs.available(pack) else "Platform unavailable")
+            + (" / Trusted" if self.packs.trusted(digest) else " / Untrusted")
+            for digest, pack in self.packs.installed.items()
+        }
+        self.window.graph_view.set_catalog(self.packs.installed, statuses)
+        document = self.graph.model.snapshot()
+        node_problems = self.graph.model.unresolved_nodes()
+        problems = self.packs.problems(document)
+        problems.extend(f"{node}: {error}" for node, error in node_problems.items())
+        problems.extend(self.graph.model.parameter_errors(document))
+        pack_problems = {
+            pack["pack_id"]: self.packs.problems({"packs": [pack]}) for pack in document["packs"]
+        }
+        for node in document["nodes"]:
+            reasons = pack_problems.get(node["pack_id"], [])
+            if reasons:
+                node_problems[node["id"]] = "\n".join(reasons)
+        self.window.graph_view.node_problems = node_problems
+        self.window.graph_view.pack_status.setText("\n".join(problems[:32]))
+        self.pack_manager.render(self.packs.installed, statuses, self.packs.errors)
+        if self.window.workspace_kind() == "graph":
+            self.window.actions["run"].setEnabled(not self.run.active and not problems)
+
+    def _show_packs(self) -> None:
+        self.pack_manager.show()
+        self._pack_operation(self.packs.refresh)
+
+    def _pack_operation(self, operation) -> None:
+        self.window.show_status("Inspecting task packs…", 0)
+        self.window.setEnabled(False)
+        self.pack_manager.setEnabled(False)
+        self.pack_jobs.start(operation)
+
+    def _pack_job_finished(self, error: str) -> None:
+        self.window.show_status("Task pack operation finished", 5000)
+        self.window.setEnabled(True)
+        self.pack_manager.setEnabled(True)
+        self._pack_state()
+        self.graph.render()
+        if error:
+            self.window.show_warning("Task pack operation failed", error)
+        if self._close_after_run:
+            self.window.accept_close()
+
+    def _import_pack(self, path: str) -> None:
+        self._pack_operation(lambda: self.packs.import_directory(Path(path)))
+
+    def _trust_pack(self, digest: str, trusted: bool) -> None:
+        if digest not in self.packs.installed:
+            return
+        if trusted:
+            warning = QMessageBox(self.pack_manager)
+            warning.setWindowTitle("Trust native task pack")
+            warning.setTextFormat(Qt.PlainText)
+            warning.setText(TRUST_WARNING + "\n\nSHA-256: " + digest)
+            warning.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            warning.setDefaultButton(QMessageBox.No)
+            if warning.exec() != QMessageBox.Yes:
+                return
+        self.packs.set_trusted(digest, trusted)
+        self.graph.render()
+
+    def _remove_pack(self, digest: str) -> None:
+        if not digest:
+            return
+        try:
+            self.packs.remove(digest)
+            self._pack_state()
+            self.graph.render()
+        except (OSError, ValueError) as error:
+            self.window.show_warning("Pack removal failed", str(error))
 
     def open_file(self) -> None:
         path = self.window.choose_open_file()
@@ -63,6 +153,7 @@ class StudioController(QObject):
                     self.benchmark.replace(imported.document)
                 self.window.show_workspace(imported.kind)
             elif isinstance(imported, RecordStreamImport):
+                self.window.results_view.summary_descriptors = {}
                 self.results.load_records(imported.records)
                 self.window.show_workspace("results")
             else:
@@ -105,7 +196,17 @@ class StudioController(QObject):
         kind = self.window.workspace_kind()
         try:
             if kind == "graph":
-                self.run.start_graph(self.graph.model.snapshot())
+                document = self.graph.model.snapshot()
+                errors = self.graph.model.parameter_errors(document)
+                errors.extend(self.graph.model.unresolved_nodes().values())
+                if errors:
+                    raise ValueError("\n".join(errors))
+                self.window.results_view.summary_descriptors = {
+                    (node["pack_id"], node["task_id"]): self.graph.model.descriptor(node) or {}
+                    for node in document["nodes"]
+                }
+                directories = self.packs.launch_directories(document)
+                self.run.start_graph(document, directories)
             elif kind == "benchmark":
                 options = self.session.benchmark_options
                 if not options.output_directory:
@@ -119,7 +220,8 @@ class StudioController(QObject):
                     Path(options.environment_file) if options.environment_file else None,
                     live_tracing=options.live_tracing,
                 )
-        except (OSError, RuntimeError) as error:
+        except (OSError, RuntimeError, ValueError) as error:
+            self.packs.active.clear()
             self.results.add_diagnostic(str(error))
             self.results.set_state("failed")
             self.window.show_critical("Unable to start Atlas", str(error))
@@ -129,19 +231,25 @@ class StudioController(QObject):
             raise ValueError(f"unknown workspace: {kind}")
         self.session.workspace = kind
         self.window.update_action_state(self.run.active)
+        self._pack_state()
 
     def _run_started(self, _kind: str) -> None:
         self.window.show_workspace("results")
         self.window.update_action_state(True)
 
     def _run_finished(self, exit_code: int, state: str) -> None:
+        self.packs.active.clear()
         self.window.update_action_state(False)
+        self._pack_state()
         self.window.show_status(f"Atlas run {state} with exit code {exit_code}", 10_000)
         if self._close_after_run:
             self._close_after_run = False
             self.window.accept_close()
 
     def _close_requested(self) -> None:
+        if self.pack_jobs.thread is not None:
+            self._close_after_run = True
+            return
         if self.run.active:
             if not self.window.confirm_stop():
                 return

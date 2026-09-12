@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QPushButton,
     QScrollArea,
@@ -19,18 +20,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..models.descriptors import BUILTINS, default_parameters
 from ..models.documents import JsonObject
-from .fields import DimensionsEditor, UIntEdit
+from .fields import DimensionsEditor, ScalarEdit, ScalarValidator, UIntEdit
 from .graph_canvas import GraphCanvas
 
 
 class GraphView(QWidget):
     """Render a graph snapshot and emit graph-editing intent."""
 
-    settings_requested = Signal(dict)
-    task_add_requested = Signal(str)
+    settings_requested = Signal(object)
+    descriptor_add_requested = Signal(object, object)
     task_remove_requested = Signal(str)
-    task_update_requested = Signal(str, dict)
+    task_update_requested = Signal(str, object)
     dependency_add_requested = Signal(str, str)
     selection_requested = Signal(str)
     message = Signal(str)
@@ -40,6 +42,7 @@ class GraphView(QWidget):
         self._snapshot: JsonObject = {"nodes": [], "edges": []}
         self.selected_id = ""
         self._updating = False
+        self.node_problems: dict[str, str] = {}
         self.canvas = GraphCanvas()
         self.canvas.node_selected.connect(self.selection_requested)
         self.canvas.edge_requested.connect(self.dependency_add_requested)
@@ -73,10 +76,19 @@ class GraphView(QWidget):
             graph_form.addRow(label, widget)
         controls_layout.addWidget(graph_group)
 
+        self.palette = QComboBox()
+        controls_layout.addWidget(self.palette)
+        self.pack_status = QLabel()
+        self.pack_status.setWordWrap(True)
+        self.pack_status.setTextFormat(Qt.PlainText)
+        controls_layout.addWidget(self.pack_status)
+        self.descriptor_resolver = lambda node: (
+            BUILTINS.get(node["task_id"]) if node["pack_id"] == "atlas.builtin" else None
+        )
+        self.set_catalog({})
         actions = QHBoxLayout()
         for label, callback in (
-            ("Add CPU", lambda: self.task_add_requested.emit("cpu")),
-            ("Add GPU", lambda: self.task_add_requested.emit("gpu")),
+            ("Add selected task", self._add_selected),
             ("Remove", self._request_remove),
         ):
             button = QPushButton(label)
@@ -95,28 +107,23 @@ class GraphView(QWidget):
         self.resource = QLineEdit()
         self.resource.setReadOnly(True)
         self.kernel = QComboBox()
-        self.kernel.addItems(["cpu_burn", "gpu_increment", "vector_add"])
+        self.kernel.addItems(list(BUILTINS))
         self.priority = UIntEdit(0, 2**32 - 1)
-        self.iterations = UIntEdit(1)
-        self.element_count = UIntEdit(256)
-        self.left_value = QLineEdit("4")
-        self.right_value = QLineEdit("7")
         for label, widget in (
             ("ID", self.node_id),
             ("Name", self.node_name),
             ("Resource", self.resource),
-            ("Kernel", self.kernel),
+            ("Task type", self.kernel),
             ("Priority", self.priority),
-            ("Iterations", self.iterations),
-            ("Element count", self.element_count),
-            ("Left value", self.left_value),
-            ("Right value", self.right_value),
         ):
             task_form.addRow(label, widget)
-        self.workgroups = DimensionsEditor("Workgroups")
+        self.parameter_group = QGroupBox("Parameters")
+        self.parameter_form = QFormLayout(self.parameter_group)
+        self.parameter_fields: dict[str, QWidget] = {}
+        self._parameter_key: tuple[str, ...] | None = None
         self.slicing = QCheckBox("Cooperative slicing")
         self.slice_dimensions = DimensionsEditor("Slice workgroups")
-        task_form.addRow(self.workgroups)
+        task_form.addRow(self.parameter_group)
         task_form.addRow(self.slicing)
         task_form.addRow(self.slice_dimensions)
         controls_layout.addWidget(task_group)
@@ -133,6 +140,33 @@ class GraphView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
         self._connect_fields()
+
+    def set_catalog(self, packs: dict[str, JsonObject], statuses: dict[str, str] | None = None) -> None:
+        """Render detached descriptor metadata in grouped palette entries."""
+        key = tuple((digest, (statuses or {}).get(digest, "")) for digest in packs)
+        if getattr(self, "_catalog_key", None) == key:
+            return
+        self._catalog_key = key
+        self.palette.clear()
+        for descriptor in BUILTINS.values():
+            self.palette.addItem(
+                f"Built-in · {descriptor.get('name') or descriptor['task_id']} · {descriptor['resource']}",
+                (descriptor, None),
+            )
+        for digest, pack in packs.items():
+            for descriptor in pack["tasks"]:
+                status = (statuses or {}).get(digest, "")
+                self.palette.addItem(
+                    f"Installed Packs · {pack['pack_id']} {pack['version']} [{digest[:12]}] · "
+                    f"{descriptor.get('name') or descriptor['task_id']} · {descriptor['resource']} · {status}",
+                    (descriptor, pack),
+                )
+                self.palette.setItemData(self.palette.count() - 1, descriptor.get("description", ""), 3)
+
+    def _add_selected(self) -> None:
+        selected = self.palette.currentData()
+        if selected:
+            self.descriptor_add_requested.emit(*selected)
 
     def render(self, document: JsonObject, selected_id: str | None = None) -> None:
         self._snapshot = document
@@ -155,11 +189,6 @@ class GraphView(QWidget):
         self.node_name.editingFinished.connect(self._update_task)
         self.kernel.currentTextChanged.connect(self._kernel_changed)
         self.priority.value_changed.connect(self._update_task)
-        self.iterations.value_changed.connect(self._update_task)
-        self.element_count.value_changed.connect(self._update_task)
-        self.left_value.editingFinished.connect(self._update_task)
-        self.right_value.editingFinished.connect(self._update_task)
-        self.workgroups.changed.connect(self._update_task)
         self.slicing.toggled.connect(self._update_task)
         self.slice_dimensions.changed.connect(self._update_task)
 
@@ -176,7 +205,15 @@ class GraphView(QWidget):
         self.trace_enabled.setChecked(bool(self._snapshot.get("trace", {}).get("enabled", True)))
         self.trace_capacity.set_value(int(self._snapshot.get("trace", {}).get("capacity", 65_536)))
         self._updating = False
-        self.canvas.set_document(self._snapshot)
+        self.canvas.set_document(
+            {
+                **self._snapshot,
+                "nodes": [
+                    {**node, "resolution_error": self.node_problems.get(node["id"], "")}
+                    for node in self._snapshot["nodes"]
+                ],
+            }
+        )
         self._refresh_task()
 
     def _refresh_task(self) -> None:
@@ -184,21 +221,58 @@ class GraphView(QWidget):
         if node is None:
             return
         self._updating = True
-        kernel = node["kernel"]
+        descriptor = self.descriptor_resolver(node)
         self.node_id.setText(node["id"])
         self.node_name.setText(node.get("name", node["id"]))
         self.resource.setText(node["resource"])
-        self.kernel.setCurrentText(kernel["type"])
+        self.kernel.setEnabled(node["pack_id"] == "atlas.builtin")
+        if self.kernel.findText(node["task_id"]) < 0:
+            self.kernel.addItem(node["task_id"])
+        self.kernel.setCurrentText(node["task_id"])
         self.priority.set_value(int(node.get("priority", 0)))
-        self.iterations.set_value(int(kernel.get("iterations", 1)))
-        self.element_count.set_value(int(kernel.get("element_count", 256)))
-        self.left_value.setText(str(kernel.get("left_value", 4.0)))
-        self.right_value.setText(str(kernel.get("right_value", 7.0)))
-        self.workgroups.set_dimensions(kernel.get("workgroups", {"x": 1, "y": 1, "z": 1}))
+        key = (node["pack_id"], node["task_id"], str(descriptor))
+        if key != self._parameter_key:
+            while self.parameter_form.rowCount():
+                row = self.parameter_form.takeRow(0)
+                for item in (row.labelItem, row.fieldItem):
+                    if item and item.widget():
+                        item.widget().hide()
+                        item.widget().deleteLater()
+            self.parameter_fields = {}
+            self._parameter_key = key
+        for field in descriptor["parameters"] if descriptor else []:
+            value = node["parameters"].get(field["id"], field.get("default"))
+            kind = field["type"]
+            widget = self.parameter_fields.get(field["id"])
+            if widget is None:
+                if kind == "boolean":
+                    widget = QCheckBox()
+                    widget.toggled.connect(self._update_task)
+                elif kind == "enum":
+                    widget = QComboBox()
+                    widget.addItems(field["values"])
+                    widget.currentTextChanged.connect(self._update_task)
+                else:
+                    widget = ScalarEdit()
+                    if kind in {"integer", "unsigned_integer", "number"}:
+                        widget.setValidator(ScalarValidator(field, widget))
+                    if kind == "string":
+                        widget.setMaxLength(field["max_length"])
+                    widget.editingFinished.connect(self._update_task)
+                self.parameter_fields[field["id"]] = widget
+                self.parameter_form.addRow(field.get("name") or field["id"], widget)
+            if kind == "boolean":
+                widget.setChecked(bool(value))
+            elif kind == "enum":
+                widget.setCurrentText(str(value))
+            else:
+                widget.setText(str(value))
         sliced = node.get("slice_workgroups") is not None
         self.slicing.setChecked(sliced)
         self.slice_dimensions.set_dimensions(node.get("slice_workgroups") or {"x": 1, "y": 1, "z": 1})
-        self._set_kernel_visibility(kernel["type"])
+        slicing = bool(descriptor and descriptor.get("supports_slicing", False))
+        self.slicing.setVisible(slicing)
+        self.slice_dimensions.setVisible(slicing and sliced)
         self._updating = False
         self.canvas.select_node(self.selected_id)
 
@@ -229,27 +303,17 @@ class GraphView(QWidget):
         node = self._selected_node()
         if node is None:
             return
-        if kernel_type == "cpu_burn":
-            replacement: JsonObject = {
-                **node,
-                "resource": "cpu",
-                "kernel": {"type": kernel_type, "iterations": 10_000},
-            }
-            replacement.pop("slice_workgroups", None)
-        elif kernel_type == "gpu_increment":
-            replacement = {
-                **node,
-                "resource": "gpu",
-                "kernel": {"type": kernel_type, "workgroups": {"x": 64, "y": 1, "z": 1}},
-                "slice_workgroups": None,
-            }
-        else:
-            replacement = {
-                **node,
-                "resource": "gpu",
-                "kernel": {"type": kernel_type, "element_count": 256, "left_value": 4.0, "right_value": 7.0},
-                "slice_workgroups": None,
-            }
+        if kernel_type not in BUILTINS:
+            return
+        descriptor = BUILTINS[kernel_type]
+        replacement: JsonObject = {
+            **node,
+            "resource": descriptor["resource"],
+            "pack_id": "atlas.builtin",
+            "task_id": kernel_type,
+            "parameters": default_parameters(descriptor),
+        }
+        replacement.pop("slice_workgroups", None)
         self.task_update_requested.emit(self.selected_id, replacement)
 
     def _update_task(self, *_args: Any) -> None:
@@ -266,24 +330,29 @@ class GraphView(QWidget):
             "name": self.node_name.text(),
             "priority": self.priority.value(),
         }
-        kernel_type = node["kernel"]["type"]
-        if kernel_type == "cpu_burn":
-            replacement["kernel"] = {"type": kernel_type, "iterations": self.iterations.value()}
-            replacement.pop("slice_workgroups", None)
-        elif kernel_type == "gpu_increment":
-            replacement["kernel"] = {"type": kernel_type, "workgroups": self.workgroups.dimensions()}
-        else:
+        descriptor = self.descriptor_resolver(node)
+        if descriptor:
+            parameters: JsonObject = {}
             try:
-                left, right = float(self.left_value.text()), float(self.right_value.text())
+                for field in descriptor["parameters"]:
+                    widget = self.parameter_fields[field["id"]]
+                    kind = field["type"]
+                    if kind == "boolean":
+                        value = widget.isChecked()
+                    elif kind == "enum":
+                        value = widget.currentText()
+                    elif kind in {"integer", "unsigned_integer"}:
+                        value = int(widget.text())
+                    elif kind == "number":
+                        value = float(widget.text())
+                    else:
+                        value = widget.text()
+                    parameters[field["id"]] = value
             except ValueError:
-                self.message.emit("vector values must be numbers")
+                self.message.emit("Parameter must match its declared type")
+                self._refresh_task()
                 return
-            replacement["kernel"] = {
-                "type": kernel_type,
-                "element_count": self.element_count.value(),
-                "left_value": left,
-                "right_value": right,
-            }
+            replacement["parameters"] = parameters
         if replacement["resource"] == "gpu":
             replacement["slice_workgroups"] = (
                 self.slice_dimensions.dimensions() if self.slicing.isChecked() else None
@@ -293,17 +362,6 @@ class GraphView(QWidget):
 
     def _selected_node(self) -> JsonObject | None:
         return next((node for node in self._snapshot["nodes"] if node["id"] == self.selected_id), None)
-
-    def _set_kernel_visibility(self, kernel_type: str) -> None:
-        self.iterations.setVisible(kernel_type == "cpu_burn")
-        self.workgroups.setVisible(kernel_type == "gpu_increment")
-        vector = kernel_type == "vector_add"
-        self.element_count.setVisible(vector)
-        self.left_value.setVisible(vector)
-        self.right_value.setVisible(vector)
-        gpu = kernel_type != "cpu_burn"
-        self.slicing.setVisible(gpu)
-        self.slice_dimensions.setVisible(gpu and self.slicing.isChecked())
 
     def _toggle_connecting(self, enabled: bool) -> None:
         self.canvas.set_connecting(enabled)

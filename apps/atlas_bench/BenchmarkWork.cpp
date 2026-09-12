@@ -62,7 +62,8 @@ namespace Atlas::Benchmark::Detail
         : elementCount{ checkedElementCount(config.workgroups) }, runtime{ runtimeContext },
           dimensionsBuffer{ runtime.createBuffer(4U * sizeof(std::uint32_t)) },
           outputBuffer{ runtime.createBuffer(elementCount * sizeof(std::uint32_t)) },
-          pipeline{ runtime.createComputePipeline(ComputeShader{ readShader(), "main", { 0U, 1U } }) },
+          pipeline{ runtime.createComputePipeline(
+              ComputeShader{ readShader(), "main", { { 0U, BufferAccess::ReadOnly }, { 1U, BufferAccess::ReadWrite } } }) },
           computeDispatch{ pipeline,
                            { { 0U, dimensionsBuffer, BufferAccess::ReadOnly }, { 1U, outputBuffer, BufferAccess::ReadWrite } },
                            config.workgroups }

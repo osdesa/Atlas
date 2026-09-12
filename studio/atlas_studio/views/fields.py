@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRegularExpression, Signal
-from PySide6.QtGui import QRegularExpressionValidator
+from PySide6.QtGui import QRegularExpressionValidator, QValidator
 from PySide6.QtWidgets import QFormLayout, QGroupBox, QHBoxLayout, QLineEdit
 
 from ..models.documents import JsonObject
 
 
 class UIntEdit(QLineEdit):
-    value_changed = Signal(int)
+    value_changed = Signal(object)
 
     def __init__(self, value: int = 0, maximum: int = 2**64 - 1) -> None:
         super().__init__(str(value))
@@ -54,3 +54,32 @@ class DimensionsEditor(QGroupBox):
 
     def _emit(self, _value: int) -> None:
         self.changed.emit(self.dimensions())
+
+
+class ScalarValidator(QValidator):
+    """Validate exact 64-bit integers and finite numeric bounds without float rounding."""
+
+    def __init__(self, field, parent=None):
+        super().__init__(parent)
+        self.field = field
+
+    def validate(self, text, position):
+        from ..models.descriptors import validate_parameters
+
+        try:
+            value = float(text) if self.field["type"] == "number" else int(text)
+            errors = validate_parameters({"parameters": [self.field]}, {self.field["id"]: value})
+            state = QValidator.State.Acceptable if not errors else QValidator.State.Intermediate
+        except ValueError:
+            state = QValidator.State.Intermediate
+        return state, text, position
+
+
+class ScalarEdit(QLineEdit):
+    """Commit invalid numeric text on focus loss so the controller restores valid state."""
+
+    def focusOutEvent(self, event):
+        valid = self.hasAcceptableInput()
+        super().focusOutEvent(event)
+        if not valid:
+            self.editingFinished.emit()

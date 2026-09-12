@@ -1,0 +1,5 @@
+{"record_type":"header","studio_schema_version":2,"trace_schema_version":1,"packs":[]}
+{"record_type":"task","node_id":"node","task_id":1,"name":"Task","resource":"cpu","priority":0,"pack_id":"atlas.builtin","pack_task_id":"cpu_burn"}
+{"record_type":"task_summary","node_id":"node","task_id":1,"summary":{"value":42}}
+{"record_type":"result","status":"Success","executed_task_count":1,"execution_time_ns":1,"scheduler_active_ns":1,"immediate_slice_switch_ns":0,"immediate_slice_switch_count":0,"device":"Test Vulkan device","timestamp_supported":false,"tasks":[{"node_id":"node","task_id":1,"state":"success","execution_duration_ns":1,"completed_work_units":1,"total_work_units":1,"ready_wait_ns":0,"selection_bypass_count":0}]}
+{"record_type":"footer","status":"success","accepted_events":0,"dropped_events":0,"complete":true}

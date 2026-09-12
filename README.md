@@ -11,6 +11,13 @@ scheduling, cancellation, FIFO/round-robin/static-priority policies, per-task
 wait/response measurements, and reproducible comparison-suite benchmarking.
 It also provides bounded execution tracing, JSONL validation/summary/timeline
 tooling, and capability-checked Vulkan device-duration measurements.
+The C++ library can also inspect and explicitly load trusted native task packs,
+prepare their CPU callbacks or declarative storage-buffer GPU work as existing
+Atlas payloads, and collect bounded typed summaries. The Studio runner accepts graph v2 documents and explicitly selected trusted
+pack directories, verifies private snapshots by exact digest, and emits run v2
+provenance and per-task summaries. Studio imports packs into a per-user content-addressed store, records explicit
+per-digest trust, and supplies a task palette, typed forms, resolution diagnostics,
+and expandable per-task summaries. Python never loads native pack modules.
 Canonical physical Intel and Lavapipe evaluation supports FIFO and
 quantum-one round-robin as transparent defaults, rejects static priority as a
 general default, and finds cooperative slicing costly enough to require an
@@ -27,7 +34,8 @@ and [AGENTS.md](AGENTS.md).
 ## Build and test
 
 Requirements include CMake 3.24+, C++20, Threads, Vulkan 1.1 development files
-and a usable compute device, `glslc`, and `spirv-val`.
+and a usable compute device, `glslc`, `spirv-val`, and the SPIRV-Tools
+development library used for mandatory runtime shader validation.
 
 ```bash
 cmake -S . -B build
@@ -59,11 +67,11 @@ python3 tools/atlas_evaluation.py --help
 ```
 
 The optional PySide6 desktop studio is under `studio/`. It launches
-`atlas_studio_runner` and `atlas_bench` as supervised local processes while
-editing explicit graphs and benchmark-suite documents. Python is not required
-by the normal CMake build. Studio benchmark runs can stream the active generated
-task graph into the Tasks and Timeline view while retaining the normal result
-artifacts.
+`atlas_studio_runner` and `atlas_bench` as supervised local processes from a
+dedicated Qt worker thread while the GUI remains on the main thread. Python is
+not required by the normal CMake build. Studio benchmark runs can stream the
+active generated task graph into the Tasks and Timeline view while retaining
+the normal result artifacts.
 
 All Atlas executables fail early and return non-zero when required Vulkan
 initialization or execution is unavailable.

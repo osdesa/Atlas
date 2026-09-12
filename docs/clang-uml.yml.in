@@ -247,6 +247,31 @@ diagrams:
         - '  FontColor #0F172A'
         - '}'
 
+  task_pack:
+    type: class
+    glob:
+      - src/Extension/*.cpp
+    include:
+      context:
+        - match:
+            radius: 1
+            pattern: Atlas::TaskPackRegistry
+        - match:
+            radius: 1
+            pattern: Atlas::CustomTaskInstance
+    exclude:
+      namespaces:
+        - std
+    plantuml:
+      before:
+        - skinparam backgroundColor transparent
+        - skinparam class {
+        - '  BackgroundColor #E0F2FE'
+        - '  BorderColor #0284C7'
+        - '  ArrowColor #64748B'
+        - '  FontColor #0F172A'
+        - '}'
+
   vulkan_compute:
     type: class
     glob:

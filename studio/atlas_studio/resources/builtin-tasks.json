@@ -1,0 +1,110 @@
+[
+  {
+    "pack_id": "atlas.builtin",
+    "task_id": "cpu_burn",
+    "name": "CPU burn",
+    "resource": "cpu",
+    "supports_slicing": false,
+    "parameters": [
+      {
+        "id": "iterations",
+        "name": "iterations",
+        "type": "unsigned_integer",
+        "required": false,
+        "default": 100000,
+        "minimum": 1,
+        "maximum": 18446744073709551615
+      }
+    ],
+    "summaries": [
+      {
+        "id": "value",
+        "type": "unsigned_integer"
+      }
+    ]
+  },
+  {
+    "pack_id": "atlas.builtin",
+    "task_id": "gpu_increment",
+    "name": "GPU increment",
+    "resource": "gpu",
+    "supports_slicing": true,
+    "parameters": [
+      {
+        "id": "workgroups_x",
+        "name": "workgroups_x",
+        "type": "unsigned_integer",
+        "required": false,
+        "default": 64,
+        "minimum": 1,
+        "maximum": 4294967295
+      },
+      {
+        "id": "workgroups_y",
+        "name": "workgroups_y",
+        "type": "unsigned_integer",
+        "required": false,
+        "default": 1,
+        "minimum": 1,
+        "maximum": 4294967295
+      },
+      {
+        "id": "workgroups_z",
+        "name": "workgroups_z",
+        "type": "unsigned_integer",
+        "required": false,
+        "default": 1,
+        "minimum": 1,
+        "maximum": 4294967295
+      }
+    ],
+    "summaries": [
+      {
+        "id": "ok",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "pack_id": "atlas.builtin",
+    "task_id": "vector_add",
+    "name": "Vector add",
+    "resource": "gpu",
+    "supports_slicing": true,
+    "parameters": [
+      {
+        "id": "element_count",
+        "name": "element_count",
+        "type": "unsigned_integer",
+        "required": false,
+        "default": 256,
+        "minimum": 1,
+        "maximum": 22369621
+      },
+      {
+        "id": "left_value",
+        "name": "left_value",
+        "type": "number",
+        "required": false,
+        "default": 4,
+        "minimum": -1e+30,
+        "maximum": 1e+30
+      },
+      {
+        "id": "right_value",
+        "name": "right_value",
+        "type": "number",
+        "required": false,
+        "default": 7,
+        "minimum": -1e+30,
+        "maximum": 1e+30
+      }
+    ],
+    "summaries": [
+      {
+        "id": "ok",
+        "type": "boolean"
+      }
+    ]
+  }
+]

@@ -16,6 +16,7 @@ from .results import ResultsView
 class MainWindow(QMainWindow):
     """Passive application shell for the Studio MVC controllers."""
 
+    packs_requested = Signal()
     open_requested = Signal()
     save_requested = Signal()
     validate_requested = Signal()
@@ -51,6 +52,7 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
         definitions = [
+            ("packs", "Task Packs", QKeySequence("Ctrl+Shift+P"), self.packs_requested),
             ("open", "Open", QKeySequence.Open, self.open_requested),
             ("save", "Save", QKeySequence.Save, self.save_requested),
             ("validate", "Validate", QKeySequence("Ctrl+Shift+V"), self.validate_requested),

@@ -32,6 +32,8 @@ Atlas requires:
 - CMake 3.24 or newer;
 - a C++20 compiler;
 - Threads and Vulkan development headers/loader;
+- SPIRV-Tools headers, library, and CMake package configuration for mandatory
+  Vulkan 1.1 runtime shader validation;
 - a Vulkan 1.1-capable physical device with a compute queue and dispatch-base
   support required by Atlas;
 - `glslc` and `spirv-val` for checked shader compilation;
@@ -64,12 +66,79 @@ ctest --preset dev-linux
 
 The first test-enabled configuration may download Catch2 and nlohmann/json.
 Configuration fails if Vulkan or the shader tools are unavailable.
+The SPIRV-Tools CMake package must export `SPIRV-Tools-static` (used by vcpkg)
+or `SPIRV-Tools` (used by some Linux distributions); configuration rejects a
+package that provides neither target.
 
 Profiling is compiled in by default. Configure with
 `-DATLAS_ENABLE_PROFILING=OFF` when measuring a build that must contain no event
 clock reads, trace publication, or Vulkan timestamp queries. Such a build still
 provides the trace API, but `TraceSession::emit` is inert and `atlas --trace`
 fails with an explicit diagnostic.
+
+## C++ task-pack extension API
+
+The Atlas library exposes `atlas/Extension/TaskPack.h` for explicitly trusted
+local task packs. The `atlas_studio_runner` process also executes custom packs
+through graph v2 and repeated `--task-pack` arguments. `atlas` and `atlas_bench`
+do not accept packs. Studio provides pack installation and explicit per-digest trust management.
+
+`TaskPackRegistry::inspectDirectory()` performs bounded manifest, path, regular-
+file, platform, typed-field, and canonical SHA-256 validation without loading
+native code. `loadDirectory()` is the explicit trust boundary and loads the one
+library matching the current `linux`/`windows` and `x86_64`/`aarch64` triple.
+The native task metadata and resource types must exactly match the manifest and
+the complete digest is executable identity; a display version is not.
+
+The pack format is described by `benchmarks/schema/atlas-task-pack-v1.schema.json`.
+Inspection also checks relational constraints (unique IDs, referenced paths,
+field defaults and bounds, shader/readback references) and filesystem limits
+that JSON Schema cannot express. String limits are UTF-8 bytes.
+The current library manifest is strict JSON with these required root fields:
+`schema_version: 1`, `abi_version: 1`, `pack_id`, `version`, `platforms`,
+`shaders`, and `tasks`; `name` and `description` are optional. Platform entries
+contain `platform`, `architecture`, and a safe relative `library`. Shader
+entries contain `shader_id`, a relative `.spv` `path`, `entry_point`, and
+non-empty `storage_buffers` entries with unsigned `binding` and `access` equal
+to `read_only`, `write_only`, or `read_write`. CPU and GPU task entries contain
+`task_id`, `resource`, `parameters`, and `summaries`. GPU tasks additionally
+declare `shader_id`, `result_bindings`, and optional `supports_slicing`.
+Unknown fields, absolute/traversing paths, backslashes, symlinks, special files,
+duplicates, and excessive file or output sizes are rejected.
+
+Parameter and summary fields are flat scalars. Supported `type` values are
+`boolean`, `integer`, `unsigned_integer`, finite `number`, bounded `string`, and
+`enum`. Fields use `id`, optional display `name`/`description`, `required`, and
+`default`; the applicable `minimum`, `maximum`, or enum `values` complete the
+contract. String fields require a positive `max_length` no greater than 4 KiB,
+and parameter JSON is limited to 64 KiB. Nested objects and arrays are not
+accepted.
+
+`createTask()` validates and canonicalizes parameters before calling native
+preparation. `CustomTaskInstance::addToGraph()` inserts exactly one prepared
+ordinary CPU callable, Vulkan dispatch, or sliced Vulkan dispatch.
+`collectSummary()` is available only after terminal execution and returns a
+bounded, schema-validated scalar result. Keep the instance alive through
+summary collection and keep its graph alive longer than the instance.
+
+The pure-C ABI is in `atlas/Extension/TaskPackAbi.h`. It uses fixed-width
+structures, explicit structure sizes, opaque per-node contexts, borrowed input
+views, status codes, and bounded host writers. Metadata IDs, GPU initialization,
+summaries, and diagnostics are copied into host storage while their callbacks
+are active. Plugins must catch all exceptions. They are trusted native code
+with the user's full process, filesystem, and network privileges; they may
+allocate, create threads, hang, crash, or terminate the process. Inspection and
+SPIR-V validation do not sandbox or make hostile code safe.
+
+Custom GPU tasks remain inside Atlas's storage-buffer compute model. Atlas owns
+shader modules, reflected pipelines, allocations, upload/download, descriptors,
+dispatch/slicing, synchronization, timestamps, and device-loss handling. Raw
+Vulkan handles, push constants, uniforms, images, samplers, descriptor arrays or
+sets other than zero, specialization constants, and command recording are not
+available. Preparation is limited to 32 storage buffers and 256 MiB in aggregate
+buffer allocation and initialization. Every shader is validated by SPIRV-Tools
+for Vulkan 1.1 and its reflected binding access must exactly match both the
+manifest and dispatch.
 
 ## Running Atlas
 
@@ -89,12 +158,26 @@ python3 -m atlas_studio
 ```
 
 The application launches `atlas_studio_runner` and `atlas_bench` directly and
-supervises one local run at a time. Set `ATLAS_STUDIO_RUNNER` or `ATLAS_BENCH`
-when the executables are outside the normal build tree. The application accepts
-only versioned built-in-kernel documents and does not accept arbitrary C++,
-shaders, task-level live control, or runtime graph mutation. The graph contract
-is `benchmarks/schema/atlas-studio-graph-v1.schema.json`; live runner output is
-the versioned `atlas-studio-run-v1` JSONL stream.
+supervises one local run at a time. Widgets and presentation remain on Qt's GUI
+thread. Each run receives a dedicated worker thread for process launch and
+control, temporary and result-file I/O, stream framing, JSON decoding, and
+schema validation. Validated records cross back in batches and are applied in
+bounded time slices so a complex benchmark or dense live trace does not
+monopolize GUI event handling. Atlas execution remains isolated in the
+supervised C++ child process. Large tables use virtual models, hidden result
+tabs are not rebuilt, and live rendering is limited to the first 5,000 tasks,
+latest 500 timeline events, and latest 2,000 stream records. The Studio shows
+when one of these presentation limits is active; validated result state and
+benchmark artifacts retain their existing bounds. Set `ATLAS_STUDIO_RUNNER` or
+`ATLAS_BENCH` when the executables are outside the normal build tree. The
+application edits versioned graph documents with shared built-in descriptors.
+Custom nodes resolve against installed packs by exact digest. Missing, untrusted,
+or unavailable packs remain editable and saveable; Run is disabled until every
+node resolves and its parameters and trust validate. Arbitrary source
+compilation, task-level live control, and runtime graph mutation are unavailable.
+The graph contract is
+`benchmarks/schema/atlas-studio-graph-v2.schema.json`; live runner output is the
+versioned `atlas-studio-run-v2` JSONL stream.
 
 Task Studio exposes CPU burn and Vulkan increment/vector-add kernels, task
 metadata, explicit edges, worker capacity, policies, slicing, seeds, Vulkan
@@ -121,6 +204,120 @@ in a selector; warmups are displayed live but are not retained. This
 instrumentation adds observer overhead, so clear **Show live benchmark tasks**
 for a timing-focused GUI run. The aggregate result files remain the
 authoritative output in either mode.
+
+### Studio Task Packs
+
+Open **Task Packs** from the toolbar and choose **Import directory**. Studio
+invokes the runner's safe inspection endpoint, copies only referenced regular
+files, verifies the copied digest, and installs the directory under Qt's per-user
+application-data location in `task-packs/<sha256>`. Import and inspection run on
+a worker thread and never load native code. The manager lists exact digests,
+versions, tasks, descriptions, resource/slicing capabilities, host availability,
+and trust. Multiple digests of one pack may be installed.
+
+Select **Trust digest** to accept the mandatory native-code warning. Code runs
+with your privileges; process isolation does not restrict files or network.
+CPU tasks may hang or crash, GPU tasks may hang or lose the Vulkan device, and
+validation does not make hostile code safe. Trust is stored by SHA-256 in
+`QSettings` for Atlas / Atlas Studio. Changed content requires a fresh import
+and new explicit trust. **Revoke trust** prevents subsequent launches; an
+already executing process must be stopped with **Stop**. **Remove** removes
+installed content and its trust decision, and rejects packs referenced by an
+active launch. Damaged installations are shown with diagnostics in the manager.
+
+Choose a task from the **Built-in** or **Installed Packs** palette, then use
+**Add selected task**. Nodes retain their CPU/GPU coloring and show pack/task
+identity; a warning marker and tooltip identify resolution problems. The
+inspector creates controls for boolean, integer, unsigned integer, finite number,
+UTF-8 string, and enum fields. Defaults come from descriptors; required fields
+without defaults start with a valid zero/empty/first-enum value within their
+bounds. Invalid edits restore the previous node atomically. Slicing controls
+appear only for GPU descriptors that support it.
+
+Graphs preserve exact pack ID, version, digest, task ID, and parameters even
+when packs cannot resolve. Studio never substitutes another installed digest.
+Run rechecks trust in the process worker and passes only referenced installed
+directories; the runner verifies private snapshots before native loading.
+Select a task in Results to expand its scalar summary and bounded raw JSON.
+Summary text is plain text. A missing completion footer is reported as an
+incomplete stream, including possible native crash or forced termination;
+normal task failures retain scheduler measurements and a complete footer.
+
+### `atlas_studio_runner`
+
+Inspect a directory without loading its native library or initializing Vulkan:
+
+```bash
+./build/apps/atlas_studio_runner/atlas_studio_runner --inspect-task-pack /path/to/pack
+```
+
+This exclusive mode writes one JSON object with `inspection_schema_version: 1`,
+exact identity, supported platform triples, referenced files, and serialized
+parameter/summary descriptors. It applies the library's bounded inspection
+contract; errors use the existing structured preflight error and nonzero exit.
+It does not execute a graph or provide a CPU-only execution mode.
+
+Run a built-in graph or explicitly trusted native packs:
+
+```bash
+./build/apps/atlas_studio_runner/atlas_studio_runner \
+  --config studio/examples/all-kernels-graph-v2.json \
+  --control /tmp/atlas-cancel
+
+./build/apps/atlas_studio_runner/atlas_studio_runner \
+  --config my-graph.json --control /tmp/atlas-cancel \
+  --task-pack /absolute/path/to/trusted-pack
+```
+
+For execution, both `--config` and `--control` are required; `--task-pack` may repeat (up to
+128 directories). Supplying a pack explicitly authorizes native loading for
+its exact referenced digest. Native code runs with your privileges and can
+access files/network, hang, crash, or terminate the process; a separate process
+is not a sandbox. Built-ins need no pack directory or trust declaration.
+The control path should initially be absent. Creating it requests cancellation;
+a pre-existing file cancels before submissions. Accepted work is drained.
+
+Graph v2 requires `schema_version: 2`, `packs`, `nodes`, and `edges`. Each
+node has `id`, `name`, `resource`, `priority`, `pack_id`, `task_id`, a flat
+`parameters` object, and optional `slice_workgroups` dimensions. Built-in
+`pack_id` is `atlas.builtin`; its tasks are `cpu_burn` (`iterations`),
+`gpu_increment` (`workgroups_x/y/z`), and `vector_add` (`element_count`,
+`left_value`, `right_value`). Scalar defaults and bounds come from the shared
+`studio/atlas_studio/resources/builtin-tasks.json` descriptor collection.
+Built-in GPU buffer allocations are bounded to 256 MiB per node.
+
+The `packs` array lists exactly the referenced custom packs as
+`{"pack_id":"example.pack","version":"1.0","digest":"<64 lowercase hex characters>"}`.
+Obtain that digest with `TaskPackRegistry::inspectDirectory()` or the inspection
+command below. Only one
+digest per pack ID may appear in a graph; display versions do not substitute
+for digests. Nodes resolve by exact pack ID, digest, and task ID. The runner
+inspects supplied directories without loading code, copies only referenced
+assets of selected packs into private temporary storage, reinspects and
+compares digests, and loads only verified snapshots. Normal exit or a caught
+error removes snapshots after module/resource destruction; forced process
+termination may leave temporary files for operating-system cleanup.
+
+The entire graph, descriptors, parameters, resources, and slicing must validate
+and every task must prepare before graph insertion and execution. Missing host
+binaries, missing packs, digest/ABI mismatches, and preparation failures emit a
+single `error` record with `studio_schema_version: 2`, `phase: "preflight"`,
+and a bounded `message`; they return nonzero without execution records.
+
+Run v2 begins with a header containing exact executed pack provenance. Task
+records include `pack_id` and `pack_task_id`; numeric `task_id` continues to
+identify the graph task in trace events. Successful tasks emit separate
+`task_summary` records with validated scalar JSON. Failed/unexecuted tasks
+have no summary. Summary errors use `phase: "summary"`, preserve scheduler
+measurements in the result, and make the footer/exit status fail. The footer
+reports completion and trace drops. A missing footer indicates an incomplete
+stream, including a possible native crash. Trace event schema remains v1.
+
+Graphs are bounded to 16 MiB, 10,000 nodes, 50,000 edges, and 128 packs. Node
+IDs are bounded to 128 bytes, names to 4 KiB, parameter/summary JSON to 64 KiB,
+and error messages to 4 KiB. Studio JSONL records allow up to 16 MiB to retain
+measurements for large graphs; total input remains 128 MiB and one million
+records. The runner accepts only graph v2 and Studio accepts only run v2.
 
 ### `atlas`
 
@@ -380,5 +577,34 @@ python3 tools/atlas_evaluation.py verify \
   inconsistent JSON field named in the error.
 - **Unsupported workload or parameters:** use only the policies, dependency
   shapes, dimensions, and execution modes documented above.
+- **Rejected task pack:** inspect the reported manifest/path/ABI/platform,
+  parameter, summary, or reflected SPIR-V mismatch. Load only a digest whose
+  native publisher and contents you explicitly trust.
 - **Existing output:** choose an empty directory or explicitly pass
   `--overwrite`.
+
+## Task-pack delivery validation
+
+Studio CI builds and runs native task-pack contracts on Linux and Windows x64
+with real Mesa Lavapipe and headless PySide6. Windows needs MSVC, the Vulkan SDK,
+SPIRV-Tools development files, and permission to create test symlinks. The
+native runner and contract probe must come from the same build; set
+`ATLAS_STUDIO_RUNNER` and `ATLAS_TASK_PACK_CONTRACT` to their executable paths.
+Use `ATLAS_REQUIRE_NATIVE_TESTS=1` for release validation so missing native
+executables or symlink privileges fail required tests. The manual robustness
+workflow includes Studio against sanitized native executables in addition to
+the sanitizer, repeated concurrency, and generated-DAG soak checks.
+
+The Studio delivery test covers import, explicit trust and rejection, palette
+editing, save/reopen, mixed CPU/GPU execution with ordinary and sliced dispatches,
+summary display, revocation, and missing-pack preservation. Run it alone with
+`python -m pytest -q studio/tests/test_task_packs.py -k desktop_pack_delivery`
+after setting the executable paths above. It uses an isolated temporary pack
+store and trust settings; headless execution also needs `QT_QPA_PLATFORM=offscreen`.
+The full Studio suite also requires `glslc` on `PATH` to compile shader rejection
+fixtures. It checks native ABI/output failures and abrupt runner termination.
+Run completion is announced after the process worker thread has fully exited,
+so another run cannot overlap destruction of the previous worker.
+
+Current verified results and outstanding platform/desktop acceptance are recorded
+in [the task-pack plan](custom-task-packs-plan.md#stage-6-robustness-and-delivery-validation).

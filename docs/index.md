@@ -2,7 +2,9 @@
 
 Atlas provides a heterogeneous CPU/Vulkan task graph, bounded execution
 tracing, and capability-checked host/device profiling for its current
-single-execution scheduler model.
+single-execution scheduler model. Its C++ Extension module prepares explicitly
+trusted native task-pack CPU callbacks and declarative storage-buffer GPU work
+into the existing task payloads.
 
 Atlas is a C++20 CPU/Vulkan task-graph prototype with mandatory Vulkan compute,
 resource-aware scheduling, cooperative dispatch slicing, cancellation,
@@ -22,9 +24,9 @@ measurement, and comparison-suite benchmarking.
   physical/software Vulkan results and final policy conclusions.
 - [Remaining milestones](remaining-milestone.md): completed Milestones 12–16,
   skipped adaptive scheduling, and optional product scope for Milestones 17–18.
-- [Studio graph schema](../benchmarks/schema/atlas-studio-graph-v1.schema.json)
-  and [studio run schema](../benchmarks/schema/atlas-studio-run-v1.schema.json).
+- [Studio graph schema](../benchmarks/schema/atlas-studio-graph-v2.schema.json)
+  and [studio run schema](../benchmarks/schema/atlas-studio-run-v2.schema.json).
 
 The generated API reference is organized into Tasking, Executor, Scheduling,
-Vulkan, and Profiling modules. Documentation describes the current
+Vulkan, Profiling, and Extension modules. Documentation describes the current
 implementation only.

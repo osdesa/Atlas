@@ -7,6 +7,7 @@
 #include "atlas/Tasking/TaskGraph.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -230,7 +231,8 @@ TEST_CASE("KahnScheduler reports a thrown policy failure", "[UNIT]")
 
     REQUIRE(result.status == Atlas::SchedulerStatus::PolicyError);
     REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(result.exception == failure);
+    REQUIRE(result.exception != nullptr);
+    REQUIRE_THROWS_MATCHES(std::rethrow_exception(result.exception), std::runtime_error, Catch::Matchers::Message("policy failed"));
 }
 
 TEST_CASE("KahnScheduler applies stable static priority to CPU-only work", "[UNIT]")
@@ -319,7 +321,9 @@ TEST_CASE("KahnScheduler drains accepted work after a later policy failure", "[U
 
     REQUIRE(result.status == Atlas::SchedulerStatus::PolicyError);
     REQUIRE(result.executedTaskCount == 1U);
-    REQUIRE(result.exception == policyFailure);
+    REQUIRE(result.exception != nullptr);
+    REQUIRE_THROWS_MATCHES(std::rethrow_exception(result.exception), std::runtime_error,
+                           Catch::Matchers::Message("second selection failed"));
     REQUIRE(graph.snapshotTask(accepted.value()).value().executionInfo.state == Atlas::TaskState::Success);
     const Atlas::TaskExecutionInfo rejectedInfo{ graph.snapshotTask(rejected.value()).value().executionInfo };
     REQUIRE(rejectedInfo.state == Atlas::TaskState::Ready);
@@ -345,7 +349,8 @@ TEST_CASE("KahnScheduler preserves a task exception while reporting a policy err
 
     REQUIRE(result.status == Atlas::SchedulerStatus::PolicyError);
     REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(result.exception == taskFailure);
+    REQUIRE(result.exception != nullptr);
+    REQUIRE_THROWS_MATCHES(std::rethrow_exception(result.exception), std::runtime_error, Catch::Matchers::Message("task failed"));
 }
 
 TEST_CASE("KahnScheduler gives executor failure precedence over policy error", "[UNIT]")
@@ -363,5 +368,7 @@ TEST_CASE("KahnScheduler gives executor failure precedence over policy error", "
 
     REQUIRE(result.status == Atlas::SchedulerStatus::ExecutorUnavailable);
     REQUIRE(result.executedTaskCount == 0U);
-    REQUIRE(result.exception == policyFailure);
+    REQUIRE(result.exception != nullptr);
+    REQUIRE_THROWS_MATCHES(std::rethrow_exception(result.exception), std::runtime_error,
+                           Catch::Matchers::Message("second selection failed"));
 }

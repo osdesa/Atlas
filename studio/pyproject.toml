@@ -38,4 +38,4 @@ where = ["."]
 include = ["atlas_studio*"]
 
 [tool.setuptools.package-data]
-"atlas_studio.resources" = ["*.qss"]
+"atlas_studio.resources" = ["*.qss", "*.json"]

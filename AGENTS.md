@@ -23,6 +23,14 @@ and large-graph validation, fault matrices, sanitizer/soak workflows, and
 fail-stop Vulkan device-loss handling. Milestone 16 completes an 8,600-run
 physical Intel and Lavapipe final evaluation. Milestone 17 adds the optional
 PySide6 desktop studio and its strict built-in-kernel graph runner.
+The Atlas library also exposes the Part A trusted native task-pack API: packs
+are inspected and content-hashed before explicit loading, CPU callbacks and
+declarative storage-buffer GPU tasks become existing graph payloads, and
+summaries are bounded and typed. Part B adds graph/run v2, runner-private
+verified snapshots, exact pack provenance, shared built-in descriptors, and
+bounded task summaries. Part C adds Studio content-addressed pack management, explicit per-digest trust,
+descriptor palettes/forms, unresolved-node diagnostics, and trusted launch integration.
+The runner inspection endpoint exports metadata without loading native modules.
 
 The supported executables are:
 
@@ -129,6 +137,11 @@ APIs/options and for `legacy|deprecated|compat|fallback`.
   is idempotent.
 - Raw Vulkan ownership handles remain private. Buffers and pipelines belong to
   one retained runtime context and cross-runtime use is rejected.
+- Native task-pack modules are explicitly trusted, use only the versioned C ABI,
+  and remain loaded while prepared callables, GPU work, or result callbacks
+  depend on them. GPU packs never receive raw Vulkan handles.
+- Every compute module is validated for Vulkan 1.1 and reflected before pipeline
+  creation; declared, reflected, and dispatch buffer bindings/access must match.
 - Queue wait time is not task execution duration.
 
 ## Code and tests

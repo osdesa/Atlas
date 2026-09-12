@@ -64,7 +64,11 @@ namespace
         Atlas::VulkanBuffer right{ runtime.createBuffer(elementCount * sizeof(float)) };
         Atlas::VulkanBuffer output{ runtime.createBuffer(elementCount * sizeof(float)) };
         Atlas::VulkanComputePipeline pipeline{ runtime.createComputePipeline(
-            Atlas::ComputeShader{ readShader(), "main", { 0U, 1U, 2U } }) };
+            Atlas::ComputeShader{ readShader(),
+                                  "main",
+                                  { { 0U, Atlas::BufferAccess::ReadOnly },
+                                    { 1U, Atlas::BufferAccess::ReadOnly },
+                                    { 2U, Atlas::BufferAccess::WriteOnly } } }) };
 
         Atlas::VulkanDispatch dispatch() const
         {
@@ -106,6 +110,33 @@ namespace
         Atlas::VulkanExecutor& vulkanExecutor;
     };
 } // namespace
+
+TEST_CASE("VulkanRuntime validates and reflects the selected storage-buffer compute interface", "[FEATURE][VULKAN_INTEGRATION]")
+{
+    Atlas::VulkanRuntime runtime;
+    const std::vector<std::uint32_t> spirv{ readShader() };
+    REQUIRE_THROWS_AS(runtime.createComputePipeline(Atlas::ComputeShader{ spirv,
+                                                                          "main",
+                                                                          { { 0U, Atlas::BufferAccess::ReadWrite },
+                                                                            { 1U, Atlas::BufferAccess::ReadOnly },
+                                                                            { 2U, Atlas::BufferAccess::WriteOnly } } }),
+                      std::invalid_argument);
+    REQUIRE_THROWS_AS(runtime.createComputePipeline(Atlas::ComputeShader{ spirv,
+                                                                          "missing",
+                                                                          { { 0U, Atlas::BufferAccess::ReadOnly },
+                                                                            { 1U, Atlas::BufferAccess::ReadOnly },
+                                                                            { 2U, Atlas::BufferAccess::WriteOnly } } }),
+                      std::invalid_argument);
+
+    std::vector<std::uint32_t> malformed{ spirv };
+    malformed.pop_back();
+    REQUIRE_THROWS_AS(runtime.createComputePipeline(Atlas::ComputeShader{ malformed,
+                                                                          "main",
+                                                                          { { 0U, Atlas::BufferAccess::ReadOnly },
+                                                                            { 1U, Atlas::BufferAccess::ReadOnly },
+                                                                            { 2U, Atlas::BufferAccess::WriteOnly } } }),
+                      std::invalid_argument);
+}
 
 TEST_CASE("VulkanExecutor executes and reuses persistent compute resources", "[FEATURE][VULKAN_INTEGRATION]")
 {

@@ -38,6 +38,9 @@ namespace Atlas
             {
                 return value.implementation;
             }
+
+            /// @brief Retains non-Vulkan state for as long as a dispatch description survives.
+            static void retainLifetime(VulkanDispatch& value, std::shared_ptr<void> lifetime) noexcept;
         };
 
         struct VulkanContext final
@@ -114,8 +117,8 @@ namespace Atlas
         VkPipelineLayout pipelineLayout{ VK_NULL_HANDLE };
         /// @brief Compute pipeline handle.
         VkPipeline pipeline{ VK_NULL_HANDLE };
-        /// @brief Sorted storage binding numbers exposed to dispatch validation.
-        std::vector<std::uint32_t> bindingNumbers;
+        /// @brief Sorted reflected storage-buffer interface exposed to dispatch validation.
+        std::vector<ShaderBufferBinding> storageBufferBindings;
     };
 
     struct VulkanDispatch::Impl final
@@ -124,6 +127,8 @@ namespace Atlas
         VulkanComputePipeline computePipeline;
         /// @brief Exact storage-buffer bindings shared by every work unit.
         std::vector<BufferBinding> bufferBindings;
+        /// @brief Optional extension-module state retained by prepared custom GPU work.
+        std::shared_ptr<void> lifetimeAnchor;
     };
 
     struct VulkanRuntime::Impl final
@@ -131,6 +136,11 @@ namespace Atlas
         /// @brief Shared context kept alive by runtime-owned resources.
         std::shared_ptr<Detail::VulkanContext> context;
     };
+
+    inline void Detail::VulkanAccess::retainLifetime(VulkanDispatch& value, std::shared_ptr<void> lifetime) noexcept
+    {
+        value.implementation->lifetimeAnchor = std::move(lifetime);
+    }
 
     namespace Detail
     {
