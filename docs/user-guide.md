@@ -66,6 +66,9 @@ ctest --preset dev-linux
 
 The first test-enabled configuration may download Catch2 and nlohmann/json.
 Configuration fails if Vulkan or the shader tools are unavailable.
+The SPIRV-Tools CMake package must export `SPIRV-Tools-static` (used by vcpkg)
+or `SPIRV-Tools` (used by some Linux distributions); configuration rejects a
+package that provides neither target.
 
 Profiling is compiled in by default. Configure with
 `-DATLAS_ENABLE_PROFILING=OFF` when measuring a build that must contain no event

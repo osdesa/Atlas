@@ -35,6 +35,13 @@ include(StaticAnalysis)
 
 find_package(Vulkan REQUIRED)
 find_package(SPIRV-Tools REQUIRED CONFIG)
+if(TARGET SPIRV-Tools-static)
+    set(ATLAS_SPIRV_TOOLS_TARGET SPIRV-Tools-static)
+elseif(TARGET SPIRV-Tools)
+    set(ATLAS_SPIRV_TOOLS_TARGET SPIRV-Tools)
+else()
+    message(FATAL_ERROR "SPIRV-Tools must provide the SPIRV-Tools-static or SPIRV-Tools imported target")
+endif()
 find_package(Threads REQUIRED)
 
 include(FetchContent)
@@ -104,7 +111,7 @@ target_compile_definitions(
 target_link_libraries(
     atlas_library
     PUBLIC Vulkan::Vulkan
-    PRIVATE SPIRV-Tools Threads::Threads nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS}
+    PRIVATE ${ATLAS_SPIRV_TOOLS_TARGET} Threads::Threads nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS}
 )
 
 atlas_set_project_warnings(atlas_library)

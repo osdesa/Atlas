@@ -103,12 +103,13 @@ jobs:
 
       - name: Test desktop application
         working-directory: studio
+        timeout-minutes: 10
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
           ruff format --check atlas_studio tests
           ruff check atlas_studio tests
-          python -m pytest -q --junitxml=../studio.junit.xml
+          python -m pytest -v -o faulthandler_timeout=60 --junitxml=../studio.junit.xml
 
       - name: Verify native Windows desktop workflow
         if: runner.os == 'Windows'
