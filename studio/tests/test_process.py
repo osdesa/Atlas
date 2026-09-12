@@ -97,16 +97,19 @@ def test_process_service_decodes_stdout_off_the_gui_thread(qtbot, tmp_path: Path
 
 def test_process_service_enforces_one_active_run(qtbot, tmp_path: Path, monkeypatch) -> None:
     script = tmp_path / "waiting.py"
-    script.write_text("import time\ntime.sleep(10)\n", encoding="utf-8")
+    script.write_text("import sys\nsys.stdin.read()\n", encoding="utf-8")
     monkeypatch.setenv("ATLAS_BENCH", str(script))
     service = AtlasProcessService()
     with qtbot.waitSignal(service.run_started, timeout=5_000):
         service.start_benchmark(default_benchmark(), tmp_path / "results", live_tracing=False)
-    with qtbot.waitSignal(service.run_finished, timeout=5_000):
+    # Windows console processes may need the service's five-second kill escalation.
+    with qtbot.waitSignal(service.run_finished, timeout=10_000) as finished:
         assert service.active
         with pytest.raises(RuntimeError, match="one Atlas run"):
             service.start_graph(default_graph())
         service.stop()
+    assert finished.args[1] == "cancelled"
+    assert not service.active
 
 
 def test_bounded_line_buffer_frames_fragments_and_rejects_oversize_lines() -> None:
